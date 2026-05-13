@@ -20,7 +20,11 @@ app.use(
     credentials: true,
   }),
 );
-app.use(helmet());
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+  }),
+);
 app.use(express.json({ limit: "1mb" }));
 app.use(morgan("dev"));
 
