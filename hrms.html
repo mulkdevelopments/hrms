@@ -145,6 +145,7 @@ body::before {
 .header-title span { color: var(--text-muted); font-weight: 400; font-size: 14px; font-family: 'DM Sans', sans-serif; }
 
 .header-actions { display: flex; gap: 10px; align-items: center; }
+.mobile-menu-btn { display: none; }
 .icon-btn {
   width: 36px; height: 36px; border-radius: 9px; border: 1px solid var(--border-bright);
   background: rgba(21,40,80,0.5); cursor: pointer; display: flex;
@@ -443,6 +444,23 @@ textarea { resize: vertical; min-height: 80px; }
 #notif-panel.open { transform: none; }
 .notif-panel-title { font-family: 'Syne', sans-serif; font-size: 16px; font-weight: 700; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; }
 
+#mobile-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(3, 10, 21, 0.65);
+  backdrop-filter: blur(2px);
+  z-index: 120;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity .2s ease;
+}
+#mobile-backdrop.show {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
 /* ─── TOAST ─── */
 #toast {
   position: fixed; bottom: 24px; right: 24px; z-index: 300;
@@ -455,12 +473,84 @@ textarea { resize: vertical; min-height: 80px; }
 
 @media (max-width: 900px) {
   :root { --sidebar-w: 0px; }
-  #sidebar { transform: translateX(-250px); --sidebar-w: 250px; }
+  #sidebar {
+    transform: translateX(-250px);
+    --sidebar-w: 250px;
+    z-index: 130;
+    box-shadow: 20px 0 40px rgba(0,0,0,0.35);
+  }
   #sidebar.mob-open { transform: none; }
+  #header {
+    left: 0;
+    padding: 0 14px;
+  }
+  .mobile-menu-btn { display: inline-flex; }
+  .header-title {
+    font-size: 15px;
+    min-width: 0;
+  }
+  .header-title span { display: none; }
   #main { margin-left: 0; }
+  .view { padding: 18px 14px; }
+  .tabs {
+    overflow-x: auto;
+    white-space: nowrap;
+    flex-wrap: nowrap;
+    scrollbar-width: thin;
+  }
+  .tab-btn {
+    flex: 0 0 auto;
+    min-width: max-content;
+  }
+  .toolbar { gap: 8px; }
+  .toolbar .search-bar,
+  .toolbar > select,
+  .toolbar > .btn {
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    flex: 1 1 100%;
+  }
+  .toolbar .search-bar input { width: 100%; }
+  .grid3 { grid-template-columns: 1fr; }
   .stats-grid { grid-template-columns: 1fr 1fr; }
   .grid2 { grid-template-columns: 1fr; }
   .kpi-grid { grid-template-columns: 1fr 1fr; }
+  .modal-overlay { padding: 12px; }
+  .modal {
+    padding: 18px;
+    border-radius: 14px;
+    max-height: calc(100vh - 24px);
+  }
+  .modal-header { margin-bottom: 16px; }
+  .modal-footer {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+  #notif-panel {
+    width: min(360px, 100vw);
+    top: var(--header-h);
+  }
+}
+
+@media (max-width: 640px) {
+  #header { gap: 10px; }
+  .header-actions { gap: 6px; }
+  .icon-btn {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+  }
+  .stats-grid,
+  .kpi-grid { grid-template-columns: 1fr; }
+  .form-grid { grid-template-columns: 1fr; }
+  .donut-wrap { flex-direction: column; align-items: flex-start; }
+  #toast {
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    width: auto;
+  }
 }
 </style>
 </head>
@@ -534,9 +624,11 @@ textarea { resize: vertical; min-height: 80px; }
     </div>
   </div>
 </nav>
+<div id="mobile-backdrop" onclick="closeSidebar()"></div>
 
 <!-- HEADER -->
 <header id="header">
+  <button class="icon-btn mobile-menu-btn" type="button" aria-label="Toggle menu" onclick="toggleSidebar()">☰</button>
   <div class="header-title" id="header-title">Dashboard <span>/ Overview</span></div>
   <div class="header-actions">
     <div class="icon-btn" title="Notifications" onclick="toggleNotifPanel()">
@@ -1727,6 +1819,25 @@ textarea { resize: vertical; min-height: 80px; }
 <div id="toast"></div>
 
 <script>
+const HRMS_MOBILE_BREAKPOINT = 900;
+
+function isMobileViewport() {
+  return window.innerWidth <= HRMS_MOBILE_BREAKPOINT;
+}
+
+function toggleSidebar(forceOpen) {
+  const sidebar = document.getElementById('sidebar');
+  const backdrop = document.getElementById('mobile-backdrop');
+  if (!sidebar || !backdrop || !isMobileViewport()) return;
+  const shouldOpen = typeof forceOpen === 'boolean' ? forceOpen : !sidebar.classList.contains('mob-open');
+  sidebar.classList.toggle('mob-open', shouldOpen);
+  backdrop.classList.toggle('show', shouldOpen);
+}
+
+function closeSidebar() {
+  toggleSidebar(false);
+}
+
 // ─── Navigation ───
 function navigate(view, el) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
@@ -1747,6 +1858,7 @@ function navigate(view, el) {
     settings: 'System Settings <span>/ Administration</span>',
   };
   document.getElementById('header-title').innerHTML = titles[view] || view;
+  closeSidebar();
   window.scrollTo(0,0);
 }
 
@@ -1789,6 +1901,7 @@ function filterTable(input, tableId) {
 
 // ─── Notification Panel ───
 function toggleNotifPanel() {
+  closeSidebar();
   document.getElementById('notif-panel').classList.toggle('open');
 }
 
@@ -1852,6 +1965,13 @@ function generateReport() {
 // ─── Chip Toggle ───
 document.querySelectorAll('.chip').forEach(c => {
   c.addEventListener('click', () => c.classList.toggle('active'));
+});
+
+window.addEventListener('resize', () => {
+  if (!isMobileViewport()) {
+    document.getElementById('sidebar')?.classList.remove('mob-open');
+    document.getElementById('mobile-backdrop')?.classList.remove('show');
+  }
 });
 </script>
 </body>
