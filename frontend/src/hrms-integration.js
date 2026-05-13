@@ -472,7 +472,22 @@ function resetEmployeeModalForm() {
   if (saveBtn) saveBtn.textContent = "Create Employee";
   const accessEnabledSelect = document.getElementById("emp-access-enabled");
   accessEnabledSelect?.dispatchEvent(new Event("change"));
+  updateEmploymentStatusBadge();
   editingEmployeeId = null;
+}
+
+function updateEmploymentStatusBadge() {
+  const joinDateInput = document.getElementById("emp-join-date");
+  const badge = document.getElementById("emp-auto-status-badge");
+  if (!joinDateInput || !badge) return;
+
+  const joinDate = joinDateInput.value ? new Date(joinDateInput.value) : new Date();
+  const probationCutoff = new Date();
+  probationCutoff.setMonth(probationCutoff.getMonth() - 6);
+  const isActive = !Number.isNaN(joinDate.getTime()) && joinDate <= probationCutoff;
+
+  badge.textContent = isActive ? "ACTIVE" : "PROBATION";
+  badge.className = `badge ${isActive ? "badge-green" : "badge-purple"}`;
 }
 
 function readEmployeePayloadFromModal() {
@@ -566,6 +581,7 @@ function wireEmployeeCreation() {
   const userRoleSelect = document.getElementById("emp-user-role");
   const loginEmailInput = document.getElementById("emp-login-email");
   const loginPasswordInput = document.getElementById("emp-login-password");
+  const joinDateInput = document.getElementById("emp-join-date");
 
   const syncAccessInputsState = () => {
     const enabled = accessEnabledSelect?.value === "true";
@@ -595,7 +611,9 @@ function wireEmployeeCreation() {
       syncAccessInputsState();
     }
   });
+  joinDateInput?.addEventListener("change", updateEmploymentStatusBadge);
   syncAccessInputsState();
+  updateEmploymentStatusBadge();
 
   cancelBtn?.addEventListener("click", resetEmployeeModalForm);
   closeBtn?.addEventListener("click", resetEmployeeModalForm);
@@ -777,6 +795,7 @@ async function refreshEmployees() {
   }
   loadEmployees();
   populateEmployeeSelectors();
+  renderDashboardInsights();
 }
 
 function getEmployeeById(employeeId) {
@@ -870,6 +889,7 @@ window.__editEmployee = function editEmployee(employeeId) {
   document.getElementById("emp-email").value = employee.email ?? "";
   document.getElementById("emp-designation").value = employee.designation ?? "";
   document.getElementById("emp-join-date").value = toDateInputValue(employee.dateOfJoining);
+  updateEmploymentStatusBadge();
   document.getElementById("emp-basic-salary").value = String(Math.round(employee.basicSalary ?? 0));
   document.getElementById("emp-emirates-id").value = employee.emiratesId ?? "";
   document.getElementById("emp-passport").value = employee.passportNumber ?? "";
@@ -1267,6 +1287,7 @@ async function loadLeaveRequests() {
   if (pendingTab) {
     pendingTab.textContent = `Pending Approvals (${pendingCount})`;
   }
+  renderDashboardInsights();
   renderNotifications();
 }
 
@@ -1356,17 +1377,258 @@ async function loadDashboard() {
   const data = await api("/dashboard/overview");
   dashboardCache = data ?? null;
   const statValues = document.querySelectorAll("#view-dashboard .stats-grid .stat-value");
+  const statLabels = document.querySelectorAll("#view-dashboard .stats-grid .stat-label");
+  const statSubs = document.querySelectorAll("#view-dashboard .stats-grid .stat-sub");
   if (statValues.length >= 4) {
     statValues[0].textContent = String(data.headcount ?? 0);
     statValues[1].textContent = String(data.onLeave ?? 0);
-    statValues[2].textContent = `${((data.monthlyPayroll ?? 0) / 1000000).toFixed(2)}M`;
+    const payroll = Number(data.monthlyPayroll ?? 0);
+    statValues[2].textContent = payroll >= 1000000
+      ? `${(payroll / 1000000).toFixed(2)}M`
+      : Math.round(payroll).toLocaleString("en-US");
+    statValues[3].textContent = String(data.pendingLeaveApprovals ?? 0);
+  }
+  if (statLabels.length >= 4) {
+    statLabels[3].textContent = "Pending Approvals";
+  }
+  if (statSubs.length >= 4) {
+    const headcount = Number(data.headcount ?? 0);
+    const onLeave = Number(data.onLeave ?? 0);
+    const pendingApprovals = Number(data.pendingLeaveApprovals ?? 0);
+    statSubs[1].textContent = headcount ? `${((onLeave / headcount) * 100).toFixed(1)}% of workforce` : "No leave today";
+    statSubs[2].textContent = `Current cycle total`;
+    statSubs[3].textContent = l1Roles.has(me?.role) ? "Waiting for L1 action" : l2Roles.has(me?.role) ? "Waiting for L2 action" : "Track your leave workflow";
+  }
+  renderDashboardInsights();
+  renderNotifications();
+}
+
+function formatDashboardDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Recent";
+  return date.toLocaleString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function dashboardRequestDate(request) {
+  return request.createdAt || request.updatedAt || request.submittedAt || request.startDate;
+}
+
+function formatAed(value, withSign = false) {
+  const rounded = Math.round(Number(value ?? 0));
+  const abs = Math.abs(rounded).toLocaleString("en-US");
+  if (!withSign) return `AED ${abs}`;
+  return `${rounded < 0 ? "−" : ""}AED ${abs}`;
+}
+
+function renderDashboardInsights() {
+  const deptList = document.getElementById("dash-dept-list");
+  const alertsList = document.getElementById("dash-alerts");
+  const timeline = document.getElementById("dash-timeline");
+  const workforceLegend = document.getElementById("dash-workforce-legend");
+  const activeCountEl = document.getElementById("dash-active-count");
+  const probationCountEl = document.getElementById("dash-probation-count");
+  const payrollTitle = document.getElementById("dash-payroll-title");
+  const payrollEarnings = document.getElementById("dash-payroll-earnings");
+  const payrollDeductions = document.getElementById("dash-payroll-deductions");
+  const wpsBadge = document.getElementById("dash-wps-badge");
+  const overtimeAmountEl = document.getElementById("dash-overtime-amount");
+  const overtimeEmployeesEl = document.getElementById("dash-overtime-employees");
+  if (!deptList || !alertsList || !timeline) return;
+
+  const departmentRows = Array.isArray(dashboardCache?.employeesByDept) ? dashboardCache.employeesByDept : [];
+  if (!departmentRows.length) {
+    deptList.innerHTML = `<div class="text-muted">No department data available yet.</div>`;
+  } else {
+    const barClasses = ["progress-blue", "progress-accent", "progress-amber", "progress-coral"];
+    const maxCount = Math.max(...departmentRows.map((item) => Number(item.count ?? 0)), 1);
+    deptList.innerHTML = departmentRows.map((row, index) => {
+      const count = Number(row.count ?? 0);
+      const width = Math.max(8, Math.round((count / maxCount) * 100));
+      return `
+        <div>
+          <div class="flex-between mb-16" style="margin-bottom:5px;font-size:13px">
+            <span>${escapeAttr(row.department ?? "Unassigned")}</span><span class="fw-700">${count}</span>
+          </div>
+          <div class="progress"><div class="progress-bar ${barClasses[index % barClasses.length]}" style="width:${width}%"></div></div>
+        </div>
+      `;
+    }).join("");
   }
 
-  const pendingAlert = document.querySelector("#view-dashboard .alert-success b");
-  if (pendingAlert) {
-    pendingAlert.textContent = `${data.pendingLeaveApprovals ?? 0} Leave Requests`;
+  const pendingApprovals = Number(dashboardCache?.pendingLeaveApprovals ?? 0);
+  const onLeave = Number(dashboardCache?.onLeave ?? 0);
+  const activeCount = Number(dashboardCache?.activeCount ?? allEmployees.filter((employee) => employee.status === "ACTIVE").length);
+  const probationCount = Number(dashboardCache?.probationCount ?? allEmployees.filter((employee) => employee.status === "PROBATION").length);
+  const myEmployeeId = me?.employee?.id;
+  const myPendingLeaves = myEmployeeId
+    ? leaveRequestsCache.filter((request) => request.employeeId === myEmployeeId && (request.status === "PENDING_L1" || request.status === "PENDING_L2")).length
+    : 0;
+  const alerts = [];
+
+  if (activeCountEl) activeCountEl.textContent = String(activeCount);
+  if (probationCountEl) probationCountEl.textContent = String(probationCount);
+
+  if (workforceLegend) {
+    const colors = ["var(--accent)", "var(--blue-bright)", "var(--amber)", "var(--coral)", "var(--text-dim)"];
+    const nationalityMix = Array.isArray(dashboardCache?.nationalityMix) ? dashboardCache.nationalityMix : [];
+    workforceLegend.innerHTML = nationalityMix.length
+      ? nationalityMix.map((row, index) => `
+          <div class="legend-item">
+            <div class="legend-dot" style="background:${colors[index % colors.length]}"></div>
+            ${escapeAttr(row.nationality)} (${Number(row.percent ?? 0).toFixed(1)}%)
+          </div>
+        `).join("")
+      : `<div class="text-muted">Nationality mix not available.</div>`;
   }
-  renderNotifications();
+
+  const payrollMonth = dashboardCache?.payrollCurrentMonth;
+  if (payrollTitle && payrollMonth?.month && payrollMonth?.year) {
+    const periodLabel = new Date(payrollMonth.year, payrollMonth.month - 1, 1)
+      .toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+    payrollTitle.textContent = `Payroll Overview — ${periodLabel}`;
+  }
+  if (payrollEarnings && payrollMonth) {
+    payrollEarnings.innerHTML = `
+      <div class="payslip-row"><span>Basic Salaries</span><span>${formatAed(payrollMonth.basic)}</span></div>
+      <div class="payslip-row"><span>Housing Allowance</span><span>${formatAed(payrollMonth.housing)}</span></div>
+      <div class="payslip-row"><span>Transport</span><span>${formatAed(payrollMonth.transport)}</span></div>
+      <div class="payslip-row"><span>Overtime</span><span>${formatAed(payrollMonth.overtime)}</span></div>
+      <div class="payslip-row payslip-total"><span>Gross Total</span><span>${formatAed(payrollMonth.grossTotal)}</span></div>
+    `;
+  }
+  if (payrollDeductions && payrollMonth) {
+    payrollDeductions.innerHTML = `
+      <div class="payslip-row"><span>Total Deductions</span><span style="color:var(--coral)">${formatAed(-Math.abs(payrollMonth.deductions), true)}</span></div>
+      <div class="payslip-row payslip-total"><span>Net Pay</span><span>${formatAed(payrollMonth.netPay)}</span></div>
+      <div style="margin-top:12px"><div class="badge badge-green" id="dash-wps-badge">Payroll snapshot ready</div></div>
+    `;
+  }
+  const dynamicWpsBadge = document.getElementById("dash-wps-badge") || wpsBadge;
+  if (dynamicWpsBadge) {
+    dynamicWpsBadge.textContent = payrollMonth?.netPay ? "WPS payroll snapshot generated" : "No payroll records for this period";
+  }
+  if (overtimeAmountEl) {
+    overtimeAmountEl.textContent = formatAed(payrollMonth?.overtime ?? 0).replace("AED ", "");
+  }
+  if (overtimeEmployeesEl) {
+    overtimeEmployeesEl.textContent = String(payrollMonth?.overtimeEmployees ?? 0);
+  }
+
+  if (pendingApprovals > 0) {
+    alerts.push({
+      tone: "success",
+      icon: "bi-check2-circle",
+      title: `${pendingApprovals} Leave Request${pendingApprovals === 1 ? "" : "s"} Pending`,
+      desc: l1Roles.has(me?.role)
+        ? "Waiting for your L1 approval."
+        : l2Roles.has(me?.role)
+          ? "Waiting for your L2 approval."
+          : "Approvals are currently in progress.",
+    });
+  }
+  if (myPendingLeaves > 0 && !l1Roles.has(me?.role) && !l2Roles.has(me?.role)) {
+    alerts.push({
+      tone: "info",
+      icon: "bi-hourglass-split",
+      title: `${myPendingLeaves} Request${myPendingLeaves === 1 ? "" : "s"} Under Review`,
+      desc: "Your leave request is moving through L1/L2 workflow.",
+    });
+  }
+  if (onLeave > 0) {
+    alerts.push({
+      tone: "warn",
+      icon: "bi-calendar-check",
+      title: `${onLeave} Employee${onLeave === 1 ? "" : "s"} on Leave Today`,
+      desc: "Coverage planning may be required.",
+    });
+  }
+  if (probationCount > 0) {
+    alerts.push({
+      tone: "info",
+      icon: "bi-flag",
+      title: `${probationCount} Employee${probationCount === 1 ? "" : "s"} on Probation`,
+      desc: "Review probation outcomes and confirmations.",
+    });
+  }
+  if (me?.employee && (!me.employee.bankName || !me.employee.iban)) {
+    alerts.push({
+      tone: "warn",
+      icon: "bi-bank",
+      title: "Bank profile incomplete",
+      desc: "Update IBAN and Bank Name in your profile.",
+    });
+  }
+
+  alertsList.innerHTML = (alerts.length ? alerts : [{
+    tone: "success",
+    icon: "bi-check-circle",
+    title: "No active alerts",
+    desc: "Everything looks up to date for your scope.",
+  }]).slice(0, 5).map((alert) => `
+    <div class="alert alert-${alert.tone}">
+      <span class="alert-icon"><i class="bi ${alert.icon}"></i></span>
+      <div><b>${escapeAttr(alert.title)}</b> ${escapeAttr(alert.desc)}</div>
+    </div>
+  `).join("");
+
+  const timelineRows = [];
+  if (elevatedRoles.has(me?.role) || me?.role === "MANAGER") {
+    const recentJoiners = [...allEmployees]
+      .filter((employee) => employee.dateOfJoining)
+      .sort((a, b) => new Date(b.dateOfJoining).getTime() - new Date(a.dateOfJoining).getTime())
+      .slice(0, 2);
+    recentJoiners.forEach((employee) => {
+      timelineRows.push({
+        tone: "green",
+        date: new Date(employee.dateOfJoining),
+        text: `New joiner <b>${escapeAttr(`${employee.firstName ?? ""} ${employee.lastName ?? ""}`.trim() || "Employee")}</b> added to ${escapeAttr(employee.department ?? "Unassigned")}.`,
+      });
+    });
+  }
+
+  [...leaveRequestsCache]
+    .sort((a, b) => new Date(dashboardRequestDate(b)).getTime() - new Date(dashboardRequestDate(a)).getTime())
+    .slice(0, 5)
+    .forEach((request) => {
+      const employeeName = `${request.employee?.firstName ?? ""} ${request.employee?.lastName ?? ""}`.trim() || "Employee";
+      const leaveType = request.leaveType?.name ?? "Leave";
+      const statusText = formatLeaveStatus(request.status);
+      const statusTone = request.status === "APPROVED" ? "green" : request.status === "REJECTED" ? "amber" : "";
+      timelineRows.push({
+        tone: statusTone,
+        date: new Date(dashboardRequestDate(request)),
+        text: `<b>${escapeAttr(employeeName)}</b> ${escapeAttr(leaveType)} request marked as ${escapeAttr(statusText)}.`,
+      });
+    });
+
+  if (dashboardCache?.monthlyPayroll && elevatedRoles.has(me?.role)) {
+    timelineRows.push({
+      tone: "",
+      date: new Date(),
+      text: `Monthly payroll snapshot updated — AED <b>${Math.round(Number(dashboardCache.monthlyPayroll ?? 0)).toLocaleString("en-US")}</b>.`,
+    });
+  }
+
+  timeline.innerHTML = timelineRows
+    .sort((a, b) => b.date.getTime() - a.date.getTime())
+    .slice(0, 6)
+    .map((item) => `
+      <div class="tl-item">
+        <div class="tl-dot ${item.tone}"></div>
+        <div class="tl-date">${escapeAttr(formatDashboardDate(item.date))}</div>
+        <div class="tl-text">${item.text}</div>
+      </div>
+    `)
+    .join("");
+
+  if (!timeline.innerHTML) {
+    timeline.innerHTML = `<div class="text-muted">No recent activity yet.</div>`;
+  }
 }
 
 async function loadEss() {

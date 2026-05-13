@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "../../lib/prisma.js";
+import { applyEmploymentStatusToEmployee, getProbationCutoffDate } from "../../lib/employment-status.js";
 import { authMiddleware, requireRoles, type AuthRequest } from "../../middleware/auth.js";
 
 const privilegedRoles = ["SUPER_ADMIN", "HR", "HR_OFFICER"] as const;
@@ -107,7 +108,15 @@ employeesRouter.get("/", async (req: AuthRequest, res) => {
   }
 
   if (status && status !== "All Status") {
-    where.status = status;
+    if (status === "ACTIVE") {
+      where.status = { in: ["ACTIVE", "PROBATION"] };
+      where.dateOfJoining = { lte: getProbationCutoffDate() };
+    } else if (status === "PROBATION") {
+      where.status = { in: ["ACTIVE", "PROBATION"] };
+      where.dateOfJoining = { gt: getProbationCutoffDate() };
+    } else {
+      where.status = status;
+    }
   }
 
   const employees = await prisma.employee.findMany({
@@ -125,7 +134,7 @@ employeesRouter.get("/", async (req: AuthRequest, res) => {
     },
   });
 
-  return res.json(employees);
+  return res.json(employees.map((employee) => applyEmploymentStatusToEmployee(employee)));
 });
 
 employeesRouter.post("/", requireRoles(...privilegedRoles), async (req, res) => {
@@ -177,7 +186,7 @@ employeesRouter.post("/", requireRoles(...privilegedRoles), async (req, res) => 
     },
   });
 
-  return res.status(201).json(employee);
+  return res.status(201).json(applyEmploymentStatusToEmployee(employee));
 });
 
 employeesRouter.put("/:id", requireRoles(...privilegedRoles), async (req, res) => {
@@ -239,7 +248,7 @@ employeesRouter.put("/:id", requireRoles(...privilegedRoles), async (req, res) =
     },
   });
 
-  return res.json(employee);
+  return res.json(applyEmploymentStatusToEmployee(employee));
 });
 
 employeesRouter.patch("/:id/bank", requireRoles("SUPER_ADMIN", "HR"), async (req, res) => {
@@ -269,13 +278,24 @@ employeesRouter.patch("/:id/compensation", requireRoles("SUPER_ADMIN", "HR"), as
 employeesRouter.patch("/:id/status", requireRoles(...privilegedRoles), async (req, res) => {
   const employeeId = String(req.params.id);
   const payload = updateStatusSchema.parse(req.body);
+  const existing = await prisma.employee.findUnique({
+    where: { id: employeeId },
+    select: { dateOfJoining: true },
+  });
+  if (!existing) {
+    return res.status(404).json({ message: "Employee not found" });
+  }
+
+  const autoManagedStatus = payload.status === "ACTIVE" || payload.status === "PROBATION"
+    ? (existing.dateOfJoining <= getProbationCutoffDate() ? "ACTIVE" : "PROBATION")
+    : payload.status;
 
   const employee = await prisma.employee.update({
     where: { id: employeeId },
-    data: { status: payload.status },
+    data: { status: autoManagedStatus },
   });
 
-  return res.json(employee);
+  return res.json(applyEmploymentStatusToEmployee(employee));
 });
 
 employeesRouter.delete("/:id", requireRoles("SUPER_ADMIN"), async (req, res) => {

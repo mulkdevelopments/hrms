@@ -869,44 +869,7 @@ textarea { resize: vertical; min-height: 80px; }
     <!-- Headcount by Dept -->
     <div class="card">
       <div class="section-title">Headcount by Department</div>
-      <div style="display:flex;flex-direction:column;gap:10px;">
-        <div>
-          <div class="flex-between mb-16" style="margin-bottom:5px;font-size:13px">
-            <span>Engineering</span><span class="fw-700">58</span>
-          </div>
-          <div class="progress"><div class="progress-bar progress-blue" style="width:58%"></div></div>
-        </div>
-        <div>
-          <div class="flex-between mb-16" style="margin-bottom:5px;font-size:13px">
-            <span>Operations</span><span class="fw-700">72</span>
-          </div>
-          <div class="progress"><div class="progress-bar progress-accent" style="width:72%"></div></div>
-        </div>
-        <div>
-          <div class="flex-between mb-16" style="margin-bottom:5px;font-size:13px">
-            <span>Sales & Marketing</span><span class="fw-700">44</span>
-          </div>
-          <div class="progress"><div class="progress-bar progress-amber" style="width:44%"></div></div>
-        </div>
-        <div>
-          <div class="flex-between mb-16" style="margin-bottom:5px;font-size:13px">
-            <span>Finance</span><span class="fw-700">31</span>
-          </div>
-          <div class="progress"><div class="progress-bar progress-coral" style="width:31%"></div></div>
-        </div>
-        <div>
-          <div class="flex-between mb-16" style="margin-bottom:5px;font-size:13px">
-            <span>HR & Admin</span><span class="fw-700">19</span>
-          </div>
-          <div class="progress"><div class="progress-bar progress-blue" style="width:19%"></div></div>
-        </div>
-        <div>
-          <div class="flex-between mb-16" style="margin-bottom:5px;font-size:13px">
-            <span>Others</span><span class="fw-700">24</span>
-          </div>
-          <div class="progress"><div class="progress-bar progress-accent" style="width:24%"></div></div>
-        </div>
-      </div>
+      <div id="dash-dept-list" style="display:flex;flex-direction:column;gap:10px;"></div>
     </div>
 
     <!-- Nationality Mix -->
@@ -914,22 +877,16 @@ textarea { resize: vertical; min-height: 80px; }
       <div class="section-title">Workforce Composition</div>
       <div class="donut-wrap">
         <div class="donut"></div>
-        <div>
-          <div class="legend-item"><div class="legend-dot" style="background:var(--accent)"></div>Emirati (36%)</div>
-          <div class="legend-item"><div class="legend-dot" style="background:var(--blue-bright)"></div>Indian (22%)</div>
-          <div class="legend-item"><div class="legend-dot" style="background:var(--amber)"></div>Pakistani (14%)</div>
-          <div class="legend-item"><div class="legend-dot" style="background:var(--coral)"></div>Filipino (10%)</div>
-          <div class="legend-item"><div class="legend-dot" style="background:var(--text-dim)"></div>Other (18%)</div>
-        </div>
+        <div id="dash-workforce-legend"></div>
       </div>
       <div style="margin-top:18px;display:grid;grid-template-columns:1fr 1fr;gap:10px;">
         <div style="background:rgba(21,101,192,0.1);border:1px solid var(--border-bright);border-radius:9px;padding:12px;text-align:center">
-          <div style="font-size:22px;font-weight:800;font-family:'Syne',sans-serif;color:#64B5F6">167</div>
-          <div class="text-muted">Male</div>
+          <div id="dash-active-count" style="font-size:22px;font-weight:800;font-family:'Syne',sans-serif;color:#64B5F6">0</div>
+          <div class="text-muted">Active</div>
         </div>
         <div style="background:rgba(244,81,30,0.08);border:1px solid rgba(244,81,30,0.2);border-radius:9px;padding:12px;text-align:center">
-          <div style="font-size:22px;font-weight:800;font-family:'Syne',sans-serif;color:#FF8A65">81</div>
-          <div class="text-muted">Female</div>
+          <div id="dash-probation-count" style="font-size:22px;font-weight:800;font-family:'Syne',sans-serif;color:#FF8A65">0</div>
+          <div class="text-muted">Probation</div>
         </div>
       </div>
     </div>
@@ -939,75 +896,42 @@ textarea { resize: vertical; min-height: 80px; }
     <!-- Alerts -->
     <div class="card">
       <div class="section-title">Active Alerts</div>
-      <div class="alert alert-warn"><span class="alert-icon">⚠️</span><div><b>2 Visa Expiries</b> within 30 days — Ahmed Al Mansouri, Sara Khalid</div></div>
-      <div class="alert alert-error"><span class="alert-icon">📄</span><div><b>1 Contract Expiry</b> in 30 days — Fatima Hassan</div></div>
-      <div class="alert alert-info"><span class="alert-icon">🎯</span><div><b>3 Probation Ends</b> in 21 days — review required</div></div>
-      <div class="alert alert-warn"><span class="alert-icon">💰</span><div><b>WPS SIF Deadline</b> — May 15, 2025 (MOHRE)</div></div>
-      <div class="alert alert-success"><span class="alert-icon">✅</span><div><b>5 Leave Requests</b> pending L2 approval</div></div>
+      <div id="dash-alerts"></div>
     </div>
 
     <!-- Recent Activity -->
     <div class="card">
       <div class="section-title">Recent Activity</div>
-      <div class="timeline">
-        <div class="tl-item">
-          <div class="tl-dot green"></div>
-          <div class="tl-date">Today, 09:15 AM</div>
-          <div class="tl-text">New employee <b>Omar Rashid</b> onboarded — IT setup initiated</div>
-        </div>
-        <div class="tl-item">
-          <div class="tl-dot"></div>
-          <div class="tl-date">Today, 08:42 AM</div>
-          <div class="tl-text">April payroll finalized — AED 1,244,800 processed</div>
-        </div>
-        <div class="tl-item">
-          <div class="tl-dot amber"></div>
-          <div class="tl-date">Yesterday, 04:30 PM</div>
-          <div class="tl-text">Leave request by <b>Priya Nair</b> approved (Annual — 5 days)</div>
-        </div>
-        <div class="tl-item">
-          <div class="tl-dot"></div>
-          <div class="tl-date">Yesterday, 11:00 AM</div>
-          <div class="tl-text">KPI review cycle opened for Q2 2025</div>
-        </div>
-        <div class="tl-item">
-          <div class="tl-dot green"></div>
-          <div class="tl-date">2 days ago</div>
-          <div class="tl-text"><b>Job Posting:</b> Senior Software Engineer published on LinkedIn & Bayt</div>
-        </div>
-      </div>
+      <div class="timeline" id="dash-timeline"></div>
     </div>
   </div>
 
   <!-- OT & Payroll Stats -->
   <div class="card">
-    <div class="section-title">Payroll Overview — April 2025</div>
+    <div class="section-title" id="dash-payroll-title">Payroll Overview</div>
     <div class="grid3">
-      <div class="payslip-card">
-        <div class="payslip-row"><span>Basic Salaries</span><span>AED 820,000</span></div>
-        <div class="payslip-row"><span>Housing Allowance</span><span>AED 164,000</span></div>
-        <div class="payslip-row"><span>Transport</span><span>AED 49,000</span></div>
-        <div class="payslip-row"><span>OT (1.25×)</span><span>AED 38,400</span></div>
-        <div class="payslip-row"><span>OT Night (1.50×)</span><span>AED 12,200</span></div>
-        <div class="payslip-row payslip-total"><span>Gross Total</span><span>AED 1,083,600</span></div>
+      <div class="payslip-card" id="dash-payroll-earnings">
+        <div class="payslip-row"><span>Basic Salaries</span><span>AED 0</span></div>
+        <div class="payslip-row"><span>Housing Allowance</span><span>AED 0</span></div>
+        <div class="payslip-row"><span>Transport</span><span>AED 0</span></div>
+        <div class="payslip-row"><span>Overtime</span><span>AED 0</span></div>
+        <div class="payslip-row payslip-total"><span>Gross Total</span><span>AED 0</span></div>
       </div>
-      <div class="payslip-card">
-        <div class="payslip-row"><span>Deductions</span><span style="color:var(--coral)">−AED 98,400</span></div>
-        <div class="payslip-row"><span>Leave Without Pay</span><span style="color:var(--coral)">−AED 4,200</span></div>
-        <div class="payslip-row"><span>Advances</span><span style="color:var(--coral)">−AED 15,000</span></div>
-        <div class="payslip-row payslip-total"><span>Net Pay</span><span>AED 965,900</span></div>
+      <div class="payslip-card" id="dash-payroll-deductions">
+        <div class="payslip-row"><span>Total Deductions</span><span style="color:var(--coral)">−AED 0</span></div>
+        <div class="payslip-row payslip-total"><span>Net Pay</span><span>AED 0</span></div>
         <div style="margin-top:12px">
-          <div class="badge badge-green">✓ WPS SIF Generated</div>
+          <div class="badge badge-green" id="dash-wps-badge">Payroll snapshot ready</div>
         </div>
       </div>
       <div>
         <div class="mb-16">
-          <div class="stat-label">OT Hours This Month</div>
-          <div style="font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:var(--amber)">1,842 hrs</div>
+          <div class="stat-label">Overtime Payout (AED)</div>
+          <div id="dash-overtime-amount" style="font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:var(--amber)">0</div>
         </div>
         <div class="mb-16">
-          <div class="stat-label">Employees on OT</div>
-          <div style="font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:#64B5F6">87</div>
+          <div class="stat-label">Employees with Overtime</div>
+          <div id="dash-overtime-employees" style="font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:#64B5F6">0</div>
         </div>
         <button class="btn btn-primary btn-sm" onclick="navigate('payroll', document.querySelector('[onclick*=payroll]'))">View Full Payroll →</button>
       </div>
@@ -1988,6 +1912,13 @@ textarea { resize: vertical; min-height: 80px; }
           </div>
           <div class="form-group"><label>Employment Type</label><select id="emp-employment-type"><option>Full-Time</option><option>Part-Time</option><option>Contract</option></select></div>
           <div class="form-group"><label>Join Date</label><input id="emp-join-date" type="date"></div>
+          <div class="form-group">
+            <label>Employment Status (Auto)</label>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+              <span id="emp-auto-status-badge" class="badge badge-purple">PROBATION</span>
+              <span class="text-muted" style="font-size:12px;">Auto-managed by DOJ: becomes ACTIVE after 6 months.</span>
+            </div>
+          </div>
           <div class="form-group"><label>Probation Period</label><select id="emp-probation"><option>6 months</option><option>3 months</option><option>None</option></select></div>
           <div class="form-group"><label>Notice Period</label><select id="emp-notice"><option>30 days</option><option>60 days</option><option>90 days</option></select></div>
         </div>

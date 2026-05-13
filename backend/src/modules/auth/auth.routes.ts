@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { z } from "zod";
 import { prisma } from "../../lib/prisma.js";
+import { applyEmploymentStatusToEmployee } from "../../lib/employment-status.js";
 import { env } from "../../config/env.js";
 import { authMiddleware, type AuthRequest } from "../../middleware/auth.js";
 
@@ -44,14 +45,15 @@ authRouter.post("/login", async (req, res) => {
     env.JWT_SECRET,
     { expiresIn: "10h" },
   );
+  const normalizedEmployee = applyEmploymentStatusToEmployee(employee);
 
   return res.json({
     token,
     user: {
-      id: employee.id,
-      email: employee.loginEmail ?? employee.email,
-      role: employee.role,
-      employee,
+      id: normalizedEmployee.id,
+      email: normalizedEmployee.loginEmail ?? normalizedEmployee.email,
+      role: normalizedEmployee.role,
+      employee: normalizedEmployee,
     },
   });
 });
@@ -65,11 +67,12 @@ authRouter.get("/me", authMiddleware, async (req: AuthRequest, res) => {
   if (!employee) {
     return res.status(404).json({ message: "Employee not found" });
   }
+  const normalizedEmployee = applyEmploymentStatusToEmployee(employee);
 
   return res.json({
-    id: employee.id,
-    email: employee.loginEmail ?? employee.email,
-    role: employee.role,
-    employee,
+    id: normalizedEmployee.id,
+    email: normalizedEmployee.loginEmail ?? normalizedEmployee.email,
+    role: normalizedEmployee.role,
+    employee: normalizedEmployee,
   });
 });
