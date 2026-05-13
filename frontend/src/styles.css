@@ -1,0 +1,255 @@
+:root {
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #e7f0ff;
+  background: #09162a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: linear-gradient(180deg, #0a1b35, #08101f);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.shell {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  min-height: 100vh;
+}
+
+.sidebar {
+  background: #081327;
+  border-right: 1px solid rgba(124, 173, 255, 0.2);
+  padding: 24px 16px;
+}
+
+.logo {
+  font-size: 1.1rem;
+  font-weight: 800;
+  margin-bottom: 24px;
+}
+
+.nav-link {
+  display: block;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border-radius: 8px;
+  color: #aac5f4;
+}
+
+.nav-link.active {
+  color: #ffffff;
+  background: rgba(26, 108, 255, 0.35);
+}
+
+.content {
+  padding: 24px;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.title {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.subtitle {
+  font-size: 0.8rem;
+  color: #91aad4;
+}
+
+.section-heading {
+  margin: 0 0 14px;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.stat-card {
+  padding: 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(124, 173, 255, 0.25);
+  background: rgba(5, 17, 33, 0.7);
+}
+
+.label {
+  color: #8cb0e6;
+  font-size: 0.8rem;
+}
+
+.value {
+  margin-top: 8px;
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.panel {
+  border-radius: 12px;
+  border: 1px solid rgba(124, 173, 255, 0.25);
+  background: rgba(4, 12, 25, 0.75);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.form-panel h3,
+.panel h3 {
+  margin-top: 0;
+}
+
+.grid-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.grid-form .button {
+  grid-column: span 2;
+}
+
+input,
+select,
+textarea {
+  border-radius: 8px;
+  border: 1px solid rgba(124, 173, 255, 0.35);
+  background: rgba(10, 26, 50, 0.7);
+  color: #f2f7ff;
+  padding: 9px;
+}
+
+.button {
+  border: none;
+  border-radius: 8px;
+  padding: 10px 14px;
+  background: linear-gradient(135deg, #2567ff, #08b7d5);
+  color: white;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.button-secondary {
+  background: rgba(20, 48, 86, 0.8);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  border-bottom: 1px solid rgba(124, 173, 255, 0.2);
+  text-align: left;
+  padding: 10px;
+  font-size: 0.9rem;
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.row-between {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.inline-row {
+  display: flex;
+  gap: 8px;
+}
+
+.login-wrap {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+}
+
+.login-card {
+  width: min(420px, 92vw);
+  border-radius: 16px;
+  border: 1px solid rgba(124, 173, 255, 0.3);
+  background: rgba(5, 15, 31, 0.92);
+  box-shadow: 0 18px 40px rgba(1, 7, 18, 0.45);
+  padding: 24px;
+  display: grid;
+  gap: 14px;
+}
+
+.login-card h1 {
+  margin: 0;
+  font-size: 1.4rem;
+}
+
+.login-card p {
+  margin: 0;
+  color: #8cb0e6;
+  font-size: 0.9rem;
+}
+
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.login-logo {
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+}
+
+.login-card label {
+  display: grid;
+  gap: 6px;
+  font-size: 0.86rem;
+}
+
+.error-box {
+  border-radius: 8px;
+  padding: 10px;
+  background: rgba(181, 30, 65, 0.2);
+  border: 1px solid rgba(255, 98, 134, 0.55);
+  color: #ffb7cb;
+}
+
+@media (max-width: 980px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+
+  .stats-grid,
+  .grid-2,
+  .grid-form {
+    grid-template-columns: 1fr;
+  }
+
+  .grid-form .button {
+    grid-column: span 1;
+  }
+}

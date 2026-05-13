@@ -1,0 +1,121 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Employee {
+  id                 String         @id @default(cuid())
+  employeeCode       String         @unique
+  firstName          String
+  lastName           String
+  email              String         @unique
+  loginEmail         String?        @unique
+  passwordHash       String?
+  role               String         @default("EMPLOYEE")
+  accessEnabled      Boolean        @default(false)
+  phone              String?
+  dateOfBirth        DateTime?
+  dateOfJoining      DateTime
+  designation        String
+  department         String
+  nationality        String?
+  emiratesId         String?
+  passportNumber     String?
+  managerId          String?
+  employmentType     String
+  basicSalary        Float          @default(0)
+  housingAllowance   Float          @default(0)
+  transportAllowance Float          @default(0)
+  iban               String?
+  bankName           String?
+  wpsEnabled         Boolean        @default(true)
+  labourCardNumber   String?
+  status             String         @default("ACTIVE")
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  manager          Employee?      @relation("ManagerSubordinates", fields: [managerId], references: [id])
+  subordinates     Employee[]     @relation("ManagerSubordinates")
+  leaveBalances    LeaveBalance[]
+  leaveRequests    LeaveRequest[] @relation("RequestedBy")
+  l1Approvals      LeaveRequest[] @relation("ApprovedByL1")
+  l2Approvals      LeaveRequest[] @relation("ApprovedByL2")
+  payslips         Payslip[]
+}
+
+model LeaveType {
+  id                  String   @id @default(cuid())
+  name                String   @unique
+  code                String   @unique
+  yearlyAllocation    Int
+  maxCarryForward     Int      @default(60)
+  requiresAttachment  Boolean  @default(false)
+  paidLeave           Boolean  @default(true)
+  active              Boolean  @default(true)
+  createdAt           DateTime @default(now())
+
+  leaveBalances LeaveBalance[]
+  leaveRequests LeaveRequest[]
+}
+
+model LeaveBalance {
+  id             String   @id @default(cuid())
+  employeeId     String
+  leaveTypeId    String
+  year           Int
+  openingBalance Float    @default(0)
+  accrued        Float    @default(0)
+  used           Float    @default(0)
+  carryForward   Float    @default(0)
+
+  employee  Employee  @relation(fields: [employeeId], references: [id])
+  leaveType LeaveType @relation(fields: [leaveTypeId], references: [id])
+
+  @@unique([employeeId, leaveTypeId, year])
+}
+
+model LeaveRequest {
+  id             String      @id @default(cuid())
+  employeeId     String
+  leaveTypeId    String
+  startDate      DateTime
+  endDate        DateTime
+  days           Float
+  reason         String
+  attachmentUrl  String?
+  status         String      @default("PENDING_L1")
+  l1ApprovedById String?
+  l2ApprovedById String?
+  approvedAt     DateTime?
+  rejectedAt     DateTime?
+  rejectReason   String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  employee     Employee  @relation("RequestedBy", fields: [employeeId], references: [id])
+  leaveType    LeaveType @relation(fields: [leaveTypeId], references: [id])
+  l1ApprovedBy Employee? @relation("ApprovedByL1", fields: [l1ApprovedById], references: [id])
+  l2ApprovedBy Employee? @relation("ApprovedByL2", fields: [l2ApprovedById], references: [id])
+}
+
+model Payslip {
+  id                 String   @id @default(cuid())
+  employeeId         String
+  month              Int
+  year               Int
+  basic              Float
+  housing            Float
+  transport          Float
+  overtime           Float
+  deductions         Float
+  netPay             Float
+  createdAt          DateTime @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@unique([employeeId, month, year])
+}

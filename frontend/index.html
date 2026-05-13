@@ -1,0 +1,2166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HRMS — Human Resource Management System</title>
+<link rel="icon" type="image/avif" href="/Mask%20group.avif">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<style>
+:root {
+  --navy: #0f172a;
+  --navy-mid: #111827;
+  --navy-light: #1f2937;
+  --blue: #2563eb;
+  --blue-bright: #3b82f6;
+  --accent: #14b8a6;
+  --accent-light: #2dd4bf;
+  --amber: #f59e0b;
+  --coral: #ef4444;
+  --green: #10b981;
+  --purple: #8b5cf6;
+  --text: #e5e7eb;
+  --text-muted: #94a3b8;
+  --text-dim: #64748b;
+  --border: rgba(148,163,184,0.16);
+  --border-bright: rgba(99,102,241,0.28);
+  --card: rgba(15,23,42,0.78);
+  --card-hover: rgba(30,41,59,0.92);
+  --sidebar-w: 250px;
+  --header-h: 62px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Inter', sans-serif;
+  background: var(--navy);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ─── BACKGROUND ─── */
+body::before {
+  content: '';
+  position: fixed; inset: 0; z-index: 0;
+  background:
+    radial-gradient(ellipse 80% 60% at 12% 18%, rgba(37,99,235,0.22) 0%, transparent 58%),
+    radial-gradient(ellipse 70% 55% at 88% 82%, rgba(20,184,166,0.14) 0%, transparent 62%),
+    linear-gradient(170deg, #0f172a 0%, #020617 100%);
+}
+
+/* ─── SIDEBAR ─── */
+#sidebar {
+  position: fixed; left: 0; top: 0; bottom: 0;
+  width: var(--sidebar-w);
+  background: rgba(8,18,36,0.95);
+  border-right: 1px solid var(--border-bright);
+  z-index: 100;
+  display: flex; flex-direction: column;
+  transition: transform .3s cubic-bezier(.4,0,.2,1);
+  backdrop-filter: blur(20px);
+}
+
+.sidebar-logo {
+  padding: 0 20px;
+  height: var(--header-h);
+  display: flex; align-items: center; justify-content: center;
+  border-bottom: 1px solid var(--border);
+}
+.sidebar-logo img {
+  max-width: 100%;
+  max-height: 42px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  display: block;
+}
+.logo-text { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 17px; letter-spacing: -.3px; }
+.logo-text span { color: var(--accent); }
+
+.sidebar-nav { flex: 1; overflow-y: auto; padding: 14px 0; }
+.sidebar-nav::-webkit-scrollbar { width: 3px; }
+.sidebar-nav::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 2px; }
+
+.nav-section { margin-bottom: 8px; }
+.nav-label {
+  font-size: 10px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase;
+  color: var(--text-dim); padding: 10px 20px 5px;
+}
+
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 20px; cursor: pointer; position: relative;
+  font-size: 13.5px; font-weight: 400; color: var(--text-muted);
+  transition: color .2s, background .2s;
+  user-select: none;
+}
+.nav-item:hover { color: var(--text); background: rgba(30,56,95,0.5); }
+.nav-item.active {
+  color: #fff; background: rgba(21,101,192,0.25);
+  font-weight: 500;
+}
+.nav-item.active::before {
+  content: ''; position: absolute; left: 0; top: 3px; bottom: 3px;
+  width: 3px; border-radius: 0 3px 3px 0;
+  background: linear-gradient(180deg, var(--blue-bright), var(--accent));
+}
+.nav-icon { font-size: 15px; width: 20px; text-align: center; flex-shrink: 0; }
+.nav-badge {
+  margin-left: auto; background: var(--coral);
+  font-size: 10px; font-weight: 700; color: #fff;
+  padding: 1px 6px; border-radius: 10px; line-height: 16px;
+}
+
+.sidebar-footer {
+  padding: 14px 16px;
+  border-top: 1px solid var(--border);
+}
+.user-card {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; border-radius: 10px;
+  background: rgba(21,101,192,0.12); cursor: pointer;
+  transition: background .2s;
+}
+.user-card:hover { background: rgba(21,101,192,0.22); }
+.user-avatar {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--blue), var(--accent));
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 12px; color: #fff; flex-shrink: 0;
+}
+.user-name { font-size: 13px; font-weight: 500; }
+.user-role { font-size: 11px; color: var(--text-muted); }
+
+/* ─── HEADER ─── */
+#header {
+  position: fixed; top: 0; left: var(--sidebar-w); right: 0;
+  height: var(--header-h);
+  background: rgba(9,21,40,0.9);
+  border-bottom: 1px solid var(--border-bright);
+  display: flex; align-items: center; padding: 0 28px;
+  z-index: 90; gap: 16px;
+  backdrop-filter: blur(20px);
+}
+.header-title { font-family: 'Inter', sans-serif; font-size: 17px; font-weight: 700; flex: 1; }
+.header-title span { color: var(--text-muted); font-weight: 400; font-size: 14px; font-family: 'Inter', sans-serif; }
+
+.header-actions { display: flex; gap: 10px; align-items: center; }
+.icon-btn {
+  width: 36px; height: 36px; border-radius: 9px; border: 1px solid var(--border-bright);
+  background: rgba(21,40,80,0.5); cursor: pointer; display: flex;
+  align-items: center; justify-content: center; font-size: 15px;
+  color: var(--text-muted); transition: all .2s; position: relative;
+}
+.icon-btn:hover { color: var(--text); border-color: var(--blue-bright); background: rgba(21,101,192,0.2); }
+.icon-btn.logout-btn {
+  color: #f87171;
+  border-color: rgba(248,113,113,0.45);
+  background: rgba(239,68,68,0.12);
+}
+.icon-btn.logout-btn:hover {
+  color: #fecaca;
+  border-color: rgba(248,113,113,0.7);
+  background: rgba(239,68,68,0.22);
+}
+.icon-btn .dot {
+  position: absolute; top: 6px; right: 6px;
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--coral); border: 2px solid var(--navy);
+}
+
+/* ─── MAIN CONTENT ─── */
+#main {
+  margin-left: var(--sidebar-w);
+  padding-top: var(--header-h);
+  min-height: 100vh;
+  position: relative; z-index: 1;
+}
+
+.view { display: none; padding: 28px; }
+.view.active { display: block; }
+
+/* ─── STATS GRID ─── */
+.stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+.stat-card {
+  background: var(--card);
+  border: 1px solid var(--border-bright);
+  border-radius: 14px; padding: 20px;
+  cursor: default; transition: border-color .2s, background .2s;
+  backdrop-filter: blur(10px);
+}
+.stat-card:hover { border-color: rgba(100,180,255,0.35); background: var(--card-hover); }
+.stat-label { font-size: 12px; color: var(--text-muted); font-weight: 500; letter-spacing: .3px; margin-bottom: 10px; }
+.stat-value { font-family: 'Inter', sans-serif; font-size: 32px; font-weight: 800; line-height: 1; margin-bottom: 6px; }
+.stat-sub { font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 4px; }
+.trend-up { color: var(--accent); }
+.trend-down { color: var(--coral); }
+
+/* ─── SECTION TITLE ─── */
+.section-title {
+  font-family: 'Inter', sans-serif; font-size: 15px; font-weight: 700;
+  margin-bottom: 16px; display: flex; align-items: center; gap: 10px;
+}
+.section-title::after {
+  content: ''; flex: 1; height: 1px; background: var(--border-bright);
+}
+
+/* ─── CARD ─── */
+.card {
+  background: var(--card); border: 1px solid var(--border-bright);
+  border-radius: 14px; padding: 20px;
+  backdrop-filter: blur(10px);
+}
+
+/* ─── PROFILE ─── */
+#view-profile .profile-hero {
+  padding: 0;
+  overflow: hidden;
+}
+#view-profile .profile-hero-body {
+  display: grid;
+  grid-template-columns: 74px 1fr auto;
+  gap: 18px;
+  align-items: center;
+  padding: 20px;
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.16), rgba(37, 99, 235, 0.08));
+  border-bottom: 1px solid var(--border-bright);
+}
+#view-profile .profile-avatar {
+  width: 74px;
+  height: 74px;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 22px;
+  color: #dbeafe;
+  border: 1px solid rgba(125, 211, 252, 0.35);
+  background: rgba(15, 23, 42, 0.55);
+}
+#view-profile .profile-headline {
+  display: grid;
+  gap: 6px;
+}
+#view-profile .profile-name {
+  font-size: 23px;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+}
+#view-profile .profile-subline {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+#view-profile .profile-hero-meta {
+  display: grid;
+  gap: 8px;
+  justify-items: end;
+}
+#view-profile .profile-role-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(96, 165, 250, 0.35);
+  background: rgba(37, 99, 235, 0.2);
+  color: #bfdbfe;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+}
+#view-profile .profile-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+#view-profile .profile-panel {
+  background: rgba(8, 21, 42, 0.52);
+  border: 1px solid var(--border-bright);
+  border-radius: 14px;
+  padding: 16px;
+}
+#view-profile .profile-panel-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+#view-profile .profile-list {
+  display: grid;
+  gap: 8px;
+}
+#view-profile .profile-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.46);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+}
+#view-profile .profile-key {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+#view-profile .profile-value {
+  font-size: 13px;
+  font-weight: 600;
+  text-align: right;
+}
+#view-profile .profile-status-pill {
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  background: rgba(16, 185, 129, 0.16);
+  color: #a7f3d0;
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 11px;
+}
+
+/* ─── TABLE ─── */
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+thead tr { border-bottom: 1px solid var(--border-bright); }
+thead th {
+  text-align: left; padding: 10px 14px;
+  font-size: 11px; font-weight: 600; letter-spacing: .8px;
+  text-transform: uppercase; color: var(--text-muted);
+}
+tbody tr {
+  border-bottom: 1px solid var(--border);
+  transition: background .15s; cursor: default;
+}
+tbody tr:hover { background: rgba(21,56,100,0.3); }
+tbody td { padding: 12px 14px; color: var(--text); }
+tbody tr:last-child { border-bottom: none; }
+
+/* ─── BADGE ─── */
+.badge {
+  display: inline-flex; align-items: center;
+  padding: 3px 10px; border-radius: 20px;
+  font-size: 11px; font-weight: 600; letter-spacing: .3px;
+}
+.badge-green { background: rgba(0,137,123,0.2); color: #4DB6AC; border: 1px solid rgba(0,191,165,0.3); }
+.badge-blue { background: rgba(21,101,192,0.2); color: #64B5F6; border: 1px solid rgba(30,136,229,0.3); }
+.badge-amber { background: rgba(255,179,0,0.15); color: #FFD54F; border: 1px solid rgba(255,179,0,0.3); }
+.badge-coral { background: rgba(244,81,30,0.15); color: #FF8A65; border: 1px solid rgba(244,81,30,0.3); }
+.badge-purple { background: rgba(124,77,255,0.15); color: #B39DDB; border: 1px solid rgba(124,77,255,0.3); }
+
+/* ─── BUTTON ─── */
+.btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 9px 18px; border-radius: 9px; border: none; cursor: pointer;
+  font-family: 'Inter', sans-serif; font-size: 13.5px; font-weight: 500;
+  transition: all .2s; text-decoration: none;
+}
+.btn-primary { background: linear-gradient(135deg, var(--blue), var(--blue-bright)); color: #fff; }
+.btn-primary:hover { filter: brightness(1.1); transform: translateY(-1px); box-shadow: 0 4px 20px rgba(21,101,192,0.4); }
+.btn-secondary { background: rgba(21,56,100,0.5); color: var(--text); border: 1px solid var(--border-bright); }
+.btn-secondary:hover { background: rgba(21,56,100,0.8); border-color: var(--blue-bright); }
+.btn-accent { background: linear-gradient(135deg, var(--accent), var(--green)); color: #fff; }
+.btn-accent:hover { filter: brightness(1.1); }
+.btn-sm { padding: 6px 12px; font-size: 12px; border-radius: 7px; }
+.btn-danger { background: rgba(244,81,30,0.2); color: #FF8A65; border: 1px solid rgba(244,81,30,0.3); }
+
+/* ─── FORM ─── */
+.form-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 16px; }
+.form-group { display: flex; flex-direction: column; gap: 6px; }
+.form-group.full { grid-column: 1/-1; }
+label { font-size: 12px; font-weight: 500; color: var(--text-muted); letter-spacing: .3px; }
+input, select, textarea {
+  background: rgba(10,25,50,0.6); border: 1px solid var(--border-bright);
+  border-radius: 8px; padding: 10px 12px;
+  color: var(--text); font-family: 'Inter', sans-serif; font-size: 13.5px;
+  transition: border-color .2s, background .2s; outline: none; width: 100%;
+}
+input[readonly] {
+  opacity: 0.9;
+}
+input:focus, select:focus, textarea:focus {
+  border-color: var(--blue-bright); background: rgba(15,35,70,0.8);
+}
+select option { background: #0B1D3A; }
+textarea { resize: vertical; min-height: 80px; }
+
+.manager-dropdown { position: relative; width: 100%; }
+.manager-trigger {
+  background: rgba(10,25,50,0.6); border: 1px solid var(--border-bright);
+  border-radius: 8px; padding: 10px 12px; color: var(--text);
+  font-family: 'Inter', sans-serif; font-size: 13.5px; width: 100%;
+  text-align: left; cursor: pointer;
+}
+.manager-trigger:focus { border-color: var(--blue-bright); outline: none; }
+.manager-menu {
+  position: absolute; z-index: 250; left: 0; right: 0; top: calc(100% + 6px);
+  background: #0E1F3D; border: 1px solid var(--border-bright);
+  border-radius: 10px; padding: 8px; display: none;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+}
+.manager-menu.open { display: block; }
+.manager-menu input { margin-bottom: 8px; }
+.manager-options {
+  max-height: 220px; overflow: auto; border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.manager-group-label {
+  padding: 7px 10px; font-size: 11px; font-weight: 700;
+  letter-spacing: 0.6px; text-transform: uppercase; color: var(--text-dim);
+  background: rgba(99,102,241,0.08);
+}
+.manager-option {
+  width: 100%; text-align: left; padding: 8px 10px; border: none;
+  background: transparent; color: var(--text); cursor: pointer;
+  font-family: 'Inter', sans-serif; font-size: 13px;
+}
+.manager-option:hover { background: rgba(21,101,192,0.2); }
+.manager-empty {
+  padding: 10px; font-size: 12px; color: var(--text-muted);
+}
+
+/* ─── EMPLOYEE MODAL SECTIONS ─── */
+#emp-modal .emp-sections {
+  display: grid;
+  gap: 14px;
+}
+#emp-modal .emp-section {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  background: rgba(7, 18, 36, 0.45);
+}
+#emp-modal .emp-section-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+#emp-modal .emp-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+/* ─── MODAL ─── */
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 200;
+  background: rgba(5,12,25,0.8); backdrop-filter: blur(8px);
+  display: none; align-items: center; justify-content: center;
+  padding: 20px;
+}
+.modal-overlay.open { display: flex; }
+.modal {
+  background: #0E1F3D; border: 1px solid var(--border-bright);
+  border-radius: 18px; padding: 28px; width: 100%; max-width: 680px;
+  max-height: 90vh; overflow-y: auto;
+  box-shadow: 0 24px 80px rgba(0,0,0,0.6);
+  animation: slideUp .3s cubic-bezier(.4,0,.2,1);
+}
+@keyframes slideUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: none; } }
+.modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+.modal-title { font-family: 'Inter', sans-serif; font-size: 18px; font-weight: 700; }
+.modal-close { width: 30px; height: 30px; border-radius: 7px; border: 1px solid var(--border-bright); background: transparent; cursor: pointer; color: var(--text-muted); font-size: 16px; display: flex; align-items: center; justify-content: center; transition: all .2s; }
+.modal-close:hover { color: var(--text); background: rgba(30,56,100,0.5); }
+.modal-footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--border); }
+
+/* ─── TABS ─── */
+.tabs { display: flex; gap: 4px; background: rgba(10,25,50,0.5); border-radius: 10px; padding: 4px; margin-bottom: 20px; border: 1px solid var(--border); }
+.tab-btn {
+  flex: 1; padding: 9px 14px; border-radius: 7px; border: none;
+  background: transparent; color: var(--text-muted);
+  cursor: pointer; font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 500;
+  transition: all .2s; text-align: center;
+}
+.tab-btn.active { background: rgba(21,101,192,0.35); color: #fff; }
+.tab-pane { display: none; }
+.tab-pane.active { display: block; }
+
+/* ─── PROGRESS BAR ─── */
+.progress { height: 6px; background: rgba(30,56,100,0.5); border-radius: 3px; overflow: hidden; }
+.progress-bar { height: 100%; border-radius: 3px; transition: width .6s; }
+.progress-blue { background: linear-gradient(90deg, var(--blue), var(--blue-bright)); }
+.progress-accent { background: linear-gradient(90deg, var(--accent), #4DD0E1); }
+.progress-amber { background: linear-gradient(90deg, var(--amber), #FFE082); }
+.progress-coral { background: linear-gradient(90deg, var(--coral), #FF8A65); }
+
+/* ─── DONUT CHART (CSS) ─── */
+.donut-wrap { display: flex; align-items: center; gap: 20px; }
+.donut {
+  width: 110px; height: 110px; border-radius: 50%; flex-shrink: 0;
+  background: conic-gradient(
+    var(--accent) 0% 36%,
+    var(--blue-bright) 36% 58%,
+    var(--amber) 58% 72%,
+    var(--coral) 72% 82%,
+    var(--text-dim) 82% 100%
+  );
+  position: relative;
+}
+.donut::after {
+  content: ''; position: absolute; inset: 20px;
+  background: #0E1F3D; border-radius: 50%;
+}
+.legend-item { display: flex; align-items: center; gap: 7px; margin-bottom: 7px; font-size: 12.5px; }
+.legend-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+
+/* ─── ALERT / NOTIFICATION ─── */
+.alert { padding: 12px 16px; border-radius: 10px; margin-bottom: 12px; font-size: 13px; display: flex; align-items: flex-start; gap: 10px; }
+.alert-warn { background: rgba(255,179,0,0.1); border: 1px solid rgba(255,179,0,0.3); color: #FFD54F; }
+.alert-info { background: rgba(21,101,192,0.15); border: 1px solid rgba(30,136,229,0.3); color: #64B5F6; }
+.alert-success { background: rgba(0,137,123,0.15); border: 1px solid rgba(0,191,165,0.3); color: #4DB6AC; }
+.alert-error { background: rgba(244,81,30,0.1); border: 1px solid rgba(244,81,30,0.3); color: #FF8A65; }
+.alert-icon { font-size: 15px; flex-shrink: 0; margin-top: 1px; }
+
+/* ─── SEARCH BAR ─── */
+.search-bar { position: relative; }
+.search-bar input { padding-left: 38px; }
+.search-bar::before { content: '🔍'; position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: 13px; pointer-events: none; }
+
+/* ─── TOOLBAR ─── */
+.toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; flex-wrap: wrap; }
+.toolbar .search-bar { flex: 1; min-width: 200px; }
+
+/* ─── PAYSLIP CARD ─── */
+.payslip-card { background: rgba(21,101,192,0.08); border: 1px solid rgba(30,136,229,0.2); border-radius: 12px; padding: 18px; margin-bottom: 12px; }
+.payslip-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 13.5px; }
+.payslip-total { border-top: 1px solid var(--border-bright); padding-top: 12px; margin-top: 8px; font-weight: 700; font-size: 15px; color: var(--accent); }
+
+/* ─── KPI CARD ─── */
+.kpi-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; }
+.kpi-card { background: var(--card); border: 1px solid var(--border-bright); border-radius: 12px; padding: 16px; }
+.kpi-name { font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
+.kpi-score { font-family: 'Inter', sans-serif; font-size: 26px; font-weight: 800; }
+.kpi-target { font-size: 11px; color: var(--text-muted); margin-top: 4px; margin-bottom: 8px; }
+
+/* ─── AVATAR ROW ─── */
+.avatar-stack { display: flex; }
+.avatar-stack .av {
+  width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--navy);
+  background: linear-gradient(135deg, var(--blue), var(--accent));
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 700; margin-left: -7px; color: #fff;
+}
+.avatar-stack .av:first-child { margin-left: 0; }
+
+/* ─── CALENDAR MINI ─── */
+.mini-cal { font-size: 12px; }
+.mini-cal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-weight: 600; font-size: 13px; }
+.mini-cal-grid { display: grid; grid-template-columns: repeat(7,1fr); gap: 2px; text-align: center; }
+.mini-cal-grid .day-head { font-size: 10px; color: var(--text-muted); padding: 3px 0; }
+.mini-cal-grid .day { padding: 5px 2px; border-radius: 5px; cursor: pointer; transition: background .15s; }
+.mini-cal-grid .day:hover { background: rgba(21,101,192,0.25); }
+.mini-cal-grid .day.today { background: var(--blue); font-weight: 700; }
+.mini-cal-grid .day.has-leave { background: rgba(0,191,165,0.2); color: var(--accent); }
+.mini-cal-grid .day.muted { color: var(--text-dim); }
+
+/* ─── CHIP ─── */
+.chip { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 20px; font-size: 11.5px; background: rgba(30,56,100,0.5); border: 1px solid var(--border-bright); color: var(--text-muted); cursor: pointer; transition: all .2s; }
+.chip.active, .chip:hover { background: rgba(21,101,192,0.3); border-color: var(--blue-bright); color: var(--text); }
+
+/* ─── STEP INDICATOR ─── */
+.steps { display: flex; align-items: center; gap: 0; margin-bottom: 20px; flex-wrap: wrap; gap: 6px; }
+.step { display: flex; align-items: center; gap: 6px; }
+.step-num { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--border-bright); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: var(--text-muted); transition: all .3s; }
+.step.done .step-num { background: var(--accent); border-color: var(--accent); color: #fff; }
+.step.active .step-num { background: var(--blue); border-color: var(--blue-bright); color: #fff; }
+.step-label { font-size: 11.5px; color: var(--text-muted); }
+.step.active .step-label { color: var(--text); font-weight: 500; }
+.step-arrow { color: var(--text-dim); font-size: 11px; }
+
+/* ─── TIMELINE ─── */
+.timeline { position: relative; padding-left: 28px; }
+.timeline::before { content: ''; position: absolute; left: 9px; top: 4px; bottom: 4px; width: 2px; background: var(--border-bright); border-radius: 2px; }
+.tl-item { position: relative; margin-bottom: 18px; }
+.tl-dot { position: absolute; left: -23px; top: 3px; width: 12px; height: 12px; border-radius: 50%; background: var(--blue); border: 2px solid var(--blue-bright); }
+.tl-dot.green { background: var(--accent); border-color: var(--accent-light); }
+.tl-dot.amber { background: var(--amber); border-color: #FFE082; }
+.tl-date { font-size: 11px; color: var(--text-dim); margin-bottom: 3px; }
+.tl-text { font-size: 13px; color: var(--text); }
+
+/* ─── NOTIFICATION ─── */
+.notif-item { display: flex; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--border); }
+.notif-item:last-child { border-bottom: none; }
+.notif-icon { width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 17px; flex-shrink: 0; }
+.notif-icon.warn { background: rgba(255,179,0,0.15); }
+.notif-icon.info { background: rgba(21,101,192,0.15); }
+.notif-icon.success { background: rgba(0,137,123,0.15); }
+.notif-icon.error { background: rgba(244,81,30,0.15); }
+.notif-title { font-size: 13.5px; font-weight: 500; margin-bottom: 3px; }
+.notif-desc { font-size: 12px; color: var(--text-muted); }
+.notif-time { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+
+/* ─── GRATUITY CALC ─── */
+.calc-result { background: rgba(0,191,165,0.08); border: 1px solid rgba(0,191,165,0.25); border-radius: 12px; padding: 18px; margin-top: 16px; }
+.calc-amount { font-family: 'Inter', sans-serif; font-size: 36px; font-weight: 800; color: var(--accent); }
+
+/* ─── LAYOUT HELPERS ─── */
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+.mb-16 { margin-bottom: 16px; }
+.mb-20 { margin-bottom: 20px; }
+.mt-16 { margin-top: 16px; }
+.flex { display: flex; }
+.flex-center { display: flex; align-items: center; }
+.flex-between { display: flex; align-items: center; justify-content: space-between; }
+.gap-8 { gap: 8px; }
+.gap-12 { gap: 12px; }
+.text-muted { color: var(--text-muted); font-size: 12.5px; }
+.text-sm { font-size: 12.5px; }
+.fw-700 { font-weight: 700; }
+.color-accent { color: var(--accent); }
+.color-amber { color: var(--amber); }
+.color-coral { color: var(--coral); }
+
+/* ─── NOTIFICATION PANEL ─── */
+#notif-panel {
+  position: fixed; top: var(--header-h); right: 0; bottom: 0; width: 340px;
+  background: rgba(8,18,36,0.97); border-left: 1px solid var(--border-bright);
+  z-index: 150; transform: translateX(100%); transition: transform .3s cubic-bezier(.4,0,.2,1);
+  backdrop-filter: blur(20px); overflow-y: auto; padding: 20px;
+}
+#notif-panel.open { transform: none; }
+.notif-panel-title { font-family: 'Inter', sans-serif; font-size: 16px; font-weight: 700; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; }
+
+/* ─── TOAST ─── */
+#toast {
+  position: fixed; bottom: 24px; right: 24px; z-index: 300;
+  background: rgba(0,191,165,0.15); border: 1px solid rgba(0,191,165,0.4);
+  color: var(--accent); padding: 12px 20px; border-radius: 10px; font-size: 13.5px;
+  backdrop-filter: blur(10px); opacity: 0; transform: translateY(10px);
+  transition: opacity .3s, transform .3s; pointer-events: none;
+}
+#toast.show { opacity: 1; transform: none; }
+
+@media (max-width: 900px) {
+  :root { --sidebar-w: 0px; }
+  #sidebar { transform: translateX(-250px); --sidebar-w: 250px; }
+  #sidebar.mob-open { transform: none; }
+  #main { margin-left: 0; }
+  .stats-grid { grid-template-columns: 1fr 1fr; }
+  .grid2 { grid-template-columns: 1fr; }
+  .kpi-grid { grid-template-columns: 1fr 1fr; }
+  #emp-modal .emp-grid { grid-template-columns: 1fr; }
+  #view-profile .profile-hero-body { grid-template-columns: 1fr; justify-items: start; }
+  #view-profile .profile-hero-meta { justify-items: start; }
+  #view-profile .profile-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<nav id="sidebar">
+  <div class="sidebar-logo">
+    <img src="/Mask%20group.avif" alt="Company logo">
+  </div>
+  <div class="sidebar-nav">
+    <div class="nav-section">
+      <div class="nav-label">Overview</div>
+      <div class="nav-item active" onclick="navigate('dashboard', this)">
+        <i class="bi bi-speedometer2 nav-icon"></i> Dashboard
+      </div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">Core Modules</div>
+      <div class="nav-item" onclick="navigate('employees', this)">
+        <i class="bi bi-people nav-icon"></i> Employees
+      </div>
+      <div class="nav-item" onclick="navigate('leave', this)">
+        <i class="bi bi-calendar2-week nav-icon"></i> Leave Management
+      </div>
+      <div class="nav-item" onclick="navigate('payroll', this)">
+        <i class="bi bi-cash-stack nav-icon"></i> Payroll & OT
+      </div>
+      <div class="nav-item" onclick="navigate('ess', this)">
+        <i class="bi bi-person-workspace nav-icon"></i> ESS Portal
+      </div>
+      <div class="nav-item" onclick="navigate('profile', this)">
+        <i class="bi bi-person-vcard nav-icon"></i> My Profile
+      </div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">Talent</div>
+      <div class="nav-item" onclick="navigate('performance', this)">
+        <i class="bi bi-bullseye nav-icon"></i> Performance
+      </div>
+      <div class="nav-item" onclick="navigate('recruitment', this)">
+        <i class="bi bi-clipboard2-check nav-icon"></i> Recruitment
+        <span class="nav-badge">3</span>
+      </div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">Administration</div>
+      <div class="nav-item" onclick="navigate('documents', this)">
+        <i class="bi bi-folder2-open nav-icon"></i> Documents
+        <span class="nav-badge">2</span>
+      </div>
+      <div class="nav-item" onclick="navigate('compliance', this)">
+        <i class="bi bi-shield-check nav-icon"></i> Compliance & Audit
+      </div>
+      <div class="nav-item" onclick="navigate('reports', this)">
+        <i class="bi bi-bar-chart-line nav-icon"></i> Reports
+      </div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">Settings</div>
+      <div class="nav-item" onclick="navigate('settings', this)">
+        <i class="bi bi-gear nav-icon"></i> System Settings
+      </div>
+    </div>
+  </div>
+  <div class="sidebar-footer">
+    <div class="user-card">
+      <div class="user-avatar">SA</div>
+      <div>
+        <div class="user-name">Super Admin</div>
+        <div class="user-role">HR Administrator</div>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<!-- HEADER -->
+<header id="header">
+  <div class="header-title" id="header-title">Dashboard <span>/ Overview</span></div>
+  <div class="header-actions">
+    <div class="icon-btn" title="Notifications" onclick="toggleNotifPanel()">
+      <i class="bi bi-bell"></i> <span class="dot" id="notif-dot"></span>
+    </div>
+    <div class="icon-btn logout-btn" title="Logout" onclick="logout()"><i class="bi bi-power"></i></div>
+  </div>
+</header>
+
+<!-- NOTIFICATION PANEL -->
+<div id="notif-panel">
+  <div class="notif-panel-title">Notifications <button class="modal-close" onclick="toggleNotifPanel()">✕</button></div>
+  <div id="notif-list"></div>
+</div>
+
+<!-- MAIN -->
+<main id="main">
+
+<!-- ════════════════════════════════════════════════════
+     DASHBOARD
+════════════════════════════════════════════════════ -->
+<div id="view-dashboard" class="view active">
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-label">Total Headcount</div>
+      <div class="stat-value" style="color:#64B5F6">248</div>
+      <div class="stat-sub"><span class="trend-up">↑ 4</span> this month</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">On Leave Today</div>
+      <div class="stat-value" style="color:#FFD54F">17</div>
+      <div class="stat-sub"><span class="trend-up">6.9%</span> of workforce</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Monthly Payroll (AED)</div>
+      <div class="stat-value" style="color:#4DB6AC">1.24M</div>
+      <div class="stat-sub"><span class="trend-up">↑ 2.1%</span> vs last month</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Attrition Rate (YTD)</div>
+      <div class="stat-value" style="color:#FF8A65">3.2%</div>
+      <div class="stat-sub"><span class="trend-up">↓ 0.5%</span> vs last yr</div>
+    </div>
+  </div>
+
+  <div class="grid2 mb-20">
+    <!-- Headcount by Dept -->
+    <div class="card">
+      <div class="section-title">Headcount by Department</div>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <div>
+          <div class="flex-between mb-16" style="margin-bottom:5px;font-size:13px">
+            <span>Engineering</span><span class="fw-700">58</span>
+          </div>
+          <div class="progress"><div class="progress-bar progress-blue" style="width:58%"></div></div>
+        </div>
+        <div>
+          <div class="flex-between mb-16" style="margin-bottom:5px;font-size:13px">
+            <span>Operations</span><span class="fw-700">72</span>
+          </div>
+          <div class="progress"><div class="progress-bar progress-accent" style="width:72%"></div></div>
+        </div>
+        <div>
+          <div class="flex-between mb-16" style="margin-bottom:5px;font-size:13px">
+            <span>Sales & Marketing</span><span class="fw-700">44</span>
+          </div>
+          <div class="progress"><div class="progress-bar progress-amber" style="width:44%"></div></div>
+        </div>
+        <div>
+          <div class="flex-between mb-16" style="margin-bottom:5px;font-size:13px">
+            <span>Finance</span><span class="fw-700">31</span>
+          </div>
+          <div class="progress"><div class="progress-bar progress-coral" style="width:31%"></div></div>
+        </div>
+        <div>
+          <div class="flex-between mb-16" style="margin-bottom:5px;font-size:13px">
+            <span>HR & Admin</span><span class="fw-700">19</span>
+          </div>
+          <div class="progress"><div class="progress-bar progress-blue" style="width:19%"></div></div>
+        </div>
+        <div>
+          <div class="flex-between mb-16" style="margin-bottom:5px;font-size:13px">
+            <span>Others</span><span class="fw-700">24</span>
+          </div>
+          <div class="progress"><div class="progress-bar progress-accent" style="width:24%"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Nationality Mix -->
+    <div class="card">
+      <div class="section-title">Workforce Composition</div>
+      <div class="donut-wrap">
+        <div class="donut"></div>
+        <div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--accent)"></div>Emirati (36%)</div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--blue-bright)"></div>Indian (22%)</div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--amber)"></div>Pakistani (14%)</div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--coral)"></div>Filipino (10%)</div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--text-dim)"></div>Other (18%)</div>
+        </div>
+      </div>
+      <div style="margin-top:18px;display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div style="background:rgba(21,101,192,0.1);border:1px solid var(--border-bright);border-radius:9px;padding:12px;text-align:center">
+          <div style="font-size:22px;font-weight:800;font-family:'Syne',sans-serif;color:#64B5F6">167</div>
+          <div class="text-muted">Male</div>
+        </div>
+        <div style="background:rgba(244,81,30,0.08);border:1px solid rgba(244,81,30,0.2);border-radius:9px;padding:12px;text-align:center">
+          <div style="font-size:22px;font-weight:800;font-family:'Syne',sans-serif;color:#FF8A65">81</div>
+          <div class="text-muted">Female</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid2 mb-20">
+    <!-- Alerts -->
+    <div class="card">
+      <div class="section-title">Active Alerts</div>
+      <div class="alert alert-warn"><span class="alert-icon">⚠️</span><div><b>2 Visa Expiries</b> within 30 days — Ahmed Al Mansouri, Sara Khalid</div></div>
+      <div class="alert alert-error"><span class="alert-icon">📄</span><div><b>1 Contract Expiry</b> in 30 days — Fatima Hassan</div></div>
+      <div class="alert alert-info"><span class="alert-icon">🎯</span><div><b>3 Probation Ends</b> in 21 days — review required</div></div>
+      <div class="alert alert-warn"><span class="alert-icon">💰</span><div><b>WPS SIF Deadline</b> — May 15, 2025 (MOHRE)</div></div>
+      <div class="alert alert-success"><span class="alert-icon">✅</span><div><b>5 Leave Requests</b> pending L2 approval</div></div>
+    </div>
+
+    <!-- Recent Activity -->
+    <div class="card">
+      <div class="section-title">Recent Activity</div>
+      <div class="timeline">
+        <div class="tl-item">
+          <div class="tl-dot green"></div>
+          <div class="tl-date">Today, 09:15 AM</div>
+          <div class="tl-text">New employee <b>Omar Rashid</b> onboarded — IT setup initiated</div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-dot"></div>
+          <div class="tl-date">Today, 08:42 AM</div>
+          <div class="tl-text">April payroll finalized — AED 1,244,800 processed</div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-dot amber"></div>
+          <div class="tl-date">Yesterday, 04:30 PM</div>
+          <div class="tl-text">Leave request by <b>Priya Nair</b> approved (Annual — 5 days)</div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-dot"></div>
+          <div class="tl-date">Yesterday, 11:00 AM</div>
+          <div class="tl-text">KPI review cycle opened for Q2 2025</div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-dot green"></div>
+          <div class="tl-date">2 days ago</div>
+          <div class="tl-text"><b>Job Posting:</b> Senior Software Engineer published on LinkedIn & Bayt</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- OT & Payroll Stats -->
+  <div class="card">
+    <div class="section-title">Payroll Overview — April 2025</div>
+    <div class="grid3">
+      <div class="payslip-card">
+        <div class="payslip-row"><span>Basic Salaries</span><span>AED 820,000</span></div>
+        <div class="payslip-row"><span>Housing Allowance</span><span>AED 164,000</span></div>
+        <div class="payslip-row"><span>Transport</span><span>AED 49,000</span></div>
+        <div class="payslip-row"><span>OT (1.25×)</span><span>AED 38,400</span></div>
+        <div class="payslip-row"><span>OT Night (1.50×)</span><span>AED 12,200</span></div>
+        <div class="payslip-row payslip-total"><span>Gross Total</span><span>AED 1,083,600</span></div>
+      </div>
+      <div class="payslip-card">
+        <div class="payslip-row"><span>Deductions</span><span style="color:var(--coral)">−AED 98,400</span></div>
+        <div class="payslip-row"><span>Leave Without Pay</span><span style="color:var(--coral)">−AED 4,200</span></div>
+        <div class="payslip-row"><span>Advances</span><span style="color:var(--coral)">−AED 15,000</span></div>
+        <div class="payslip-row payslip-total"><span>Net Pay</span><span>AED 965,900</span></div>
+        <div style="margin-top:12px">
+          <div class="badge badge-green">✓ WPS SIF Generated</div>
+        </div>
+      </div>
+      <div>
+        <div class="mb-16">
+          <div class="stat-label">OT Hours This Month</div>
+          <div style="font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:var(--amber)">1,842 hrs</div>
+        </div>
+        <div class="mb-16">
+          <div class="stat-label">Employees on OT</div>
+          <div style="font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:#64B5F6">87</div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="navigate('payroll', document.querySelector('[onclick*=payroll]'))">View Full Payroll →</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════
+     EMPLOYEES
+════════════════════════════════════════════════════ -->
+<div id="view-employees" class="view">
+  <div class="toolbar">
+    <div class="search-bar" style="flex:1;max-width:320px">
+      <input type="text" placeholder="Search employees…" oninput="filterTable(this,'emp-table')">
+    </div>
+    <select id="emp-filter-department" style="width:160px">
+      <option>All Departments</option>
+      <option>Engineering</option>
+      <option>Operations</option>
+      <option>Sales & Marketing</option>
+      <option>Finance</option>
+      <option>HR & Admin</option>
+    </select>
+    <select id="emp-filter-status" style="width:140px">
+      <option>All Status</option>
+      <option>Active</option>
+      <option>Probation</option>
+      <option>On Leave</option>
+      <option>Resigned</option>
+      <option>Terminated</option>
+    </select>
+    <button class="btn btn-primary" id="emp-add-btn" onclick="openModal('emp-modal')">＋ Add Employee</button>
+    <button id="emp-export-btn" class="btn btn-secondary">⬇ Export</button>
+  </div>
+
+  <div class="card">
+    <div class="table-wrap">
+      <table id="emp-table">
+        <thead><tr>
+          <th>Employee</th><th>ID</th><th>Department</th>
+          <th>Designation</th><th>Type</th><th>Join Date</th>
+          <th>Emirates ID</th><th>Status</th><th>Actions</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td><div class="flex-center gap-8"><div class="user-avatar" style="width:30px;height:30px;font-size:11px">AM</div><div><div style="font-weight:500">Ahmed Al Mansouri</div><div class="text-muted">ahmed@company.ae</div></div></div></td>
+            <td>EMP-001</td><td>Engineering</td><td>Senior Dev</td>
+            <td><span class="badge badge-blue">Full-Time</span></td>
+            <td>Jan 2022</td><td>784-1982-…</td>
+            <td><span class="badge badge-green">Active</span></td>
+            <td><button class="btn btn-secondary btn-sm" onclick="viewEmployee('Ahmed Al Mansouri')">View</button></td>
+          </tr>
+          <tr>
+            <td><div class="flex-center gap-8"><div class="user-avatar" style="width:30px;height:30px;font-size:11px;background:linear-gradient(135deg,#7C4DFF,#E040FB)">FH</div><div><div style="font-weight:500">Fatima Hassan</div><div class="text-muted">fatima@company.ae</div></div></div></td>
+            <td>EMP-002</td><td>Finance</td><td>Finance Manager</td>
+            <td><span class="badge badge-blue">Full-Time</span></td>
+            <td>Mar 2020</td><td>784-1990-…</td>
+            <td><span class="badge badge-amber">Contract Expiry</span></td>
+            <td><button class="btn btn-secondary btn-sm" onclick="viewEmployee('Fatima Hassan')">View</button></td>
+          </tr>
+          <tr>
+            <td><div class="flex-center gap-8"><div class="user-avatar" style="width:30px;height:30px;font-size:11px;background:linear-gradient(135deg,#F4511E,#FFB300)">PN</div><div><div style="font-weight:500">Priya Nair</div><div class="text-muted">priya@company.ae</div></div></div></td>
+            <td>EMP-018</td><td>Operations</td><td>Ops Coordinator</td>
+            <td><span class="badge badge-blue">Full-Time</span></td>
+            <td>Jul 2023</td><td>784-1995-…</td>
+            <td><span class="badge badge-amber">On Leave</span></td>
+            <td><button class="btn btn-secondary btn-sm" onclick="viewEmployee('Priya Nair')">View</button></td>
+          </tr>
+          <tr>
+            <td><div class="flex-center gap-8"><div class="user-avatar" style="width:30px;height:30px;font-size:11px;background:linear-gradient(135deg,#00897B,#00BFA5)">OR</div><div><div style="font-weight:500">Omar Rashid</div><div class="text-muted">omar@company.ae</div></div></div></td>
+            <td>EMP-248</td><td>Engineering</td><td>Software Engineer</td>
+            <td><span class="badge badge-purple">Probation</span></td>
+            <td>Apr 2025</td><td>784-2000-…</td>
+            <td><span class="badge badge-purple">Probation</span></td>
+            <td><button class="btn btn-secondary btn-sm" onclick="viewEmployee('Omar Rashid')">View</button></td>
+          </tr>
+          <tr>
+            <td><div class="flex-center gap-8"><div class="user-avatar" style="width:30px;height:30px;font-size:11px;background:linear-gradient(135deg,#1565C0,#1E88E5)">SK</div><div><div style="font-weight:500">Sara Khalid</div><div class="text-muted">sara@company.ae</div></div></div></td>
+            <td>EMP-035</td><td>HR & Admin</td><td>HR Officer</td>
+            <td><span class="badge badge-blue">Full-Time</span></td>
+            <td>Oct 2021</td><td>784-1994-…</td>
+            <td><span class="badge badge-coral">Visa Alert</span></td>
+            <td><button class="btn btn-secondary btn-sm" onclick="viewEmployee('Sara Khalid')">View</button></td>
+          </tr>
+          <tr>
+            <td><div class="flex-center gap-8"><div class="user-avatar" style="width:30px;height:30px;font-size:11px;background:linear-gradient(135deg,#880E4F,#E91E63)">MK</div><div><div style="font-weight:500">Mohammed Khan</div><div class="text-muted">mkhan@company.ae</div></div></div></td>
+            <td>EMP-062</td><td>Sales</td><td>Sales Executive</td>
+            <td><span class="badge badge-amber">Part-Time</span></td>
+            <td>Feb 2024</td><td>784-1998-…</td>
+            <td><span class="badge badge-green">Active</span></td>
+            <td><button class="btn btn-secondary btn-sm" onclick="viewEmployee('Mohammed Khan')">View</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════
+     LEAVE MANAGEMENT
+════════════════════════════════════════════════════ -->
+<div id="view-leave" class="view">
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab(this,'leave-pending')">Pending Approvals (5)</button>
+    <button class="tab-btn" onclick="switchTab(this,'leave-my-history')">My Leaves</button>
+    <button class="tab-btn" onclick="switchTab(this,'leave-apply')">Apply Leave</button>
+    <button class="tab-btn" onclick="switchTab(this,'leave-policy')">Leave Policy</button>
+    <button class="tab-btn" onclick="switchTab(this,'leave-gratuity')">Gratuity Calculator</button>
+  </div>
+
+  <div id="leave-pending" class="tab-pane active">
+    <div class="card">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Employee</th><th>Leave Type</th><th>From</th><th>To</th><th>Days</th><th>Reason</th><th>L1</th><th>L2 (You)</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><b>Ahmed Al Mansouri</b></td>
+              <td><span class="badge badge-blue">Annual</span></td>
+              <td>May 10</td><td>May 16</td><td>5</td>
+              <td>Family vacation</td>
+              <td><span class="badge badge-green">✓ Approved</span></td>
+              <td><div class="flex gap-8"><button class="btn btn-accent btn-sm" onclick="approveLeave(this,'Ahmed Al Mansouri')">Approve</button><button class="btn btn-danger btn-sm" onclick="showToast('Rejected')">Reject</button></div></td>
+            </tr>
+            <tr>
+              <td><b>Priya Nair</b></td>
+              <td><span class="badge badge-coral">Sick</span></td>
+              <td>May 2</td><td>May 4</td><td>3</td>
+              <td>Medical — fever</td>
+              <td><span class="badge badge-green">✓ Approved</span></td>
+              <td><div class="flex gap-8"><button class="btn btn-accent btn-sm" onclick="approveLeave(this,'Priya Nair')">Approve</button><button class="btn btn-danger btn-sm" onclick="showToast('Rejected')">Reject</button></div></td>
+            </tr>
+            <tr>
+              <td><b>Mohammed Khan</b></td>
+              <td><span class="badge badge-amber">Emergency</span></td>
+              <td>May 3</td><td>May 5</td><td>2</td>
+              <td>Family matter</td>
+              <td><span class="badge badge-amber">Pending</span></td>
+              <td><span class="text-muted">Awaiting L1</span></td>
+            </tr>
+            <tr>
+              <td><b>Sara Khalid</b></td>
+              <td><span class="badge badge-blue">Annual</span></td>
+              <td>May 19</td><td>May 23</td><td>5</td>
+              <td>Personal</td>
+              <td><span class="badge badge-green">✓ Approved</span></td>
+              <td><div class="flex gap-8"><button class="btn btn-accent btn-sm" onclick="approveLeave(this,'Sara Khalid')">Approve</button><button class="btn btn-danger btn-sm" onclick="showToast('Rejected')">Reject</button></div></td>
+            </tr>
+            <tr>
+              <td><b>Omar Rashid</b></td>
+              <td><span class="badge badge-blue">Annual</span></td>
+              <td>Jun 1</td><td>Jun 3</td><td>3</td>
+              <td>Travel</td>
+              <td><span class="badge badge-green">✓ Approved</span></td>
+              <td><div class="flex gap-8"><button class="btn btn-accent btn-sm" onclick="approveLeave(this,'Omar Rashid')">Approve</button><button class="btn btn-danger btn-sm" onclick="showToast('Rejected')">Reject</button></div></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div id="leave-my-history" class="tab-pane">
+    <div class="card">
+      <div class="section-title">My Applied & Previous Leaves</div>
+      <div class="table-wrap">
+        <table id="leave-my-table">
+          <thead><tr><th>Leave Type</th><th>From</th><th>To</th><th>Days</th><th>Status</th><th>L1 Approver</th><th>L2 Approver</th><th>Reason</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div id="leave-apply" class="tab-pane">
+    <div class="card" style="max-width:600px">
+      <div class="section-title">Apply for Leave</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Employee</label>
+          <select><option>Select employee…</option><option>Ahmed Al Mansouri</option><option>Priya Nair</option><option>Omar Rashid</option></select>
+        </div>
+        <div class="form-group">
+          <label>Leave Type</label>
+          <select>
+            <option>Annual Leave (30 days/yr)</option>
+            <option>Sick Leave (10+5 days)</option>
+            <option>Maternity Leave (45+15 days)</option>
+            <option>Paternity Leave (5 days)</option>
+            <option>Emergency Leave (15 days)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>From Date</label>
+          <input type="date">
+        </div>
+        <div class="form-group">
+          <label>To Date</label>
+          <input type="date">
+        </div>
+        <div class="form-group full">
+          <label>Reason</label>
+          <textarea placeholder="Briefly describe the reason for leave…"></textarea>
+        </div>
+        <div class="form-group full">
+          <label>Supporting Document (optional)</label>
+          <input type="file" style="padding:8px">
+        </div>
+      </div>
+      <div class="flex gap-8 mt-16">
+        <button class="btn btn-primary" onclick="showToast('Leave request submitted successfully')">Submit Request</button>
+        <button class="btn btn-secondary" onclick="showToast('Cleared')">Clear</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="leave-policy" class="tab-pane">
+    <div class="card">
+      <div class="section-title">UAE Labour Law — Leave Policy (Federal Decree No. 33 / 2021)</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Leave Type</th><th>Entitlement</th><th>Carryover</th><th>Pay</th><th>Law Reference</th></tr></thead>
+          <tbody>
+            <tr><td><b>Annual Leave</b></td><td>30 days/year</td><td>Yes (up to 60 days)</td><td>Full pay</td><td><span class="badge badge-blue">Art. 29</span></td></tr>
+            <tr><td><b>Sick Leave</b></td><td>15 days full + 15 days half + 15 days unpaid</td><td>No</td><td>Graduated</td><td><span class="badge badge-blue">Art. 31</span></td></tr>
+            <tr><td><b>Maternity Leave</b></td><td>45 days full + 15 days half pay</td><td>No</td><td>Full + half</td><td><span class="badge badge-blue">Art. 30</span></td></tr>
+            <tr><td><b>Paternity Leave</b></td><td>5 working days</td><td>No</td><td>Full pay</td><td><span class="badge badge-blue">Art. 32</span></td></tr>
+            <tr><td><b>Emergency Leave</b></td><td>15 days</td><td>No</td><td>Full pay</td><td><span class="badge badge-blue">Art. 28</span></td></tr>
+            <tr><td><b>Hajj Leave</b></td><td>Once in service</td><td>No</td><td>Full pay</td><td><span class="badge badge-blue">Art. 29</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div id="leave-gratuity" class="tab-pane">
+    <div class="card" style="max-width:560px">
+      <div class="section-title">Gratuity Calculator — Federal Decree 33/2021</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Basic Daily Salary (AED)</label>
+          <input type="number" id="gc-salary" placeholder="e.g. 333.33" oninput="calcGratuity()">
+        </div>
+        <div class="form-group">
+          <label>Years of Service</label>
+          <input type="number" id="gc-years" placeholder="e.g. 5" oninput="calcGratuity()">
+        </div>
+        <div class="form-group">
+          <label>Reason for Termination</label>
+          <select id="gc-reason" onchange="calcGratuity()">
+            <option value="resignation">Resignation</option>
+            <option value="termination">Termination by Employer</option>
+          </select>
+        </div>
+      </div>
+      <div class="calc-result" id="gratuity-result" style="display:none">
+        <div class="text-muted mb-16" style="margin-bottom:8px">Estimated Gratuity</div>
+        <div class="calc-amount" id="gratuity-amount">AED 0</div>
+        <div class="text-muted mt-16" style="margin-top:8px;font-size:11.5px" id="gratuity-formula"></div>
+        <div class="alert alert-info" style="margin-top:12px;font-size:12px"><span class="alert-icon">ℹ️</span>Cap: Cannot exceed 2 years' total salary. Formula: Basic Daily Salary × Days × Years</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════
+     PAYROLL
+════════════════════════════════════════════════════ -->
+<div id="view-payroll" class="view">
+  <div class="steps mb-20">
+    <div class="step done"><div class="step-num">✓</div><div class="step-label">Period Lock</div></div>
+    <div class="step-arrow">→</div>
+    <div class="step done"><div class="step-num">✓</div><div class="step-label">Attendance Import</div></div>
+    <div class="step-arrow">→</div>
+    <div class="step done"><div class="step-num">✓</div><div class="step-label">OT Calculation</div></div>
+    <div class="step-arrow">→</div>
+    <div class="step done"><div class="step-num">✓</div><div class="step-label">Leave Deductions</div></div>
+    <div class="step-arrow">→</div>
+    <div class="step active"><div class="step-num">5</div><div class="step-label">Preview</div></div>
+    <div class="step-arrow">→</div>
+    <div class="step"><div class="step-num">6</div><div class="step-label">Manager Approval</div></div>
+    <div class="step-arrow">→</div>
+    <div class="step"><div class="step-num">7</div><div class="step-label">WPS SIF</div></div>
+    <div class="step-arrow">→</div>
+    <div class="step"><div class="step-num">8</div><div class="step-label">Payslips</div></div>
+  </div>
+
+  <div class="grid2 mb-20">
+    <div class="card">
+      <div class="section-title">OT Rate Master (UAE Labour Law Art. 19)</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Code</th><th>Day Type</th><th>Time Band</th><th>Rate</th></tr></thead>
+          <tbody>
+            <tr><td><span class="badge badge-blue">OT-01</span></td><td>Normal Weekday</td><td>Usual Daily (max 3 hrs)</td><td><b style="color:var(--amber)">1.25×</b></td></tr>
+            <tr><td><span class="badge badge-coral">OT-02</span></td><td>Normal Weekday</td><td>10 PM – 4 AM (Night)</td><td><b style="color:var(--coral)">1.50×</b></td></tr>
+            <tr><td><span class="badge badge-purple">OT-03</span></td><td>Rest Day / Friday</td><td>Any hours</td><td><b style="color:var(--accent)">1.50×</b></td></tr>
+            <tr><td><span class="badge badge-amber">OT-04</span></td><td>Public Holiday</td><td>Any hours</td><td><b style="color:var(--accent)">2.00×</b></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card">
+      <div class="flex-between mb-20" style="margin-bottom:14px">
+        <div class="section-title" style="margin-bottom:0">Payroll Period</div>
+        <span class="badge badge-green">April 2025</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div class="flex-between" style="font-size:13.5px"><span class="text-muted">Employees Processed</span><b>248 / 248</b></div>
+        <div class="flex-between" style="font-size:13.5px"><span class="text-muted">Gross Payroll</span><b>AED 1,083,600</b></div>
+        <div class="flex-between" style="font-size:13.5px"><span class="text-muted">OT Cost</span><b style="color:var(--amber)">AED 50,600</b></div>
+        <div class="flex-between" style="font-size:13.5px"><span class="text-muted">Deductions</span><b style="color:var(--coral)">−AED 117,600</b></div>
+        <div class="flex-between" style="font-size:15px;border-top:1px solid var(--border);padding-top:10px"><span><b>Net Pay</b></span><b style="color:var(--accent)">AED 965,900</b></div>
+      </div>
+      <div class="flex gap-8 mt-16" style="margin-top:14px">
+        <button class="btn btn-primary btn-sm" onclick="showToast('Payroll submitted for Manager Approval')">Submit for Approval</button>
+        <button class="btn btn-secondary btn-sm" onclick="showToast('WPS SIF file downloaded')">⬇ WPS SIF</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="flex-between mb-20" style="margin-bottom:14px">
+      <div class="section-title" style="margin-bottom:0">Payroll Detail</div>
+      <div class="flex gap-8">
+        <div class="search-bar"><input placeholder="Search employee…" style="width:220px"></div>
+        <button class="btn btn-secondary btn-sm" onclick="showToast('Payslips sent to all employees')">📧 Distribute Payslips</button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Employee</th><th>Basic</th><th>Housing</th><th>Transport</th><th>OT</th><th>Deductions</th><th>Net Pay</th><th>Payslip</th></tr></thead>
+        <tbody>
+          <tr><td><b>Ahmed Al Mansouri</b></td><td>12,000</td><td>3,600</td><td>1,500</td><td style="color:var(--amber)">1,200</td><td style="color:var(--coral)">−1,840</td><td style="color:var(--accent);font-weight:700">16,460</td><td><button class="btn btn-secondary btn-sm" onclick="showToast('Payslip downloaded')">⬇ PDF</button></td></tr>
+          <tr><td><b>Fatima Hassan</b></td><td>18,500</td><td>5,550</td><td>1,500</td><td style="color:var(--amber)">0</td><td style="color:var(--coral)">−3,000</td><td style="color:var(--accent);font-weight:700">22,550</td><td><button class="btn btn-secondary btn-sm" onclick="showToast('Payslip downloaded')">⬇ PDF</button></td></tr>
+          <tr><td><b>Priya Nair</b></td><td>8,500</td><td>2,550</td><td>1,000</td><td style="color:var(--amber)">840</td><td style="color:var(--coral)">−1,200</td><td style="color:var(--accent);font-weight:700">11,690</td><td><button class="btn btn-secondary btn-sm" onclick="showToast('Payslip downloaded')">⬇ PDF</button></td></tr>
+          <tr><td><b>Omar Rashid</b></td><td>10,000</td><td>3,000</td><td>1,000</td><td style="color:var(--amber)">0</td><td style="color:var(--coral)">−0</td><td style="color:var(--accent);font-weight:700">14,000</td><td><button class="btn btn-secondary btn-sm" onclick="showToast('Payslip downloaded')">⬇ PDF</button></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════
+     ESS PORTAL
+════════════════════════════════════════════════════ -->
+<div id="view-ess" class="view">
+  <div class="alert alert-info mb-20"><span class="alert-icon">ℹ️</span> ESS Portal — Viewing as: <b>Ahmed Al Mansouri</b> (EMP-001). Switch employee to preview others.</div>
+
+  <div class="stats-grid mb-20">
+    <div class="stat-card">
+      <div class="stat-label">Annual Leave Balance</div>
+      <div class="stat-value" style="color:var(--accent)">18</div>
+      <div class="stat-sub">of 30 days remaining</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Sick Leave Balance</div>
+      <div class="stat-value" style="color:var(--amber)">10</div>
+      <div class="stat-sub">of 15 days remaining</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Latest Payslip</div>
+      <div class="stat-value" style="color:#64B5F6;font-size:22px">Apr 2025</div>
+      <div class="stat-sub"><button class="btn btn-secondary btn-sm" onclick="showToast('Payslip downloaded')">⬇ Download</button></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Gratuity Estimate</div>
+      <div class="stat-value" style="color:var(--accent)">AED 75k</div>
+      <div class="stat-sub">Based on 3.3 years service</div>
+    </div>
+  </div>
+
+  <div class="grid2 mb-20">
+    <div class="card">
+      <div class="section-title">Quick Requests</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <button class="btn btn-secondary" onclick="showToast('Leave request form opened')">🗓️ Apply Leave</button>
+        <button class="btn btn-secondary" onclick="showToast('Certificate generated')">📄 Employment Cert</button>
+        <button class="btn btn-secondary" onclick="showToast('NOC letter initiated')">📝 NOC Request</button>
+        <button class="btn btn-secondary" onclick="showToast('Expense claim form opened')">💼 Expense Claim</button>
+        <button class="btn btn-secondary" onclick="showToast('Profile update form opened')">👤 Update Profile</button>
+        <button class="btn btn-secondary" onclick="showToast('Bank form opened')">🏦 Update Bank</button>
+        <button class="btn btn-secondary" onclick="showToast('Documents listed')">📁 My Documents</button>
+        <button class="btn btn-secondary" onclick="showToast('Grievance form opened')">⚠️ File Grievance</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="section-title">Upcoming UAE Public Holidays</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Holiday</th><th>Date</th><th>Days</th></tr></thead>
+          <tbody>
+            <tr><td>Eid Al Adha</td><td>Jun 16–19, 2025</td><td><span class="badge badge-green">4 days</span></td></tr>
+            <tr><td>Islamic New Year</td><td>Jul 7, 2025</td><td><span class="badge badge-blue">1 day</span></td></tr>
+            <tr><td>Prophet's Birthday</td><td>Sep 5, 2025</td><td><span class="badge badge-blue">1 day</span></td></tr>
+            <tr><td>UAE National Day</td><td>Dec 2–3, 2025</td><td><span class="badge badge-green">2 days</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">Leave Balance Overview</div>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div>
+        <div class="flex-between" style="font-size:13px;margin-bottom:5px"><span>Annual Leave</span><span>18 / 30 remaining</span></div>
+        <div class="progress"><div class="progress-bar progress-accent" style="width:60%"></div></div>
+      </div>
+      <div>
+        <div class="flex-between" style="font-size:13px;margin-bottom:5px"><span>Sick Leave</span><span>10 / 15 remaining</span></div>
+        <div class="progress"><div class="progress-bar progress-amber" style="width:67%"></div></div>
+      </div>
+      <div>
+        <div class="flex-between" style="font-size:13px;margin-bottom:5px"><span>Emergency Leave</span><span>15 / 15 remaining</span></div>
+        <div class="progress"><div class="progress-bar progress-blue" style="width:100%"></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════
+     PROFILE
+════════════════════════════════════════════════════ -->
+<div id="view-profile" class="view">
+  <div class="card profile-hero mb-20">
+    <div class="profile-hero-body">
+      <div class="profile-avatar" id="profile-avatar">--</div>
+      <div class="profile-headline">
+        <div class="profile-name" id="profile-name">-</div>
+        <div class="profile-subline">
+          <span id="profile-code">-</span> •
+          <span id="profile-designation">-</span> •
+          <span id="profile-department">-</span>
+        </div>
+      </div>
+      <div class="profile-hero-meta">
+        <span class="profile-role-pill" id="profile-role">-</span>
+        <span class="profile-status-pill" id="profile-status">-</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="profile-grid mb-20">
+    <div class="profile-panel">
+      <div class="profile-panel-title">Contact & Employment</div>
+      <div class="profile-list">
+        <div class="profile-item"><span class="profile-key">Work Email</span><span class="profile-value" id="profile-work-email">-</span></div>
+        <div class="profile-item"><span class="profile-key">Login Email</span><span class="profile-value" id="profile-login-email">-</span></div>
+        <div class="profile-item"><span class="profile-key">Mobile</span><span class="profile-value" id="profile-phone">-</span></div>
+        <div class="profile-item"><span class="profile-key">Date of Joining</span><span class="profile-value" id="profile-joining">-</span></div>
+      </div>
+    </div>
+    <div class="profile-panel">
+      <div class="profile-panel-title">Compliance & IDs</div>
+      <div class="profile-list">
+        <div class="profile-item"><span class="profile-key">Nationality</span><span class="profile-value" id="profile-nationality">-</span></div>
+        <div class="profile-item"><span class="profile-key">Date of Birth</span><span class="profile-value" id="profile-dob">-</span></div>
+        <div class="profile-item"><span class="profile-key">Emirates ID</span><span class="profile-value" id="profile-emirates">-</span></div>
+        <div class="profile-item"><span class="profile-key">Passport Number</span><span class="profile-value" id="profile-passport">-</span></div>
+        <div class="profile-item"><span class="profile-key">Labour Card</span><span class="profile-value" id="profile-labour-card">-</span></div>
+      </div>
+    </div>
+    <div class="profile-panel">
+      <div class="profile-panel-title">Compensation</div>
+      <div class="profile-list">
+        <div class="profile-item"><span class="profile-key">Basic Salary</span><span class="profile-value">AED <span id="profile-basic-salary">0</span></span></div>
+        <div class="profile-item"><span class="profile-key">Housing Allowance</span><span class="profile-value">AED <span id="profile-housing">0</span></span></div>
+        <div class="profile-item"><span class="profile-key">Transport Allowance</span><span class="profile-value">AED <span id="profile-transport">0</span></span></div>
+      </div>
+    </div>
+    <div class="profile-panel">
+      <div class="profile-panel-title">Bank & Payroll Compliance</div>
+      <div class="profile-list">
+        <div class="profile-item"><span class="profile-key">Bank Name</span><span class="profile-value" id="profile-bank">-</span></div>
+        <div class="profile-item"><span class="profile-key">IBAN</span><span class="profile-value" id="profile-iban">-</span></div>
+        <div class="profile-item"><span class="profile-key">WPS Enabled</span><span class="profile-value" id="profile-wps">-</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════
+     PERFORMANCE
+════════════════════════════════════════════════════ -->
+<div id="view-performance" class="view">
+  <div class="alert alert-info mb-20"><span class="alert-icon">🎯</span>Q2 2025 Review Cycle is open — <b>Goal Setting phase</b>. Deadline: May 31, 2025</div>
+
+  <div class="grid2 mb-20">
+    <div class="card">
+      <div class="section-title">Performance Rating Scale</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div class="flex-between" style="padding:10px;background:rgba(0,137,123,0.1);border-radius:8px;border:1px solid rgba(0,191,165,0.2)">
+          <span>⭐ 5 — Outstanding (90-100%)</span><span class="badge badge-green">Top tier bonus</span>
+        </div>
+        <div class="flex-between" style="padding:10px;background:rgba(21,101,192,0.1);border-radius:8px;border:1px solid rgba(30,136,229,0.2)">
+          <span>⭐ 4 — Exceeds Expectations (75-89%)</span><span class="badge badge-blue">Bonus eligible</span>
+        </div>
+        <div class="flex-between" style="padding:10px;background:rgba(255,179,0,0.08);border-radius:8px;border:1px solid rgba(255,179,0,0.2)">
+          <span>⭐ 3 — Meets Expectations (55-74%)</span><span class="badge badge-amber">Standard bonus</span>
+        </div>
+        <div class="flex-between" style="padding:10px;background:rgba(244,81,30,0.08);border-radius:8px;border:1px solid rgba(244,81,30,0.2)">
+          <span>⚠️ 2 — Below Expectations (35-54%)</span><span class="badge badge-coral">No increment</span>
+        </div>
+        <div class="flex-between" style="padding:10px;background:rgba(124,77,255,0.08);border-radius:8px;border:1px solid rgba(124,77,255,0.2)">
+          <span>❌ 1 — Unsatisfactory (0-34%)</span><span class="badge badge-purple">PIP Triggered</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-title">Rating Distribution — Q1 2025</div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
+        <div><div class="flex-between text-sm" style="margin-bottom:4px"><span>Outstanding (5)</span><span>18%</span></div><div class="progress"><div class="progress-bar progress-accent" style="width:18%"></div></div></div>
+        <div><div class="flex-between text-sm" style="margin-bottom:4px"><span>Exceeds (4)</span><span>34%</span></div><div class="progress"><div class="progress-bar progress-blue" style="width:34%"></div></div></div>
+        <div><div class="flex-between text-sm" style="margin-bottom:4px"><span>Meets (3)</span><span>38%</span></div><div class="progress"><div class="progress-bar progress-amber" style="width:38%"></div></div></div>
+        <div><div class="flex-between text-sm" style="margin-bottom:4px"><span>Below (2)</span><span>7%</span></div><div class="progress"><div class="progress-bar progress-coral" style="width:7%"></div></div></div>
+        <div><div class="flex-between text-sm" style="margin-bottom:4px"><span>Unsatisfactory (1)</span><span>3%</span></div><div class="progress"><div class="progress-bar" style="width:3%;background:var(--purple)"></div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mb-20">
+    <div class="flex-between mb-20" style="margin-bottom:14px">
+      <div class="section-title" style="margin-bottom:0">KPI Tracker — Ahmed Al Mansouri</div>
+      <button class="btn btn-primary btn-sm" onclick="openModal('kpi-modal')">＋ Add KPI</button>
+    </div>
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-name">Feature Delivery Rate</div>
+        <div class="kpi-score" style="color:var(--accent)">87%</div>
+        <div class="kpi-target">Target: 80% | Weight: 30%</div>
+        <div class="progress"><div class="progress-bar progress-accent" style="width:87%"></div></div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-name">Code Quality (Bugs Ratio)</div>
+        <div class="kpi-score" style="color:var(--blue-bright)">76%</div>
+        <div class="kpi-target">Target: 75% | Weight: 25%</div>
+        <div class="progress"><div class="progress-bar progress-blue" style="width:76%"></div></div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-name">Team Collaboration</div>
+        <div class="kpi-score" style="color:var(--amber)">92%</div>
+        <div class="kpi-target">Target: 85% | Weight: 20%</div>
+        <div class="progress"><div class="progress-bar progress-amber" style="width:92%"></div></div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-name">Documentation</div>
+        <div class="kpi-score" style="color:var(--coral)">58%</div>
+        <div class="kpi-target">Target: 70% | Weight: 15%</div>
+        <div class="progress"><div class="progress-bar progress-coral" style="width:58%"></div></div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-name">Training Completion</div>
+        <div class="kpi-score" style="color:var(--accent)">100%</div>
+        <div class="kpi-target">Target: 100% | Weight: 10%</div>
+        <div class="progress"><div class="progress-bar progress-accent" style="width:100%"></div></div>
+      </div>
+      <div class="kpi-card" style="background:rgba(21,101,192,0.12);border-color:rgba(30,136,229,0.3)">
+        <div class="kpi-name">Overall Score</div>
+        <div class="kpi-score" style="color:var(--blue-bright)">82.3%</div>
+        <div class="kpi-target">Rating: <b>4 — Exceeds Expectations</b></div>
+        <div class="progress"><div class="progress-bar progress-blue" style="width:82.3%"></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════
+     RECRUITMENT
+════════════════════════════════════════════════════ -->
+<div id="view-recruitment" class="view">
+  <div class="steps mb-20">
+    <div class="step done"><div class="step-num">✓</div><div class="step-label">Requisition</div></div>
+    <div class="step-arrow">→</div>
+    <div class="step done"><div class="step-num">✓</div><div class="step-label">Job Posting</div></div>
+    <div class="step-arrow">→</div>
+    <div class="step active"><div class="step-num">3</div><div class="step-label">Screening</div></div>
+    <div class="step-arrow">→</div>
+    <div class="step"><div class="step-num">4</div><div class="step-label">Interviews</div></div>
+    <div class="step-arrow">→</div>
+    <div class="step"><div class="step-num">5</div><div class="step-label">Offer</div></div>
+    <div class="step-arrow">→</div>
+    <div class="step"><div class="step-num">6</div><div class="step-label">Pre-Joining</div></div>
+    <div class="step-arrow">→</div>
+    <div class="step"><div class="step-num">7</div><div class="step-label">Onboarding</div></div>
+  </div>
+
+  <div class="toolbar mb-20">
+    <button class="btn btn-primary" onclick="openModal('job-modal')">＋ New Job Posting</button>
+    <div class="chip active">All Positions (8)</div>
+    <div class="chip" onclick="this.classList.toggle('active')">Open (5)</div>
+    <div class="chip" onclick="this.classList.toggle('active')">Interviewing (2)</div>
+    <div class="chip" onclick="this.classList.toggle('active')">Offer (1)</div>
+  </div>
+
+  <div class="card">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Position</th><th>Department</th><th>Posted</th><th>Applicants</th><th>Stage</th><th>Portals</th><th>Action</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><b>Senior Software Engineer</b></td><td>Engineering</td><td>Apr 28</td>
+            <td><div class="flex-center gap-8"><div class="avatar-stack"><div class="av">A</div><div class="av">B</div><div class="av">C</div></div> 47</div></td>
+            <td><span class="badge badge-blue">Screening</span></td>
+            <td><span class="badge badge-green">LinkedIn ✓</span> <span class="badge badge-blue">Bayt ✓</span></td>
+            <td><button class="btn btn-secondary btn-sm" onclick="showToast('Pipeline opened')">Pipeline</button></td>
+          </tr>
+          <tr>
+            <td><b>Finance Analyst</b></td><td>Finance</td><td>Apr 15</td>
+            <td><div class="flex-center gap-8"><div class="avatar-stack"><div class="av">X</div><div class="av">Y</div></div> 23</div></td>
+            <td><span class="badge badge-amber">Interviewing</span></td>
+            <td><span class="badge badge-green">LinkedIn ✓</span></td>
+            <td><button class="btn btn-secondary btn-sm" onclick="showToast('Pipeline opened')">Pipeline</button></td>
+          </tr>
+          <tr>
+            <td><b>Operations Manager</b></td><td>Operations</td><td>Mar 30</td>
+            <td><div class="flex-center gap-8"><div class="avatar-stack"><div class="av">Q</div></div> 11</div></td>
+            <td><span class="badge badge-purple">Offer Stage</span></td>
+            <td><span class="badge badge-blue">Bayt ✓</span></td>
+            <td><button class="btn btn-secondary btn-sm" onclick="showToast('Pipeline opened')">Pipeline</button></td>
+          </tr>
+          <tr>
+            <td><b>HR Coordinator</b></td><td>HR & Admin</td><td>Apr 22</td>
+            <td><div class="flex-center gap-8"><div class="avatar-stack"><div class="av">R</div><div class="av">S</div><div class="av">T</div></div> 34</div></td>
+            <td><span class="badge badge-blue">Screening</span></td>
+            <td><span class="badge badge-green">LinkedIn ✓</span> <span class="badge badge-blue">Bayt ✓</span></td>
+            <td><button class="btn btn-secondary btn-sm" onclick="showToast('Pipeline opened')">Pipeline</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════
+     DOCUMENTS
+════════════════════════════════════════════════════ -->
+<div id="view-documents" class="view">
+  <div class="alert alert-warn mb-20"><span class="alert-icon">⚠️</span><b>2 documents expiring within 30 days.</b> Immediate action required.</div>
+
+  <div class="toolbar mb-20">
+    <div class="search-bar" style="flex:1;max-width:300px"><input placeholder="Search documents…"></div>
+    <select style="width:160px"><option>All Types</option><option>Passport</option><option>Emirates ID</option><option>Visa / Residency</option><option>Contract</option><option>Labour Card</option></select>
+    <select style="width:160px"><option>All Status</option><option>Valid</option><option>Expiring (30d)</option><option>Expired</option></select>
+    <button class="btn btn-primary" onclick="showToast('Upload form opened')">⬆ Upload Document</button>
+  </div>
+
+  <div class="card">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Employee</th><th>Document Type</th><th>Doc Number</th><th>Issue Date</th><th>Expiry Date</th><th>Alert</th><th>Status</th><th>Action</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><b>Ahmed Al Mansouri</b></td>
+            <td>Emirates ID</td><td>784-1982-XXXXXX-X</td>
+            <td>Jan 2023</td><td>Jan 2028</td>
+            <td>—</td><td><span class="badge badge-green">Valid</span></td>
+            <td><button class="btn btn-secondary btn-sm" onclick="showToast('Document downloaded')">⬇ View</button></td>
+          </tr>
+          <tr>
+            <td><b>Ahmed Al Mansouri</b></td>
+            <td>Passport</td><td>A12345678</td>
+            <td>Mar 2020</td><td>Mar 2030</td>
+            <td>—</td><td><span class="badge badge-green">Valid</span></td>
+            <td><button class="btn btn-secondary btn-sm" onclick="showToast('Document downloaded')">⬇ View</button></td>
+          </tr>
+          <tr style="background:rgba(255,179,0,0.05)">
+            <td><b>Ahmed Al Mansouri</b></td>
+            <td>Visa / Residency</td><td>201/2022/12345</td>
+            <td>May 2022</td><td style="color:var(--amber);font-weight:600">May 28, 2025</td>
+            <td><span class="badge badge-amber">28 days</span></td>
+            <td><span class="badge badge-amber">⚠ Expiring</span></td>
+            <td><button class="btn btn-primary btn-sm" onclick="showToast('Renewal process initiated')">Renew</button></td>
+          </tr>
+          <tr>
+            <td><b>Fatima Hassan</b></td>
+            <td>Employment Contract</td><td>EMP-002-CNT-2020</td>
+            <td>Mar 2020</td><td style="color:var(--coral);font-weight:600">May 31, 2025</td>
+            <td><span class="badge badge-coral">30 days</span></td>
+            <td><span class="badge badge-coral">⚠ Expiring</span></td>
+            <td><button class="btn btn-primary btn-sm" onclick="showToast('Contract renewal initiated')">Renew</button></td>
+          </tr>
+          <tr>
+            <td><b>Sara Khalid</b></td>
+            <td>Labour Card</td><td>LC-20210456</td>
+            <td>Oct 2021</td><td>Oct 2026</td>
+            <td>—</td><td><span class="badge badge-green">Valid</span></td>
+            <td><button class="btn btn-secondary btn-sm" onclick="showToast('Document downloaded')">⬇ View</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════
+     COMPLIANCE & AUDIT
+════════════════════════════════════════════════════ -->
+<div id="view-compliance" class="view">
+  <div class="grid3 mb-20">
+    <div class="card" style="border-color:rgba(0,191,165,0.3)">
+      <div class="stat-label">WPS Compliance</div>
+      <div class="stat-value" style="color:var(--accent)">✓</div>
+      <div class="stat-sub">SIF generated — Apr 2025</div>
+    </div>
+    <div class="card" style="border-color:rgba(30,136,229,0.3)">
+      <div class="stat-label">UAE PDPL Status</div>
+      <div class="stat-value" style="color:#64B5F6">✓</div>
+      <div class="stat-sub">Role-based access enforced</div>
+    </div>
+    <div class="card" style="border-color:rgba(255,179,0,0.3)">
+      <div class="stat-label">2FA Enforcement</div>
+      <div class="stat-value" style="color:var(--amber)">96%</div>
+      <div class="stat-sub">9 users without 2FA</div>
+    </div>
+  </div>
+
+  <div class="grid2 mb-20">
+    <div class="card">
+      <div class="section-title">Compliance Checklist</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div class="flex-between" style="padding:10px;background:rgba(0,137,123,0.08);border-radius:8px"><span>✅ WPS (MOHRE) — SIF File</span><span class="badge badge-green">Compliant</span></div>
+        <div class="flex-between" style="padding:10px;background:rgba(0,137,123,0.08);border-radius:8px"><span>✅ Gratuity — Decree 33/2021</span><span class="badge badge-green">Compliant</span></div>
+        <div class="flex-between" style="padding:10px;background:rgba(0,137,123,0.08);border-radius:8px"><span>✅ OT Rates — Art. 19 (1.25× / 1.50×)</span><span class="badge badge-green">Compliant</span></div>
+        <div class="flex-between" style="padding:10px;background:rgba(0,137,123,0.08);border-radius:8px"><span>✅ UAE PDPL — Role-based Access</span><span class="badge badge-green">Compliant</span></div>
+        <div class="flex-between" style="padding:10px;background:rgba(255,179,0,0.08);border-radius:8px"><span>⚠️ 2FA — 9 users pending</span><span class="badge badge-amber">Review</span></div>
+        <div class="flex-between" style="padding:10px;background:rgba(0,137,123,0.08);border-radius:8px"><span>✅ Annual Pen-Test (OWASP Top 10)</span><span class="badge badge-green">Jan 2025</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-title">Audit Log (Immutable)</div>
+      <div class="table-wrap" style="max-height:300px;overflow-y:auto">
+        <table>
+          <thead><tr><th>Timestamp</th><th>User</th><th>Action</th><th>Details</th></tr></thead>
+          <tbody>
+            <tr><td class="text-sm text-muted">May 1, 09:15</td><td>Sara Khalid</td><td><span class="badge badge-green">CREATE</span></td><td>New employee Omar Rashid (EMP-248)</td></tr>
+            <tr><td class="text-sm text-muted">Apr 30, 15:42</td><td>Admin</td><td><span class="badge badge-blue">PAYROLL</span></td><td>April 2025 payroll finalized</td></tr>
+            <tr><td class="text-sm text-muted">Apr 30, 11:20</td><td>Dept Manager</td><td><span class="badge badge-amber">APPROVE</span></td><td>Leave approved — Priya Nair (5 days)</td></tr>
+            <tr><td class="text-sm text-muted">Apr 29, 16:05</td><td>Admin</td><td><span class="badge badge-coral">EXPORT</span></td><td>WPS SIF file exported to finance</td></tr>
+            <tr><td class="text-sm text-muted">Apr 29, 09:00</td><td>Sara Khalid</td><td><span class="badge badge-blue">UPDATE</span></td><td>Salary updated — EMP-062 (AED +500)</td></tr>
+            <tr><td class="text-sm text-muted">Apr 28, 14:30</td><td>Admin</td><td><span class="badge badge-purple">CONFIG</span></td><td>OT rate table updated</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <button class="btn btn-secondary btn-sm mt-16" style="margin-top:12px" onclick="showToast('Full audit log exported')">⬇ Export Full Log</button>
+    </div>
+  </div>
+
+  <!-- Roles Matrix -->
+  <div class="card">
+    <div class="section-title">User Roles & Permissions Matrix</div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Feature</th><th>Super Admin</th><th>HR</th><th>HR Officer</th><th>Dept Manager</th><th>Employee</th></tr></thead>
+        <tbody>
+          <tr><td>Employee Master — View</td><td>✅</td><td>✅</td><td>✅</td><td>Own Team</td><td>Self</td></tr>
+          <tr><td>Employee Master — Edit</td><td>✅</td><td>✅</td><td>Limited</td><td>❌</td><td>❌</td></tr>
+          <tr><td>Leave — Apply</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+          <tr><td>Leave — Approve (L1)</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>❌</td></tr>
+          <tr><td>Leave — Approve (L2/HR)</td><td>✅</td><td>✅</td><td>✅</td><td>❌</td><td>❌</td></tr>
+          <tr><td>Payroll — Run & Finalize</td><td>✅</td><td>✅</td><td>❌</td><td>❌</td><td>❌</td></tr>
+          <tr><td>Reports — All</td><td>✅</td><td>✅</td><td>Limited</td><td>❌</td><td>❌</td></tr>
+          <tr><td>System Config</td><td>✅</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td></tr>
+          <tr><td>Audit Log</td><td>✅</td><td>✅</td><td>❌</td><td>❌</td><td>❌</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════
+     REPORTS
+════════════════════════════════════════════════════ -->
+<div id="view-reports" class="view">
+  <div class="stats-grid mb-20">
+    <div class="stat-card"><div class="stat-label">Headcount</div><div class="stat-value" style="color:#64B5F6">248</div><div class="stat-sub">248 active employees</div></div>
+    <div class="stat-card"><div class="stat-label">Attrition (YTD)</div><div class="stat-value" style="color:var(--coral)">3.2%</div><div class="stat-sub">8 separations YTD</div></div>
+    <div class="stat-card"><div class="stat-label">OT Cost (Apr)</div><div class="stat-value" style="color:var(--amber)">50.6K</div><div class="stat-sub">↑ 8% vs Mar</div></div>
+    <div class="stat-card"><div class="stat-label">Leave Utilization</div><div class="stat-value" style="color:var(--accent)">41%</div><div class="stat-sub">of annual entitlement used</div></div>
+  </div>
+
+  <div class="grid2 mb-20">
+    <div class="card">
+      <div class="section-title">Quick Report Generator</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Report Type</label>
+          <select id="report-type">
+            <option>Headcount by Department</option>
+            <option>Leave Utilization</option>
+            <option>Payroll Summary</option>
+            <option>OT Analysis</option>
+            <option>Document Expiry</option>
+            <option>Performance Distribution</option>
+            <option>Attrition Report</option>
+            <option>WPS Compliance</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Format</label>
+          <select id="report-fmt">
+            <option>PDF</option>
+            <option>Excel (.xlsx)</option>
+            <option>CSV</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>From Date</label>
+          <input type="date" value="2025-04-01">
+        </div>
+        <div class="form-group">
+          <label>To Date</label>
+          <input type="date" value="2025-04-30">
+        </div>
+      </div>
+      <div class="flex gap-8 mt-16" style="margin-top:14px">
+        <button class="btn btn-primary" onclick="generateReport()">Generate Report</button>
+        <button class="btn btn-secondary" onclick="showToast('Report scheduled for email delivery')">📧 Schedule Email</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-title">Document Expiry Alerts</div>
+      <div class="alert alert-error"><span class="alert-icon">🔴</span><b>0</b> documents expired — all clear</div>
+      <div class="alert alert-coral" style="background:rgba(244,81,30,0.1);border:1px solid rgba(244,81,30,0.3);color:#FF8A65;padding:12px 16px;border-radius:10px;margin-bottom:12px;display:flex;gap:10px;font-size:13px"><span>🟠</span><b>1</b> expiring within 30 days — Fatima Hassan (Contract)</div>
+      <div class="alert alert-warn"><span class="alert-icon">🟡</span><b>1</b> expiring within 60 days — Ahmed Al Mansouri (Visa)</div>
+      <div class="alert alert-info"><span class="alert-icon">🔵</span><b>3</b> expiring within 90 days — Passport renewals due</div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════
+     SETTINGS
+════════════════════════════════════════════════════ -->
+<div id="view-settings" class="view">
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab(this,'set-general')">General</button>
+    <button class="tab-btn" onclick="switchTab(this,'set-integrations')">Integrations</button>
+    <button class="tab-btn" onclick="switchTab(this,'set-security')">Security</button>
+  </div>
+
+  <div id="set-general" class="tab-pane active">
+    <div class="card" style="max-width:640px">
+      <div class="section-title">System Configuration</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Company Name</label>
+          <input type="text" value="Emirates Corp LLC">
+        </div>
+        <div class="form-group">
+          <label>Trade License No.</label>
+          <input type="text" value="TL-2018-DUBAI-12345">
+        </div>
+        <div class="form-group">
+          <label>Country</label>
+          <select><option>UAE — United Arab Emirates</option></select>
+        </div>
+        <div class="form-group">
+          <label>Labour Law</label>
+          <input type="text" value="Federal Decree No. 33 of 2021" readonly>
+        </div>
+        <div class="form-group">
+          <label>Currency</label>
+          <select><option>AED — UAE Dirham</option><option>USD</option></select>
+        </div>
+        <div class="form-group">
+          <label>Working Week</label>
+          <select><option>Mon – Fri (5 days)</option><option>Mon – Sat (6 days)</option></select>
+        </div>
+        <div class="form-group">
+          <label>Default Language</label>
+          <select><option>English</option><option>العربية (Arabic)</option></select>
+        </div>
+        <div class="form-group">
+          <label>Payroll Cycle</label>
+          <select><option>Monthly</option><option>Bi-weekly</option><option>Weekly</option></select>
+        </div>
+        <div class="form-group full">
+          <label>Company Address</label>
+          <textarea>Office 402, Business Bay Tower, Dubai, UAE</textarea>
+        </div>
+      </div>
+      <button class="btn btn-primary mt-16" style="margin-top:14px" onclick="showToast('Settings saved successfully')">Save Configuration</button>
+    </div>
+  </div>
+
+  <div id="set-integrations" class="tab-pane">
+    <div class="grid2">
+      <div class="card">
+        <div class="section-title">Integration Points</div>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div class="flex-between" style="padding:10px;background:rgba(0,137,123,0.08);border-radius:8px"><div><b>Biometric / Attendance</b><div class="text-muted">API / File Import</div></div><span class="badge badge-green">Connected</span></div>
+          <div class="flex-between" style="padding:10px;background:rgba(0,137,123,0.08);border-radius:8px"><div><b>Bank / WPS Portal</b><div class="text-muted">SIF file to finance</div></div><span class="badge badge-green">Connected</span></div>
+          <div class="flex-between" style="padding:10px;background:rgba(0,137,123,0.08);border-radius:8px"><div><b>ERP / Accounting</b><div class="text-muted">REST API / GL Export</div></div><span class="badge badge-green">Connected</span></div>
+          <div class="flex-between" style="padding:10px;background:rgba(255,179,0,0.08);border-radius:8px"><div><b>SMS Gateway</b><div class="text-muted">REST API</div></div><span class="badge badge-amber">Configure</span></div>
+          <div class="flex-between" style="padding:10px;background:rgba(21,101,192,0.08);border-radius:8px"><div><b>LinkedIn / Bayt</b><div class="text-muted">API Push — Job Portals</div></div><span class="badge badge-blue">Medium Priority</span></div>
+          <div class="flex-between" style="padding:10px;background:rgba(21,101,192,0.08);border-radius:8px"><div><b>LMS (Learning Mgmt)</b><div class="text-muted">REST API</div></div><span class="badge badge-purple">Not Connected</span></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="section-title">Technical Stack</div>
+        <div style="display:flex;flex-direction:column;gap:8px;font-size:13.5px">
+          <div class="flex-between"><span class="text-muted">Architecture</span><span>SaaS / Multi-tenant</span></div>
+          <div class="flex-between"><span class="text-muted">Backend</span><span>RESTful API + OpenAPI</span></div>
+          <div class="flex-between"><span class="text-muted">Frontend</span><span>Responsive PWA</span></div>
+          <div class="flex-between"><span class="text-muted">Database</span><span>PostgreSQL (PITR)</span></div>
+          <div class="flex-between"><span class="text-muted">Auth</span><span>OAuth 2.0 / SAML 2.0</span></div>
+          <div class="flex-between"><span class="text-muted">Languages</span><span>English + Arabic (RTL)</span></div>
+          <div class="flex-between"><span class="text-muted">Uptime SLA</span><span style="color:var(--accent)">99.9%</span></div>
+          <div class="flex-between"><span class="text-muted">Data Residency</span><span>UAE / GCC DC</span></div>
+          <div class="flex-between"><span class="text-muted">Backup</span><span>Daily encrypted · 30-day</span></div>
+          <div class="flex-between"><span class="text-muted">Page Load</span><span>&lt; 2 seconds</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="set-security" class="tab-pane">
+    <div class="card" style="max-width:560px">
+      <div class="section-title">Security Settings</div>
+      <div class="alert alert-success mb-20"><span class="alert-icon">🔒</span>bcrypt password hashing · HTTPS enforced · IP whitelist active · 2-year audit retention</div>
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div class="flex-between"><span>Two-Factor Authentication (2FA)</span><button class="btn btn-accent btn-sm" onclick="showToast('2FA enforced for all users')">Enforce All</button></div>
+        <div class="flex-between"><span>Session Timeout (minutes)</span><input type="number" value="30" style="width:80px"></div>
+        <div class="flex-between"><span>Password Min Length</span><input type="number" value="10" style="width:80px"></div>
+        <div class="flex-between"><span>IP Whitelist</span><button class="btn btn-secondary btn-sm" onclick="showToast('IP whitelist manager opened')">Manage IPs</button></div>
+        <div class="flex-between"><span>Annual Pen-Test</span><span class="badge badge-green">Jan 2025 ✓</span></div>
+        <div class="flex-between"><span>OWASP Top 10</span><span class="badge badge-green">Compliant ✓</span></div>
+      </div>
+      <button class="btn btn-primary mt-16" style="margin-top:14px" onclick="showToast('Security settings saved')">Save Security Settings</button>
+    </div>
+  </div>
+</div>
+
+</main>
+
+<!-- ════════════════ MODALS ════════════════ -->
+
+<!-- Add Employee Modal -->
+<div class="modal-overlay" id="emp-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Add New Employee</div>
+      <button class="modal-close" onclick="closeModal('emp-modal')">✕</button>
+    </div>
+    <div class="emp-sections">
+      <section class="emp-section">
+        <div class="emp-section-title">Personal Information</div>
+        <div class="emp-grid">
+          <div class="form-group"><label>Full Name</label><input id="emp-full-name" type="text" placeholder="Ahmed Al Mansouri"></div>
+          <div class="form-group"><label>Employee ID</label><input id="emp-code" type="text" placeholder="Auto-generated" readonly></div>
+          <div class="form-group"><label>Date of Birth</label><input id="emp-dob" type="date"></div>
+          <div class="form-group"><label>Gender</label><select id="emp-gender"><option>Male</option><option>Female</option></select></div>
+          <div class="form-group"><label>Nationality</label><select id="emp-nationality"><option>Emirati</option><option>Indian</option><option>Pakistani</option><option>Filipino</option><option>Other</option></select></div>
+          <div class="form-group"><label>Marital Status</label><select id="emp-marital-status"><option>Single</option><option>Married</option></select></div>
+          <div class="form-group"><label>Mobile</label><input id="emp-mobile" type="text" placeholder="+971 50 XXX XXXX"></div>
+          <div class="form-group"><label>Email</label><input id="emp-email" type="email" placeholder="email@company.ae"></div>
+        </div>
+      </section>
+
+      <section class="emp-section">
+        <div class="emp-section-title">Employment & Reporting</div>
+        <div class="emp-grid">
+          <div class="form-group"><label>Department</label><select id="emp-department"><option>Engineering</option><option>Finance</option><option>Operations</option><option>Sales</option><option>HR & Admin</option></select></div>
+          <div class="form-group"><label>Designation</label><input id="emp-designation" type="text" placeholder="Software Engineer"></div>
+          <div class="form-group">
+            <label>Line Manager</label>
+            <div class="manager-dropdown" id="emp-manager-dropdown">
+              <button type="button" class="manager-trigger" id="emp-line-manager-trigger">Select line manager</button>
+              <div class="manager-menu" id="emp-line-manager-menu">
+                <input id="emp-line-manager-search" type="text" placeholder="Search by name / EMP ID">
+                <div class="manager-options" id="emp-line-manager-options"></div>
+              </div>
+              <input id="emp-line-manager" type="hidden" value="">
+            </div>
+          </div>
+          <div class="form-group"><label>Employment Type</label><select id="emp-employment-type"><option>Full-Time</option><option>Part-Time</option><option>Contract</option></select></div>
+          <div class="form-group"><label>Join Date</label><input id="emp-join-date" type="date"></div>
+          <div class="form-group"><label>Probation Period</label><select id="emp-probation"><option>6 months</option><option>3 months</option><option>None</option></select></div>
+          <div class="form-group"><label>Notice Period</label><select id="emp-notice"><option>30 days</option><option>60 days</option><option>90 days</option></select></div>
+        </div>
+      </section>
+
+      <section class="emp-section">
+        <div class="emp-section-title">Compensation</div>
+        <div class="emp-grid">
+          <div class="form-group"><label>Basic Salary (AED)</label><input id="emp-basic-salary" type="number" placeholder="10,000"></div>
+          <div class="form-group"><label>Pay Frequency</label><select id="emp-pay-frequency"><option>Monthly</option><option>Bi-weekly</option></select></div>
+        </div>
+      </section>
+
+      <section class="emp-section">
+        <div class="emp-section-title">Compliance & IDs</div>
+        <div class="emp-grid">
+          <div class="form-group"><label>Emirates ID</label><input id="emp-emirates-id" type="text" placeholder="784-XXXX-XXXXXXX-X"></div>
+          <div class="form-group"><label>Passport Number</label><input id="emp-passport" type="text" placeholder="A12345678"></div>
+        </div>
+      </section>
+
+      <section class="emp-section">
+        <div class="emp-section-title">Bank & WPS</div>
+        <div class="emp-grid">
+          <div class="form-group"><label>IBAN</label><input id="emp-iban" type="text" placeholder="AE07 0331 2345 6789 0123 456"></div>
+          <div class="form-group"><label>Bank Name</label><input id="emp-bank-name" type="text" placeholder="Emirates NBD"></div>
+          <div class="form-group"><label>WPS Enabled</label><select id="emp-wps"><option value="true">Yes</option><option value="false">No</option></select></div>
+          <div class="form-group"><label>Labour Card</label><input id="emp-labour-card" type="text" placeholder="LC-20210456"></div>
+        </div>
+      </section>
+
+      <section class="emp-section">
+        <div class="emp-section-title">Platform Access</div>
+        <div class="emp-grid">
+          <div class="form-group"><label>Enable Login</label><select id="emp-access-enabled"><option value="true">Yes</option><option value="false">No</option></select></div>
+          <div class="form-group"><label>Role / Access Level</label><select id="emp-user-role"><option value="EMPLOYEE">EMPLOYEE</option><option value="MANAGER">MANAGER</option><option value="HR_OFFICER">HR_OFFICER</option><option value="HR">HR</option><option value="SUPER_ADMIN">SUPER_ADMIN</option></select></div>
+          <div class="form-group"><label>Login Email</label><input id="emp-login-email" type="email" placeholder="Leave blank to use work email"></div>
+          <div class="form-group"><label>Temporary Password</label><input id="emp-login-password" type="password" placeholder="Leave blank for default: Welcome@123"></div>
+        </div>
+      </section>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('emp-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveEmployee()">Create Employee</button>
+    </div>
+  </div>
+</div>
+
+<!-- KPI Modal -->
+<div class="modal-overlay" id="kpi-modal">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header">
+      <div class="modal-title">Add KPI Goal</div>
+      <button class="modal-close" onclick="closeModal('kpi-modal')">✕</button>
+    </div>
+    <div class="form-grid">
+      <div class="form-group full"><label>KPI Name</label><input type="text" placeholder="e.g. Feature Delivery Rate"></div>
+      <div class="form-group full"><label>Description (SMART Goal)</label><textarea placeholder="Specific, Measurable, Achievable, Relevant, Time-bound…"></textarea></div>
+      <div class="form-group"><label>Target (%)</label><input type="number" placeholder="80"></div>
+      <div class="form-group"><label>Weight (%)</label><input type="number" placeholder="25"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('kpi-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="closeModal('kpi-modal');showToast('KPI added successfully')">Add KPI</button>
+    </div>
+  </div>
+</div>
+
+<!-- Job Posting Modal -->
+<div class="modal-overlay" id="job-modal">
+  <div class="modal" style="max-width:540px">
+    <div class="modal-header">
+      <div class="modal-title">New Job Posting</div>
+      <button class="modal-close" onclick="closeModal('job-modal')">✕</button>
+    </div>
+    <div class="form-grid">
+      <div class="form-group full"><label>Job Title</label><input type="text" placeholder="Senior Software Engineer"></div>
+      <div class="form-group"><label>Department</label><select><option>Engineering</option><option>Finance</option><option>Operations</option><option>HR</option></select></div>
+      <div class="form-group"><label>Type</label><select><option>Full-Time</option><option>Part-Time</option><option>Contract</option></select></div>
+      <div class="form-group"><label>Salary Range (AED)</label><input type="text" placeholder="15,000 – 20,000"></div>
+      <div class="form-group"><label>Experience Required</label><input type="text" placeholder="5+ years"></div>
+      <div class="form-group full"><label>Job Description</label><textarea placeholder="Key responsibilities, requirements…" style="min-height:120px"></textarea></div>
+      <div class="form-group full">
+        <label>Publish to Portals</label>
+        <div class="flex gap-8" style="flex-wrap:wrap">
+          <div class="chip active">LinkedIn</div>
+          <div class="chip active">Bayt</div>
+          <div class="chip">Internal Only</div>
+          <div class="chip">Naukri</div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('job-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="closeModal('job-modal');showToast('Job posted to LinkedIn & Bayt')">Publish Job</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<script>
+const HRMS_ACTIVE_VIEW_KEY = 'hrms_active_view';
+const HRMS_ACTIVE_TAB_KEY = 'hrms_active_tab';
+
+function getNavItemByView(view) {
+  return document.querySelector(`.nav-item[onclick*="navigate('${view}'"]`);
+}
+
+// ─── Navigation ───
+function navigate(view, el) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('view-' + view).classList.add('active');
+  if (el) el.classList.add('active');
+  const titles = {
+    dashboard: 'Dashboard <span>/ Overview</span>',
+    employees: 'Employees <span>/ Master Records</span>',
+    leave: 'Leave Management <span>/ Module 02</span>',
+    payroll: 'Payroll & Overtime <span>/ Module 03</span>',
+    ess: 'ESS Portal <span>/ Employee Self-Service</span>',
+    profile: 'My Profile <span>/ Employee Information</span>',
+    performance: 'Performance Management <span>/ Module 05</span>',
+    recruitment: 'Recruitment <span>/ Module 07</span>',
+    documents: 'Document Management <span>/ Module 08</span>',
+    compliance: 'Compliance & Audit <span>/ Module 09</span>',
+    reports: 'Management Reports <span>/ Module 06</span>',
+    settings: 'System Settings <span>/ Administration</span>',
+  };
+  document.getElementById('header-title').innerHTML = titles[view] || view;
+  localStorage.setItem(HRMS_ACTIVE_VIEW_KEY, view);
+  window.scrollTo(0,0);
+}
+
+// ─── Tabs ───
+function switchTab(btn, paneId) {
+  const container = btn.closest('.view') || document.body;
+  container.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  // find matching tab pane
+  const panes = container.querySelectorAll('.tab-pane');
+  panes.forEach(p => p.classList.remove('active'));
+  const pane = document.getElementById(paneId);
+  if (pane) pane.classList.add('active');
+  localStorage.setItem(HRMS_ACTIVE_TAB_KEY, paneId);
+}
+
+// ─── Modal ───
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-overlay').forEach(o => {
+  o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); });
+});
+
+// ─── Toast ───
+let toastTimer;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = '✓ ' + msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ─── Filter table ───
+function filterTable(input, tableId) {
+  const val = input.value.toLowerCase();
+  document.querySelectorAll('#' + tableId + ' tbody tr').forEach(row => {
+    row.style.display = row.textContent.toLowerCase().includes(val) ? '' : 'none';
+  });
+}
+
+// ─── Notification Panel ───
+function toggleNotifPanel() {
+  document.getElementById('notif-panel').classList.toggle('open');
+}
+
+// ─── Logout ───
+function logout() {
+  localStorage.removeItem('hrms_token');
+  showToast('Logged out successfully');
+  setTimeout(() => window.location.reload(), 250);
+}
+
+// ─── Leave Actions ───
+function approveLeave(btn, name) {
+  btn.closest('td').innerHTML = '<span class="badge badge-green">✓ Approved</span>';
+  showToast('Leave approved for ' + name);
+}
+
+// ─── View Employee ───
+function viewEmployee(name) {
+  showToast('Opening record: ' + name);
+}
+
+// ─── Save Employee ───
+function saveEmployee() {
+  closeModal('emp-modal');
+  showToast('Employee created successfully — onboarding checklist initiated');
+}
+
+// ─── Gratuity Calculator ───
+function calcGratuity() {
+  const salary = parseFloat(document.getElementById('gc-salary').value) || 0;
+  const years = parseFloat(document.getElementById('gc-years').value) || 0;
+  const reason = document.getElementById('gc-reason').value;
+  const res = document.getElementById('gratuity-result');
+  const amtEl = document.getElementById('gratuity-amount');
+  const fmEl = document.getElementById('gratuity-formula');
+
+  if (!salary || !years) { res.style.display = 'none'; return; }
+  res.style.display = 'block';
+
+  let days = 0, formula = '';
+  if (years < 1) {
+    amtEl.textContent = 'No gratuity entitlement (< 1 year)';
+    fmEl.textContent = 'Minimum 1 year of service required.';
+    return;
+  } else if (years <= 5) {
+    days = 21;
+    formula = `21 days/year for first 5 years`;
+  } else {
+    days = 30;
+    formula = `30 days/year for service beyond 5 years`;
+  }
+
+  let amount = salary * days * years;
+  const cap = salary * 365 * 2;
+  if (amount > cap) amount = cap;
+
+  amtEl.textContent = 'AED ' + amount.toLocaleString('en-AE', {maximumFractionDigits:0});
+  fmEl.textContent = `Formula: AED ${salary} × ${days} days × ${years} years | ${formula}`;
+}
+
+// ─── Report Generator ───
+function generateReport() {
+  const type = document.getElementById('report-type').value;
+  const fmt = document.getElementById('report-fmt').value;
+  showToast(`${type} (${fmt}) — generating report…`);
+}
+
+// ─── Chip Toggle ───
+document.querySelectorAll('.chip').forEach(c => {
+  c.addEventListener('click', () => c.classList.toggle('active'));
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+  const savedView = localStorage.getItem(HRMS_ACTIVE_VIEW_KEY);
+  if (savedView && document.getElementById('view-' + savedView)) {
+    navigate(savedView, getNavItemByView(savedView));
+  }
+
+  const savedTab = localStorage.getItem(HRMS_ACTIVE_TAB_KEY);
+  if (savedTab) {
+    const pane = document.getElementById(savedTab);
+    if (pane) {
+      const paneContainer = pane.closest('.view');
+      const tabBtn = paneContainer?.querySelector(`.tab-btn[onclick*="'${savedTab}'"]`);
+      if (tabBtn) {
+        switchTab(tabBtn, savedTab);
+      }
+    }
+  }
+});
+</script>
+
+<script type="module" src="/src/hrms-integration.js"></script>
+</body>
+</html>

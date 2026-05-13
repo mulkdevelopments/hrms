@@ -1,0 +1,35 @@
+{
+  "name": "hrms",
+  "version": "0.1.0",
+  "description": "Enterprise-ready HRMS platform",
+  "private": true,
+  "scripts": {
+    "predev": "npm run ports:free",
+    "ports:free": "kill-port 4000 5173 || true",
+    "dev": "concurrently \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
+    "dev:backend": "npm run dev --prefix backend",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "build": "npm run build --prefix backend && npm run build --prefix frontend",
+    "lint": "npm run lint --prefix frontend",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "db:logs": "docker compose logs -f postgres",
+    "db:push": "npm run prisma:push --prefix backend",
+    "db:migrate": "npm run prisma:migrate --prefix backend",
+    "db:deploy": "npm run prisma:deploy --prefix backend",
+    "db:seed": "npm run seed --prefix backend",
+    "db:studio": "npm run prisma:studio --prefix backend"
+  },
+  "keywords": [
+    "hrms",
+    "human-resource-management",
+    "enterprise"
+  ],
+  "author": "HRMS Team",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "kill-port": "^2.0.1",
+    "localtunnel": "^2.0.2"
+  }
+}

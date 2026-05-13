@@ -1,0 +1,1301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Leave Management System</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
+
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #222536;
+    --border: #2d3148;
+    --accent: #4f7cff;
+    --accent2: #7c3aed;
+    --green: #10b981;
+    --orange: #f59e0b;
+    --red: #ef4444;
+    --text: #e8eaf6;
+    --text2: #8b92b8;
+    --text3: #5c6080;
+    --mono: 'Space Mono', monospace;
+    --sans: 'DM Sans', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* SIDEBAR */
+  .sidebar {
+    position: fixed; top: 0; left: 0;
+    width: 240px; height: 100vh;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    z-index: 100;
+    padding: 0 0 24px;
+  }
+
+  .logo {
+    padding: 24px 20px 20px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 16px;
+  }
+  .logo-text {
+    font-size: 13px; font-weight: 700;
+    letter-spacing: 2px; text-transform: uppercase;
+    color: var(--accent); font-family: var(--mono);
+  }
+  .logo-sub { font-size: 11px; color: var(--text3); margin-top: 3px; }
+
+  .nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 20px; cursor: pointer;
+    border-left: 3px solid transparent;
+    transition: all 0.2s; font-size: 14px; font-weight: 500;
+    color: var(--text2);
+  }
+  .nav-item:hover { background: var(--surface2); color: var(--text); }
+  .nav-item.active {
+    background: rgba(79,124,255,0.1);
+    border-left-color: var(--accent);
+    color: var(--accent);
+  }
+  .nav-icon { font-size: 16px; width: 20px; text-align: center; }
+
+  .sidebar-footer {
+    margin-top: auto; padding: 16px 20px;
+    border-top: 1px solid var(--border);
+  }
+  .badge {
+    display: inline-flex; align-items: center;
+    padding: 4px 10px; border-radius: 20px;
+    font-size: 11px; font-weight: 600;
+    font-family: var(--mono);
+    background: rgba(79,124,255,0.15); color: var(--accent);
+  }
+
+  /* MAIN */
+  .main {
+    margin-left: 240px;
+    min-height: 100vh;
+    padding: 32px;
+  }
+
+  .page { display: none; }
+  .page.active { display: block; animation: fadeIn 0.3s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* PAGE HEADER */
+  .page-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 28px;
+  }
+  .page-title { font-size: 26px; font-weight: 700; }
+  .page-subtitle { font-size: 13px; color: var(--text3); margin-top: 3px; }
+
+  /* CARDS */
+  .stats-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: 16px; margin-bottom: 28px;
+  }
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    position: relative; overflow: hidden;
+  }
+  .stat-card::before {
+    content: ''; position: absolute;
+    top: 0; left: 0; right: 0; height: 3px;
+  }
+  .stat-card.blue::before { background: var(--accent); }
+  .stat-card.green::before { background: var(--green); }
+  .stat-card.orange::before { background: var(--orange); }
+  .stat-card.red::before { background: var(--red); }
+  .stat-label { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
+  .stat-value { font-size: 32px; font-weight: 700; margin: 8px 0 4px; font-family: var(--mono); }
+  .stat-desc { font-size: 12px; color: var(--text3); }
+
+  /* TABLE */
+  .table-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .table-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 20px; border-bottom: 1px solid var(--border);
+  }
+  .table-title { font-size: 14px; font-weight: 600; }
+  .table-actions { display: flex; gap: 10px; }
+
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    background: var(--surface2);
+    padding: 12px 16px;
+    text-align: left;
+    font-size: 11px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1px;
+    color: var(--text3);
+    white-space: nowrap;
+  }
+  tbody tr {
+    border-bottom: 1px solid var(--border);
+    transition: background 0.15s;
+  }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: var(--surface2); }
+  tbody td { padding: 12px 16px; font-size: 13px; }
+  .emp-id { font-family: var(--mono); font-size: 12px; color: var(--accent); font-weight: 700; }
+  .emp-name { font-weight: 500; }
+  .emp-desig { font-size: 12px; color: var(--text3); margin-top: 1px; }
+
+  /* PILLS */
+  .pill {
+    display: inline-flex; align-items: center;
+    padding: 3px 10px; border-radius: 20px;
+    font-size: 11px; font-weight: 600;
+    white-space: nowrap;
+  }
+  .pill.green { background: rgba(16,185,129,0.15); color: var(--green); }
+  .pill.orange { background: rgba(245,158,11,0.15); color: var(--orange); }
+  .pill.red { background: rgba(239,68,68,0.15); color: var(--red); }
+  .pill.blue { background: rgba(79,124,255,0.15); color: var(--accent); }
+  .pill.purple { background: rgba(124,58,237,0.15); color: #a78bfa; }
+
+  /* BALANCE BAR */
+  .balance-bar-wrap { display: flex; align-items: center; gap: 10px; min-width: 120px; }
+  .balance-bar {
+    flex: 1; height: 6px; background: var(--border);
+    border-radius: 3px; overflow: hidden;
+  }
+  .balance-bar-fill { height: 100%; border-radius: 3px; transition: width 0.4s; }
+  .balance-num { font-family: var(--mono); font-size: 12px; font-weight: 700; white-space: nowrap; }
+
+  /* BUTTONS */
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 8px 16px; border-radius: 8px; border: none;
+    font-family: var(--sans); font-size: 13px; font-weight: 600;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .btn-primary { background: var(--accent); color: white; }
+  .btn-primary:hover { background: #3d6aed; }
+  .btn-secondary {
+    background: var(--surface2); color: var(--text2);
+    border: 1px solid var(--border);
+  }
+  .btn-secondary:hover { color: var(--text); border-color: var(--accent); }
+  .btn-green { background: var(--green); color: white; }
+  .btn-green:hover { background: #059669; }
+  .btn-sm { padding: 5px 12px; font-size: 12px; }
+  .btn-icon { padding: 8px; border-radius: 8px; }
+
+  /* SEARCH */
+  .search-box {
+    position: relative; display: flex; align-items: center;
+  }
+  .search-box input {
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text); border-radius: 8px;
+    padding: 8px 12px 8px 36px;
+    font-family: var(--sans); font-size: 13px;
+    width: 240px; outline: none;
+    transition: border-color 0.2s;
+  }
+  .search-box input:focus { border-color: var(--accent); }
+  .search-box input::placeholder { color: var(--text3); }
+  .search-icon {
+    position: absolute; left: 10px;
+    color: var(--text3); font-size: 14px;
+  }
+
+  /* INPUT / FORM */
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .form-group { display: flex; flex-direction: column; gap: 6px; }
+  .form-group.full { grid-column: 1 / -1; }
+  label { font-size: 12px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; }
+  input, select, textarea {
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text); border-radius: 8px;
+    padding: 10px 12px; font-family: var(--sans); font-size: 14px;
+    outline: none; transition: border-color 0.2s;
+    width: 100%;
+  }
+  input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+  input::placeholder { color: var(--text3); }
+  select option { background: var(--surface2); }
+
+  /* CARD FORM */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 20px;
+  }
+  .card-title { font-size: 16px; font-weight: 700; margin-bottom: 20px; }
+  .divider { height: 1px; background: var(--border); margin: 20px 0; }
+
+  /* BALANCE LOOKUP */
+  .lookup-hero {
+    background: linear-gradient(135deg, rgba(79,124,255,0.15), rgba(124,58,237,0.1));
+    border: 1px solid rgba(79,124,255,0.3);
+    border-radius: 16px; padding: 40px;
+    text-align: center; margin-bottom: 28px;
+  }
+  .lookup-title { font-size: 24px; font-weight: 700; margin-bottom: 8px; }
+  .lookup-sub { color: var(--text3); margin-bottom: 24px; font-size: 14px; }
+  .lookup-input-row { display: flex; gap: 12px; justify-content: center; max-width: 400px; margin: 0 auto; }
+  .lookup-input-row input { font-size: 16px; font-family: var(--mono); text-align: center; }
+  .result-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px; padding: 28px;
+    display: none; animation: fadeIn 0.3s ease;
+  }
+  .result-card.show { display: block; }
+  .result-emp-name { font-size: 22px; font-weight: 700; }
+  .result-emp-id { font-size: 13px; color: var(--accent); font-family: var(--mono); margin-top: 4px; }
+  .result-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 20px; }
+  .result-item {
+    background: var(--surface2); border-radius: 10px; padding: 16px;
+    border: 1px solid var(--border);
+  }
+  .result-item-label { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+  .result-item-value { font-size: 24px; font-weight: 700; font-family: var(--mono); }
+
+  /* MODAL */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7); z-index: 999;
+    align-items: center; justify-content: center;
+  }
+  .modal-overlay.show { display: flex; }
+  .modal {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; padding: 28px; width: 560px; max-height: 90vh;
+    overflow-y: auto; animation: fadeIn 0.2s ease;
+  }
+  .modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+  .modal-title { font-size: 18px; font-weight: 700; }
+  .modal-close {
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text2); border-radius: 8px; width: 32px; height: 32px;
+    cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center;
+  }
+  .modal-close:hover { color: var(--text); }
+
+  /* TOAST */
+  .toast {
+    position: fixed; bottom: 24px; right: 24px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px 20px;
+    font-size: 14px; font-weight: 500;
+    z-index: 9999; animation: slideUp 0.3s ease;
+    display: none; align-items: center; gap: 10px;
+    min-width: 240px;
+  }
+  .toast.show { display: flex; }
+  .toast.success { border-color: var(--green); color: var(--green); }
+  .toast.error { border-color: var(--red); color: var(--red); }
+  @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+  /* PAGINATION */
+  .pagination { display: flex; align-items: center; gap: 6px; padding: 16px 20px; justify-content: flex-end; }
+  .pg-btn {
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text2); border-radius: 6px; padding: 6px 12px;
+    cursor: pointer; font-size: 13px; font-family: var(--mono);
+    transition: all 0.2s;
+  }
+  .pg-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .pg-btn.active { background: var(--accent); border-color: var(--accent); color: white; }
+  .pg-btn:disabled { opacity: 0.4; cursor: default; }
+  .pg-info { font-size: 12px; color: var(--text3); margin-right: auto; font-family: var(--mono); }
+
+  /* FILTER ROW */
+  .filter-row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .filter-row select { width: auto; }
+
+  /* LEAVE HISTORY TABLE */
+  .history-table-scroll { overflow-x: auto; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--surface); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text3); }
+
+  /* ALERT */
+  .alert {
+    padding: 12px 16px; border-radius: 8px;
+    font-size: 13px; margin-bottom: 16px;
+    display: none; align-items: center; gap: 10px;
+  }
+  .alert.show { display: flex; }
+  .alert.error { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); color: #fca5a5; }
+  .alert.warning { background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.3); color: #fcd34d; }
+  .alert.success { background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.3); color: #6ee7b7; }
+
+  @media (max-width: 1200px) {
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    .result-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  .empty-state {
+    padding: 60px 20px; text-align: center; color: var(--text3);
+  }
+  .empty-state-icon { font-size: 48px; margin-bottom: 12px; }
+  .empty-state-text { font-size: 14px; }
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<div class="sidebar">
+  <div class="logo">
+    <div class="logo-text">LeaveMS</div>
+    <div class="logo-sub">Leave Management System</div>
+  </div>
+  <nav>
+    <div class="nav-item active" onclick="showPage('dashboard')">
+      <span class="nav-icon">📊</span> Dashboard
+    </div>
+    <div class="nav-item" onclick="showPage('employees')">
+      <span class="nav-icon">👥</span> Employees
+    </div>
+    <div class="nav-item" onclick="showPage('leaves')">
+      <span class="nav-icon">📋</span> Leave Records
+    </div>
+    <div class="nav-item" onclick="showPage('balance')">
+      <span class="nav-icon">🔍</span> Check Balance
+    </div>
+    <div class="nav-item" onclick="showPage('add-leave')">
+      <span class="nav-icon">➕</span> Add Leave
+    </div>
+    <div class="nav-item" onclick="showPage('add-employee')">
+      <span class="nav-icon">👤</span> Add Employee
+    </div>
+  </nav>
+  <div class="sidebar-footer">
+    <div class="badge">Max Leave: 60 Days</div>
+  </div>
+</div>
+
+<!-- MAIN CONTENT -->
+<div class="main">
+
+  <!-- DASHBOARD -->
+  <div id="page-dashboard" class="page active">
+    <div class="page-header">
+      <div>
+        <div class="page-title">Dashboard</div>
+        <div class="page-subtitle" id="dash-date"></div>
+      </div>
+      <button class="btn btn-green" onclick="exportAllExcel()">⬇ Export All to Excel</button>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card blue">
+        <div class="stat-label">Total Employees</div>
+        <div class="stat-value" id="stat-total">—</div>
+        <div class="stat-desc">Registered in system</div>
+      </div>
+      <div class="stat-card orange">
+        <div class="stat-label">Currently On Leave</div>
+        <div class="stat-value" id="stat-onleave">—</div>
+        <div class="stat-desc">Active leave records</div>
+      </div>
+      <div class="stat-card red">
+        <div class="stat-label">Not Rejoined</div>
+        <div class="stat-value" id="stat-notrejoined">—</div>
+        <div class="stat-desc">Overdue returns</div>
+      </div>
+      <div class="stat-card green">
+        <div class="stat-label">Avg Leave Balance</div>
+        <div class="stat-value" id="stat-avgbal">—</div>
+        <div class="stat-desc">Average across all staff</div>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <div class="table-header">
+        <div class="table-title">Currently On Leave / Not Rejoined</div>
+        <button class="btn btn-secondary btn-sm" onclick="showPage('leaves')">View All →</button>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Emp ID</th><th>Name</th><th>Leave Type</th>
+            <th>Start Date</th><th>End Date</th><th>Days</th>
+            <th>Status</th><th>Leave Balance</th>
+          </tr>
+        </thead>
+        <tbody id="dash-table-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- EMPLOYEES -->
+  <div id="page-employees" class="page">
+    <div class="page-header">
+      <div>
+        <div class="page-title">Employees</div>
+        <div class="page-subtitle" id="emp-count-label"></div>
+      </div>
+      <div style="display:flex;gap:10px">
+        <button class="btn btn-secondary" onclick="exportEmployeesExcel()">⬇ Export</button>
+        <button class="btn btn-primary" onclick="showPage('add-employee')">+ Add Employee</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="filter-row">
+        <div class="search-box">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="emp-search" placeholder="Search name or ID..." oninput="renderEmployees()">
+        </div>
+        <select id="emp-sort" onchange="renderEmployees()" style="width:160px">
+          <option value="id">Sort by ID</option>
+          <option value="name">Sort by Name</option>
+          <option value="balance_asc">Balance: Low</option>
+          <option value="balance_desc">Balance: High</option>
+        </select>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Emp ID</th><th>Name</th><th>Designation</th>
+            <th>Join Date</th><th>Leave Balance (/ 60)</th><th>Leave Taken</th><th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="emp-table-body"></tbody>
+      </table>
+      <div class="pagination" id="emp-pagination"></div>
+    </div>
+  </div>
+
+  <!-- LEAVE RECORDS -->
+  <div id="page-leaves" class="page">
+    <div class="page-header">
+      <div>
+        <div class="page-title">Leave Records</div>
+        <div class="page-subtitle" id="leave-count-label"></div>
+      </div>
+      <button class="btn btn-green" onclick="exportLeavesExcel()">⬇ Export to Excel</button>
+    </div>
+    <div class="card">
+      <div class="filter-row">
+        <div class="search-box">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="leave-search" placeholder="Search name or ID..." oninput="renderLeaves()">
+        </div>
+        <select id="leave-status-filter" onchange="renderLeaves()" style="width:160px">
+          <option value="">All Status</option>
+          <option value="On Leave">On Leave</option>
+          <option value="Not Rejoined">Not Rejoined</option>
+          <option value="Rejoined">Rejoined</option>
+          <option value="Applied">Applied</option>
+          <option value="Early Rejoin">Early Rejoin</option>
+        </select>
+        <select id="leave-type-filter" onchange="renderLeaves()" style="width:170px">
+          <option value="">All Types</option>
+          <option value="Annual Leave">Annual Leave</option>
+          <option value="Emergency Leave">Emergency Leave</option>
+          <option value="Maternity Leave">Maternity Leave</option>
+          <option value="Sick Leave">Sick Leave</option>
+          <option value="Paternity Leave">Paternity Leave</option>
+        </select>
+        <select id="leave-year-filter" onchange="renderLeaves()" style="width:120px">
+          <option value="">All Years</option>
+          <option value="2024">2024</option>
+          <option value="2025">2025</option>
+          <option value="2026">2026</option>
+        </select>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <div class="history-table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Emp ID</th><th>Name</th><th>Leave Type</th>
+              <th>Start</th><th>End</th><th>Days</th>
+              <th>Rejoin Date</th><th>Status</th><th>Extended</th>
+            </tr>
+          </thead>
+          <tbody id="leave-table-body"></tbody>
+        </table>
+      </div>
+      <div class="pagination" id="leave-pagination"></div>
+    </div>
+  </div>
+
+  <!-- CHECK BALANCE -->
+  <div id="page-balance" class="page">
+    <div class="page-header">
+      <div>
+        <div class="page-title">Check Leave Balance</div>
+        <div class="page-subtitle">Enter employee ID to view balance instantly</div>
+      </div>
+    </div>
+    <div class="lookup-hero">
+      <div class="lookup-title">🔍 Employee Leave Lookup</div>
+      <div class="lookup-sub">Enter the Employee ID to view leave balance and history</div>
+      <div class="lookup-input-row">
+        <input type="text" id="lookup-id" placeholder="Enter ID..." onkeyup="if(event.key==='Enter') lookupEmployee()">
+        <button class="btn btn-primary" onclick="lookupEmployee()">Search</button>
+      </div>
+    </div>
+    <div class="result-card" id="lookup-result">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div>
+          <div class="result-emp-name" id="res-name"></div>
+          <div class="result-emp-id" id="res-id-desig"></div>
+        </div>
+        <span class="pill blue" id="res-status-pill"></span>
+      </div>
+      <div class="result-grid">
+        <div class="result-item">
+          <div class="result-item-label">Leave Balance</div>
+          <div class="result-item-value" id="res-balance" style="color:var(--green)"></div>
+          <div style="font-size:12px;color:var(--text3);margin-top:4px">out of 60 days</div>
+        </div>
+        <div class="result-item">
+          <div class="result-item-label">Total Leave Taken</div>
+          <div class="result-item-value" id="res-taken" style="color:var(--orange)"></div>
+          <div style="font-size:12px;color:var(--text3);margin-top:4px">cumulative days</div>
+        </div>
+        <div class="result-item">
+          <div class="result-item-label">Join Date</div>
+          <div class="result-item-value" id="res-join" style="font-size:16px;color:var(--text2)"></div>
+          <div style="font-size:12px;color:var(--text3);margin-top:4px">start of service</div>
+        </div>
+      </div>
+      <div style="margin-top:20px">
+        <div style="font-size:14px;font-weight:700;margin-bottom:12px">Leave History</div>
+        <div class="history-table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Leave Type</th><th>Start</th><th>End</th>
+                <th>Days</th><th>Rejoin</th><th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="res-history"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div id="lookup-error" class="alert error">
+      <span>❌</span> <span id="lookup-error-text">Employee not found.</span>
+    </div>
+  </div>
+
+  <!-- ADD LEAVE -->
+  <div id="page-add-leave" class="page">
+    <div class="page-header">
+      <div>
+        <div class="page-title">Add Leave Record</div>
+        <div class="page-subtitle">Record a new leave for an employee (max 60 days)</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Leave Details</div>
+      <div id="add-leave-alert" class="alert"></div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Employee ID *</label>
+          <input type="text" id="al-emp-id" placeholder="e.g. 1234" oninput="autofillEmployee()">
+        </div>
+        <div class="form-group">
+          <label>Employee Name</label>
+          <input type="text" id="al-emp-name" placeholder="Auto-filled from ID" readonly style="background:var(--bg)">
+        </div>
+        <div class="form-group">
+          <label>Leave Type *</label>
+          <select id="al-leave-type">
+            <option>Annual Leave</option>
+            <option>Emergency Leave</option>
+            <option>Maternity Leave</option>
+            <option>Paternity Leave</option>
+            <option>Sick Leave</option>
+            <option>Annual Leave (Medical)</option>
+            <option>Umrah Leave</option>
+            <option>Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Leave Status *</label>
+          <select id="al-status">
+            <option value="On Leave">On Leave</option>
+            <option value="Not Rejoined">Not Rejoined</option>
+            <option value="Rejoined">Rejoined</option>
+            <option value="Applied">Applied</option>
+            <option value="Early Rejoin">Early Rejoin</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Start Date *</label>
+          <input type="date" id="al-start" onchange="calcLeaveDays()">
+        </div>
+        <div class="form-group">
+          <label>End Date *</label>
+          <input type="date" id="al-end" onchange="calcLeaveDays()">
+        </div>
+        <div class="form-group">
+          <label>Number of Days</label>
+          <input type="number" id="al-days" placeholder="Auto-calculated" min="1" max="60" readonly style="background:var(--bg)">
+        </div>
+        <div class="form-group">
+          <label>Rejoining Date</label>
+          <input type="date" id="al-rejoin">
+        </div>
+        <div class="form-group full">
+          <label>Remarks</label>
+          <textarea id="al-remark" rows="2" placeholder="Any notes..."></textarea>
+        </div>
+      </div>
+      <div id="al-balance-info" style="margin-top:16px;display:none">
+        <div class="alert warning show" id="al-balance-warn"></div>
+      </div>
+      <div style="margin-top:20px;display:flex;gap:12px">
+        <button class="btn btn-primary" onclick="addLeaveRecord()">Save Leave Record</button>
+        <button class="btn btn-secondary" onclick="clearLeaveForm()">Clear</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ADD EMPLOYEE -->
+  <div id="page-add-employee" class="page">
+    <div class="page-header">
+      <div>
+        <div class="page-title">Add New Employee</div>
+        <div class="page-subtitle">Leave balance auto-calculated from joining date (1 day/26 working days, max 60)</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Employee Information</div>
+      <div id="add-emp-alert" class="alert"></div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Employee ID *</label>
+          <input type="text" id="ae-id" placeholder="e.g. 2900">
+        </div>
+        <div class="form-group">
+          <label>Full Name *</label>
+          <input type="text" id="ae-name" placeholder="Employee full name">
+        </div>
+        <div class="form-group">
+          <label>Designation *</label>
+          <input type="text" id="ae-desig" placeholder="e.g. Operator, Supervisor">
+        </div>
+        <div class="form-group">
+          <label>Joining Date *</label>
+          <input type="date" id="ae-join" onchange="calcNewEmpBalance()">
+        </div>
+        <div class="form-group">
+          <label>Calculated Leave Balance</label>
+          <input type="number" id="ae-balance" placeholder="Auto-calculated (max 60)" min="0" max="60" step="0.5">
+        </div>
+      </div>
+      <div id="ae-calc-info" style="margin-top:12px;font-size:13px;color:var(--text3);display:none"></div>
+      <div style="margin-top:20px;display:flex;gap:12px">
+        <button class="btn btn-primary" onclick="addEmployee()">Add Employee</button>
+        <button class="btn btn-secondary" onclick="clearEmpForm()">Clear</button>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /main -->
+
+<!-- MODAL: Employee Detail -->
+<div class="modal-overlay" id="emp-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-emp-title">Employee Details</div>
+      <button class="modal-close" onclick="closeModal('emp-modal')">✕</button>
+    </div>
+    <div id="modal-emp-body"></div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast">
+  <span id="toast-icon"></span>
+  <span id="toast-msg"></span>
+</div>
+
+<script>
+// ========== DATA ==========
+let employees = [{"id": "14", "name": "Afroz Ali Khan Khan", "designation": "Cashier", "join_date": "2007-05-19", "leave_balance": 60.0}, {"id": "22", "name": "Alamgir Hossin Mohammed Sattar", "designation": "Carpenter", "join_date": "2004-11-07", "leave_balance": 60.0}, {"id": "23", "name": "Amanutullah Khan", "designation": "Aluminium Fabricator", "join_date": "2007-07-14", "leave_balance": 60.0}, {"id": "34", "name": "Ashok Kumar Lekhu Ram", "designation": "Online QC", "join_date": "2008-03-01", "leave_balance": 40.0}, {"id": "41", "name": "Babuu Ansar Ali", "designation": "Extruder Operator", "join_date": "2005-01-09", "leave_balance": 2.42}, {"id": "67", "name": "Esoj Jose", "designation": "Electrical Supervisor", "join_date": "2007-10-03", "leave_balance": 60.0}, {"id": "68", "name": "Esrafil Patu Ali", "designation": "Mason", "join_date": "2006-09-20", "leave_balance": 60.0}, {"id": "81", "name": "Gulak Sutradhar Babu Lal", "designation": "Foreman", "join_date": "2005-01-09", "leave_balance": 60.0}, {"id": "93", "name": "Esmaeil Hassan Rahideh", "designation": "Group Director \u2013 Legal & Communications", "join_date": "2008-02-02", "leave_balance": 60.0}, {"id": "102", "name": "Jayesh Krishnan Gopalakrishnan", "designation": "Sales Executive", "join_date": "2006-09-04", "leave_balance": 60.0}, {"id": "116", "name": "Khorshed Sheikh Nurul Islam", "designation": "FR Helper Line 3", "join_date": "2008-01-08", "leave_balance": 60.0}, {"id": "142", "name": "Mary Jaya Francis", "designation": "Executive Manager \u2013 Chairman\u2019s Office", "join_date": "2006-08-07", "leave_balance": 60.0}, {"id": "147", "name": "Md Mosharaf Hossain", "designation": "Production Supervisor", "join_date": "2007-10-15", "leave_balance": 60.0}, {"id": "166", "name": "Muhammad Inam Noor Muhammad", "designation": "Chairman Driver", "join_date": "2006-09-16", "leave_balance": 60.0}, {"id": "190", "name": "Nasir Aziz Masih Aziz", "designation": "Sales Executive / Cricketer", "join_date": "2006-09-09", "leave_balance": 60.0}, {"id": "194", "name": "Olyullah Ali Akbor", "designation": "Supervisor", "join_date": "2005-09-25", "leave_balance": 60.0}, {"id": "225", "name": "Ravikumar Velayudhan Velayudhan", "designation": "Production Supervisor", "join_date": "2008-01-05", "leave_balance": 60.0}, {"id": "227", "name": "Rezaul Karim Abdur Rouf", "designation": "Extruder Operator", "join_date": "2007-10-10", "leave_balance": 51.08}, {"id": "231", "name": "Roshid Sheikh Taleb Ali Sheikh", "designation": "Helper", "join_date": "2006-09-20", "leave_balance": 60.0}, {"id": "232", "name": "Ruhul Amin Haian Saiyal", "designation": "End Cutting Operator", "join_date": "2007-12-26", "leave_balance": 54.83}, {"id": "234", "name": "Saidur Abdul Samad", "designation": "Lamination Operator", "join_date": "2005-02-05", "leave_balance": 60.0}, {"id": "235", "name": "Saiyed Anwar Hussain Rizvi", "designation": "Senior Manager", "join_date": "2006-04-01", "leave_balance": 60.0}, {"id": "266", "name": "Shareef Asadullah Muhammad", "designation": "PR Manager", "join_date": "2007-09-12", "leave_balance": 60.0}, {"id": "276", "name": "Shoukath Ahmed Khan", "designation": "Security Guard", "join_date": "2006-12-11", "leave_balance": 60.0}, {"id": "279", "name": "Siful Islam Abdul Samad", "designation": "Production Supervisor", "join_date": "2005-11-26", "leave_balance": -8.83}, {"id": "310", "name": "Vijayalekshmi Neelakanta Pillai Sajeev Kumar", "designation": "Temporary Forklift Operator", "join_date": "2006-12-10", "leave_balance": -34.58}, {"id": "331", "name": "Zia Rahman Siraj Uddin", "designation": "PE Loading Operator", "join_date": "2006-05-06", "leave_balance": 60.0}, {"id": "333", "name": "Zohirul Islam Nuruzzaman", "designation": "Maintenance Incharge", "join_date": "2006-09-20", "leave_balance": 58.67}, {"id": "334", "name": "Zulfikar Ali Abdul Majeed", "designation": "Regional Manager", "join_date": "2005-05-04", "leave_balance": 60.0}, {"id": "338", "name": "Jugdayal Sharma Sudeshwar Sharma", "designation": "Foreman", "join_date": "2017-01-12", "leave_balance": 3.5}, {"id": "351", "name": "Shameem Hossain Mofser Mollah", "designation": "Supervisor", "join_date": "2008-04-09", "leave_balance": 60.0}, {"id": "356", "name": "Balwant Singh Munsha Singh", "designation": "Helper", "join_date": "2008-04-30", "leave_balance": 60.0}, {"id": "360", "name": "Moazam Qureshi Mohammed", "designation": "Asst. Operation Manager", "join_date": "2008-05-10", "leave_balance": 60.0}, {"id": "363", "name": "Badri Bahadur Budhathoki", "designation": "Security Guard", "join_date": "2008-05-08", "leave_balance": 60.0}, {"id": "367", "name": "Ratan Sheikh Nurul Islam", "designation": "House Keeper", "join_date": "2008-05-31", "leave_balance": 60.0}, {"id": "379", "name": "Mirza Shafiullah Baig", "designation": "Purchase Assistant", "join_date": "2008-07-12", "leave_balance": 60.0}, {"id": "389", "name": "Mehedi Hasan Abdul Aziz", "designation": "Office Boy", "join_date": "2008-07-25", "leave_balance": 60.0}, {"id": "394", "name": "Kamal Hossain Tofazzal Mollah", "designation": "House Keeper", "join_date": "2008-07-20", "leave_balance": 60.0}, {"id": "399", "name": "Mohammed Parvez Kamal Uddin", "designation": "End Cutting Operator", "join_date": "2008-07-30", "leave_balance": 60.0}, {"id": "434", "name": "Liton Zamal Hossain", "designation": "Lamination Operator", "join_date": "2008-10-21", "leave_balance": 60.0}, {"id": "439", "name": "Prasith Ponnara Kandy", "designation": "Assistant Manager", "join_date": "2008-10-25", "leave_balance": 60.0}, {"id": "453", "name": "Saadullah Khan Nawab Dawood Khan", "designation": "Director- Operational & Sales  Support", "join_date": "2021-07-01", "leave_balance": -12.92}, {"id": "459", "name": "Zahangir Alom Abdul Gony", "designation": "Forklift Operator", "join_date": "2009-01-15", "leave_balance": -2.08}, {"id": "483", "name": "Khairul Hasan Bhuiyan Md Abdur Rashid Bhuiyan", "designation": "Forklift Operator", "join_date": "2009-02-15", "leave_balance": 60.0}, {"id": "565", "name": "Md Zahangir Alam Abdur Rahoman", "designation": "FR Igglo Operator Line 1", "join_date": "2009-10-27", "leave_balance": 60.0}, {"id": "571", "name": "Abdur Rashid Abdul Awal", "designation": "FR Helper Line 2", "join_date": "2009-10-27", "leave_balance": 60.0}, {"id": "572", "name": "Mohammed Milon Lokman Hossain", "designation": "FR Igglo Operator Line 3", "join_date": "2009-10-27", "leave_balance": 60.0}, {"id": "580", "name": "Mohammad Milon Miah Abul Kashem", "designation": "Helper", "join_date": "2009-10-27", "leave_balance": 60.0}, {"id": "583", "name": "Jafar Hqbal Sharif Mannan Sharif", "designation": "FR Operator Line 1", "join_date": "2009-11-07", "leave_balance": 60.0}, {"id": "597", "name": "Samrat Matubbar Md Hakim Matubbar", "designation": "FR Operator Line 3", "join_date": "2009-11-23", "leave_balance": 60.0}, {"id": "600", "name": "Monir Hossain Nurul Islam Patoari", "designation": "FR Operator Line 1", "join_date": "2009-11-23", "leave_balance": 60.0}, {"id": "602", "name": "Alaim Md Motalab", "designation": "FR Helper Line 3", "join_date": "2009-11-23", "leave_balance": 60.0}, {"id": "603", "name": "Mafijur Matubber Shajahan Fakir", "designation": "Production Supervisor", "join_date": "2009-11-23", "leave_balance": 60.0}, {"id": "629", "name": "Amir Alam Khan Bahar Karam", "designation": "Trailer Driver - 68503", "join_date": "2010-02-14", "leave_balance": 60.0}, {"id": "630", "name": "Amir Hossain Kabir Ahmed", "designation": "Imam", "join_date": "2009-12-24", "leave_balance": 60.0}, {"id": "659", "name": "Monir Hossain Reno Miah", "designation": "FR Igglo Helper Line 1", "join_date": "2010-08-08", "leave_balance": 60.0}, {"id": "670", "name": "Mohammad Masum Harunur Rashid", "designation": "Coating Operator", "join_date": "2010-08-18", "leave_balance": 60.0}, {"id": "791", "name": "Yuvaraj Chauhan", "designation": "Office Boy", "join_date": "2011-05-12", "leave_balance": 52.42}, {"id": "801", "name": "Janeesh Jayakumar Baby", "designation": "Trailer Driver / 3 Tonne Pick Up 62755", "join_date": "2011-05-01", "leave_balance": 15.25}, {"id": "802", "name": "Muhammad Pervez Muhammad Idrees", "designation": "Sr.Maintenance Helper", "join_date": "2011-04-09", "leave_balance": 12.67}, {"id": "835", "name": "Asim Abbas Sadiq Ali", "designation": "Credit Controller", "join_date": "2011-06-02", "leave_balance": 60.0}, {"id": "924", "name": "Chandrakant Bhaskarbhai Pawar", "designation": "Group CFO", "join_date": "2012-04-24", "leave_balance": 60.0}, {"id": "945", "name": "Muhammad Irfan Ramzan", "designation": "Helper", "join_date": "2012-10-23", "leave_balance": 42.25}, {"id": "951", "name": "Biju Sasidharan Susheela", "designation": "End Cutting Operator", "join_date": "2012-12-05", "leave_balance": -32.67}, {"id": "976", "name": "Nasar Khan Muhammad Afzal Khan", "designation": "Bus & Light Vehicle Driver - Nissan 14 Seater", "join_date": "2013-01-02", "leave_balance": 29.17}, {"id": "979", "name": "Gopakumar Gopinathan Pillai", "designation": "Asst Manager Planning", "join_date": "2013-01-22", "leave_balance": 18.33}, {"id": "999", "name": "Gul Meen Khan Lal Meer Khan", "designation": "Driver - Toyota Avanza", "join_date": "2013-04-01", "leave_balance": 6.08}, {"id": "1016", "name": "Mohammed Abul Hasan", "designation": "Supervisor", "join_date": "2013-05-16", "leave_balance": 60.0}, {"id": "1076", "name": "Naveed Anjum Muhammad Ramzan Bagoo", "designation": "Electrician", "join_date": "2011-06-23", "leave_balance": 58.83}, {"id": "1077", "name": "Razib Shahid Miah", "designation": "Maintenance Fitter", "join_date": "2006-09-20", "leave_balance": 60.0}, {"id": "1087", "name": "Aneesh Jose", "designation": "CCL Supervisor", "join_date": "2011-03-13", "leave_balance": 60.0}, {"id": "1090", "name": "Ashraful Alam Jalil Sheikh", "designation": "Rewinding Operator", "join_date": "2012-04-18", "leave_balance": 1.83}, {"id": "1093", "name": "Rafiqul Islam Abu Bakkar", "designation": "Finish Coating operator", "join_date": "2011-10-13", "leave_balance": 60.0}, {"id": "1106", "name": "Ram Chandra Pradhan", "designation": "Coating Operator", "join_date": "2013-11-04", "leave_balance": 60.0}, {"id": "1109", "name": "Hardev Singh", "designation": "Forklift Operator", "join_date": "2017-01-07", "leave_balance": 40.58}, {"id": "1183", "name": "Safdar Hussain Muhammad Raheem", "designation": "Helper", "join_date": "2014-02-24", "leave_balance": 60.0}, {"id": "1186", "name": "Israr Ahmed Bashir Ahmed", "designation": "Assistant Entry Operator", "join_date": "2014-02-24", "leave_balance": 60.0}, {"id": "1194", "name": "Ravi Pal Singh", "designation": "Entry Helper", "join_date": "2014-03-09", "leave_balance": 28.08}, {"id": "1206", "name": "Muhammad Saleem Muhammad Asghar", "designation": "Helper", "join_date": "2014-04-06", "leave_balance": 60.0}, {"id": "1207", "name": "Muhammad Altaf Khan Muhammad Roshan", "designation": "Plant Operator", "join_date": "2014-04-06", "leave_balance": 60.0}, {"id": "1208", "name": "Santosh Kumar Tivari", "designation": "Plant Operator", "join_date": "2014-04-09", "leave_balance": 60.0}, {"id": "1219", "name": "Azam Qureshi Mohammed", "designation": "Admin Executive", "join_date": "2014-05-11", "leave_balance": 44.92}, {"id": "1220", "name": "Tufail Khan Kamin Shah", "designation": "Helper", "join_date": "2014-05-11", "leave_balance": 60.0}, {"id": "1221", "name": "Amarnath Kundan", "designation": "Helper", "join_date": "2014-05-18", "leave_balance": 54.75}, {"id": "1263", "name": "Unni Chuttakatt", "designation": "IT Manager", "join_date": "2014-08-12", "leave_balance": 44.75}, {"id": "1282", "name": "Amrik Suman", "designation": "Office Boy", "join_date": "2014-09-10", "leave_balance": 35.25}, {"id": "1307", "name": "Praveen Prakash Noha", "designation": "Operator", "join_date": "2014-10-01", "leave_balance": 60.0}, {"id": "1315", "name": "Amarjeet Raja Ram", "designation": "Helper", "join_date": "2014-10-09", "leave_balance": 60.0}, {"id": "1319", "name": "Mohammed Ziyauddin Shaikh\u200e", "designation": "Area Manager", "join_date": "2014-10-14", "leave_balance": 39.08}, {"id": "1345", "name": "Vasanth Kishore Attota", "designation": "Managing Director", "join_date": "2013-11-16", "leave_balance": 60.0}, {"id": "1360", "name": "Buchi Babu Daram", "designation": "Production Manager", "join_date": "2014-12-24", "leave_balance": 60.0}, {"id": "1376", "name": "Vishnu Mohanan", "designation": "Coating Operator", "join_date": "2015-02-19", "leave_balance": 44.08}, {"id": "1399", "name": "Bachittar Singh", "designation": "Forklift Operator", "join_date": "2015-03-22", "leave_balance": 60.0}, {"id": "1402", "name": "Khushali Bhagirath", "designation": "FR Igglo Helper Line 3", "join_date": "2015-03-26", "leave_balance": 60.0}, {"id": "1417", "name": "Nawab Afaque Mohammed Khan", "designation": "Internal Auditor", "join_date": "2015-04-26", "leave_balance": 60.0}, {"id": "1539", "name": "Salahudheen Karikuzhiyan Variyath", "designation": "Light Vehicle/Bus Driver - Yaris 82330", "join_date": "2015-09-13", "leave_balance": 32.0}, {"id": "1544", "name": "Sanjay Kumar Kamala Prasad", "designation": "Helper", "join_date": "2015-09-14", "leave_balance": 60.0}, {"id": "1570", "name": "Chandra Mohan", "designation": "Personal Assistant to Deputy Chairperson", "join_date": "2015-05-01", "leave_balance": 60.0}, {"id": "1605", "name": "Manoj Indika Kelum Mahingoda Mahingoda Naidelage", "designation": "Security Guard", "join_date": "2016-03-10", "leave_balance": 35.67}, {"id": "1608", "name": "Fayaz Ali Mohammed", "designation": "Marketing Manager", "join_date": "2016-03-20", "leave_balance": 60.0}, {"id": "1611", "name": "Sunil Rana", "designation": "Supervisor", "join_date": "2016-04-17", "leave_balance": 60.0}, {"id": "1617", "name": "Mohammed Mubeen Mahmood Ali", "designation": "Sr. HSE Officer", "join_date": "2016-05-29", "leave_balance": 55.25}, {"id": "1648", "name": "Arbab Ahmed Khan", "designation": "CEO", "join_date": "2016-09-01", "leave_balance": 60.0}, {"id": "1654", "name": "Nehal Ahamad Najirullah", "designation": "Aluminium Fabricator", "join_date": "2016-10-27", "leave_balance": 60.0}, {"id": "1693", "name": "Shaik Rasheed Ahmed", "designation": "Site Engineer", "join_date": "2016-11-20", "leave_balance": 60.0}, {"id": "1699", "name": "Rejanesh Kumar Raghavan", "designation": "CNC Programmer cum Operator", "join_date": "2016-11-24", "leave_balance": 60.0}, {"id": "1708", "name": "Nakul Terasi", "designation": "Helper", "join_date": "2016-12-12", "leave_balance": 43.17}, {"id": "1730", "name": "Wenjing Zhang", "designation": "Sourcing & Quality Coordinator", "join_date": "2017-02-01", "leave_balance": 60.0}, {"id": "1761", "name": "Syed Mushtaq Ahamad Syed Mukhtar Ahmed", "designation": "Production Manager", "join_date": "2017-05-06", "leave_balance": 60.0}, {"id": "1801", "name": "Amer Khan Mohammed", "designation": "Fitter", "join_date": "2017-06-05", "leave_balance": 60.0}, {"id": "1806", "name": "Saroj Kumar Mukhram", "designation": "Helper", "join_date": "2017-07-03", "leave_balance": -60.75}, {"id": "1856", "name": "Kumar Gautam Kamal Kishore Prasad", "designation": "Assistant Operation Manager -  Metalplast Hamariyah Operation ( A2 Core, Adhesive Film & Scrap Processing)", "join_date": "2017-10-01", "leave_balance": 48.42}, {"id": "1867", "name": "Hassan Bilal Abdul Sattar", "designation": "Helper", "join_date": "2017-10-15", "leave_balance": 20.58}, {"id": "1884", "name": "Akhin Varghese", "designation": "Data Entry Operator - Warehouse", "join_date": "2017-10-18", "leave_balance": 60.0}, {"id": "2688", "name": "Ben Nitin Ezhil", "designation": "CEO - Mulk Properties", "join_date": "2025-04-02", "leave_balance": 26.83}, {"id": "1901", "name": "Sadre Alam", "designation": "Helper", "join_date": "2017-10-26", "leave_balance": 60.0}, {"id": "1944", "name": "Kamlesh Kumar Chaudhary", "designation": "Fabricator", "join_date": "2017-11-07", "leave_balance": 60.0}, {"id": "2014", "name": "Bacha Rashid Fazal Wahid", "designation": "Carpenter", "join_date": "2017-12-24", "leave_balance": 60.0}, {"id": "2027", "name": "Rahumathulla Mohamed Naseer", "designation": "Quality Controller", "join_date": "2017-12-25", "leave_balance": 38.83}, {"id": "2078", "name": "Jabeena Ponmanichi Baboo", "designation": "Accounts Manager", "join_date": "2018-02-09", "leave_balance": 60.0}, {"id": "2120", "name": "Siraj Ahmad", "designation": "Operator", "join_date": "2018-04-16", "leave_balance": 52.67}, {"id": "2135", "name": "Pramod Yadav", "designation": "Shuttering Carpenter", "join_date": "2020-08-06", "leave_balance": 48.25}, {"id": "2173", "name": "Mahesh Babu", "designation": "Shift Supervisor", "join_date": "2018-05-21", "leave_balance": 60.0}, {"id": "2228", "name": "Mohammad Jawed", "designation": "Security Guard", "join_date": "2018-07-23", "leave_balance": 53.92}, {"id": "2231", "name": "Mohanad Tarek Ghziel", "designation": "Debt Collector", "join_date": "2018-08-01", "leave_balance": 60.0}, {"id": "2240", "name": "Rifas Ansary Mohammed", "designation": "Accounts Assistant", "join_date": "2018-07-31", "leave_balance": 44.67}, {"id": "2243", "name": "Damburu Epili", "designation": "Helper", "join_date": "2018-08-07", "leave_balance": 46.92}, {"id": "2247", "name": "Ajaya Kumar", "designation": "Mason", "join_date": "2018-08-14", "leave_balance": 44.17}, {"id": "2286", "name": "Aqil Javed", "designation": "Industrial Electrician", "join_date": "2019-01-14", "leave_balance": 32.17}, {"id": "2314", "name": "Vinod Sohan", "designation": "Helper", "join_date": "2019-10-14", "leave_balance": 60.0}, {"id": "2315", "name": "Mandresh  Khedan", "designation": "Helper", "join_date": "2019-10-14", "leave_balance": 60.0}, {"id": "2317", "name": "Adbul Rauf", "designation": "Helper", "join_date": "2019-10-16", "leave_balance": 60.0}, {"id": "2318", "name": "Salim Akhter Khan", "designation": "Electrician", "join_date": "2019-11-01", "leave_balance": 58.17}, {"id": "2329", "name": "Ahmed Ashraf Shaban Elsayed Ahmed", "designation": "Sales Executive", "join_date": "2019-11-23", "leave_balance": 60.0}, {"id": "2330", "name": "Amritlal Ramanand", "designation": "Helper", "join_date": "2020-01-13", "leave_balance": 60.0}, {"id": "2331", "name": "Sanjeet Kumar", "designation": "Helper", "join_date": "2020-01-13", "leave_balance": 60.0}, {"id": "2372", "name": "Rinaazuddin Khan", "designation": "Graphic Designer", "join_date": "2020-07-01", "leave_balance": 60.0}, {"id": "2381", "name": "Sunil Kumar Kuswaha", "designation": "CCL Helper", "join_date": "2020-08-29", "leave_balance": 60.0}, {"id": "2397", "name": "Justin Jose", "designation": "Online QC", "join_date": "2020-11-11", "leave_balance": 46.08}, {"id": "2403", "name": "Pramodkumar Rajan", "designation": "Production Supervisor", "join_date": "2020-12-06", "leave_balance": 41.25}, {"id": "2406", "name": "Alben Johnson", "designation": "Sales Coordinator", "join_date": "2020-12-13", "leave_balance": 60.0}, {"id": "2407", "name": "Radhakrishnan Ramankutty", "designation": "Maintenance Supervisor", "join_date": "2020-12-16", "leave_balance": 21.83}, {"id": "2409", "name": "Ranjan Padapattan", "designation": "Helper", "join_date": "2020-12-22", "leave_balance": 60.0}, {"id": "2414", "name": "Rajeev Kumar", "designation": "Helper", "join_date": "2021-01-20", "leave_balance": 60.0}, {"id": "2417", "name": "Mohammad Shafiq", "designation": "Helper", "join_date": "2021-01-31", "leave_balance": 36.83}, {"id": "2429", "name": "Anowar Hossain", "designation": "Helper", "join_date": "2021-03-02", "leave_balance": 35.83}, {"id": "2430", "name": "Md Masum", "designation": "Helper", "join_date": "2021-03-09", "leave_balance": 36.08}, {"id": "2431", "name": "Mohammed Dider", "designation": "Helper", "join_date": "2021-03-18", "leave_balance": 60.0}, {"id": "2436", "name": "Mumeen Khan", "designation": "Forklift Operator", "join_date": "2021-03-24", "leave_balance": 35.17}, {"id": "2440", "name": "Md Alamgir Hossain", "designation": "Helper", "join_date": "2021-04-08", "leave_balance": 60.0}, {"id": "2448", "name": "Md Asrul", "designation": "Helper", "join_date": "2021-06-09", "leave_balance": 60.0}, {"id": "2449", "name": "Md Fahad", "designation": "Helper", "join_date": "2021-05-27", "leave_balance": 25.83}, {"id": "2450", "name": "Najir Hussain", "designation": "Helper", "join_date": "2021-06-09", "leave_balance": 23.67}, {"id": "2451", "name": "Faisal Yousaf Muhammad", "designation": "Blownfilm Plant Operator", "join_date": "2021-06-17", "leave_balance": 28.83}, {"id": "2461", "name": "Mohammed Tayab Ali", "designation": "Construction Manager", "join_date": "2021-08-25", "leave_balance": 60.0}, {"id": "2471", "name": "Gobri Yadav", "designation": "Fabricator", "join_date": "2021-09-27", "leave_balance": 15.33}, {"id": "2472", "name": "Abdur Rehman", "designation": "Security Guard", "join_date": "2021-09-28", "leave_balance": 60.0}, {"id": "2478", "name": "Saqib Raza", "designation": "Fabricator", "join_date": "2021-10-23", "leave_balance": 60.0}, {"id": "2479", "name": "Naveed Rasheed", "designation": "Fabricator/Silicon/crimping/Copy Router Operator", "join_date": "2021-10-23", "leave_balance": 60.0}, {"id": "2480", "name": "Anzar Haleedhulla", "designation": "Driver", "join_date": "2021-11-02", "leave_balance": 60.0}, {"id": "2481", "name": "Albin Kavil Joseph", "designation": "Electrical Supervisor", "join_date": "2021-11-04", "leave_balance": 60.0}, {"id": "2482", "name": "Muhammad Adnan Akram", "designation": "Fabricator Cum Driver", "join_date": "2021-11-06", "leave_balance": 60.0}, {"id": "2483", "name": "Gaurav Singh Nawal Kishor", "designation": "CCL Operator", "join_date": "2021-11-11", "leave_balance": 20.58}, {"id": "2486", "name": "Maaz Ahmed", "designation": "Sales Coordinator", "join_date": "2021-11-21", "leave_balance": 60.0}, {"id": "2491", "name": "Sahib Zada Sher Afzal Khan", "designation": "Driver", "join_date": "2021-12-09", "leave_balance": 14.5}, {"id": "2499", "name": "Mohammed Ramjan Ali", "designation": "Helper", "join_date": "2022-01-18", "leave_balance": 53.92}, {"id": "2500", "name": "Dhurba Prakash Neupane", "designation": "Assistant QC(ACP & CCL)", "join_date": "2022-01-24", "leave_balance": 60.0}, {"id": "2501", "name": "Kamlesh Kumar Kushwaha", "designation": "Helper", "join_date": "2021-12-29", "leave_balance": 60.0}, {"id": "2502", "name": "Sahadat Sheikh", "designation": "Office boy", "join_date": "2022-01-26", "leave_balance": -0.5}, {"id": "2503", "name": "Md Rajib Hossen", "designation": "Office boy", "join_date": "2022-01-25", "leave_balance": 60.0}, {"id": "2504", "name": "Muhammad Tayyab", "designation": "Helper", "join_date": "2022-01-21", "leave_balance": 60.0}, {"id": "2506", "name": "Md Sayful Islam", "designation": "Helper", "join_date": "2022-01-24", "leave_balance": 60.0}, {"id": "2507", "name": "Umar Farooq", "designation": "Helper", "join_date": "2022-01-24", "leave_balance": 60.0}, {"id": "2508", "name": "Md Saidur Islam", "designation": "Helper", "join_date": "2022-01-25", "leave_balance": 57.5}, {"id": "2509", "name": "Md Israfil Ibrahim", "designation": "Helper", "join_date": "2022-01-25", "leave_balance": 60.0}, {"id": "2510", "name": "Sanjay Kumar Chaudhari", "designation": "Fabricator", "join_date": "2022-01-31", "leave_balance": 60.0}, {"id": "2516", "name": "Rajesh Kumar Choudhary", "designation": "Fabricator", "join_date": "2022-02-07", "leave_balance": 60.0}, {"id": "2517", "name": "Aman Ullah", "designation": "Helper", "join_date": "2022-02-11", "leave_balance": 60.0}, {"id": "2518", "name": "Md Montu Khan", "designation": "Helper", "join_date": "2022-03-22", "leave_balance": 60.0}, {"id": "2520", "name": "Salman Qureshi Mohammed", "designation": "Security Guard", "join_date": "2022-02-18", "leave_balance": 34.67}, {"id": "2521", "name": "Bacha Khalid", "designation": "Driver-light & Heavy Vehicle", "join_date": "2022-02-22", "leave_balance": 56.08}, {"id": "2522", "name": "Sajidul Islam", "designation": "Janitor", "join_date": "2022-02-28", "leave_balance": 60.0}, {"id": "2523", "name": "Anisur  Rahman", "designation": "Helper", "join_date": "2022-03-16", "leave_balance": 60.0}, {"id": "2526", "name": "Shahid Rafique", "designation": "Assistant Safety Officer", "join_date": "2022-02-18", "leave_balance": -0.58}, {"id": "2531", "name": "Md Nurjamal Sardar", "designation": "Helper", "join_date": "2022-03-22", "leave_balance": 60.0}, {"id": "2534", "name": "Alomgir Md Huqum Ali", "designation": "Helper", "join_date": "2022-03-29", "leave_balance": 60.0}, {"id": "2535", "name": "Abul Hossain", "designation": "Helper", "join_date": "2022-03-29", "leave_balance": 60.0}, {"id": "2536", "name": "Md Shahin", "designation": "Helper", "join_date": "2022-03-29", "leave_balance": 60.0}, {"id": "2537", "name": "Rasel Ali Sha", "designation": "Helper", "join_date": "2022-04-05", "leave_balance": 60.0}, {"id": "2538", "name": "Rasel Iman Hossain", "designation": "Helper", "join_date": "2022-04-05", "leave_balance": 60.0}, {"id": "2539", "name": "Awais Ali", "designation": "Helper", "join_date": "2022-04-05", "leave_balance": 60.0}, {"id": "2540", "name": "Md Amir Ali", "designation": "Helper", "join_date": "2022-04-13", "leave_balance": 60.0}, {"id": "2542", "name": "Lokman Madbor", "designation": "Helper", "join_date": "2022-04-13", "leave_balance": 60.0}, {"id": "2543", "name": "Md Ali Hossan Shikder", "designation": "Helper", "join_date": "2022-04-20", "leave_balance": 59.17}, {"id": "2545", "name": "Mohammad Jamal Badiyar", "designation": "Draftsman Cum Coordinator", "join_date": "2022-04-20", "leave_balance": 48.17}, {"id": "2546", "name": "Mohammed Liton", "designation": "Helper", "join_date": "2022-05-06", "leave_balance": 60.0}, {"id": "2550", "name": "Grasvin Grogory", "designation": "QC Incharge", "join_date": "2022-05-27", "leave_balance": 60.0}, {"id": "2553", "name": "Ripon Talukder", "designation": "Helper", "join_date": "2022-06-07", "leave_balance": 58.5}, {"id": "2554", "name": "Sheikh Shahid", "designation": "Helper", "join_date": "2022-06-07", "leave_balance": 58.5}, {"id": "2555", "name": "Md Sohan Molla", "designation": "Helper", "join_date": "2022-06-07", "leave_balance": 58.5}, {"id": "2556", "name": "Pritish Ghosh", "designation": "BIM LGS Specialist", "join_date": "2022-06-09", "leave_balance": 34.25}, {"id": "2558", "name": "Sowrab Mia", "designation": "Helper", "join_date": "2022-06-17", "leave_balance": 57.67}, {"id": "2559", "name": "Vikki Kumar", "designation": "Operator", "join_date": "2022-06-13", "leave_balance": 58.0}, {"id": "2565", "name": "Rajkumar Ganesan", "designation": "Storekeeper & logistics Coordinator", "join_date": "2022-07-19", "leave_balance": 32.5}, {"id": "2566", "name": "Md Giasuddin Sardar", "designation": "Helper", "join_date": "2022-07-19", "leave_balance": 55.0}, {"id": "2567", "name": "Muhammad Imran Muhammad Akram", "designation": "Plumber", "join_date": "2022-07-26", "leave_balance": 49.0}, {"id": "2568", "name": "Dinesh Kumar Bhardwaj", "designation": "Welder", "join_date": "2022-07-28", "leave_balance": 51.25}, {"id": "2570", "name": "Shahzada Khan", "designation": "Fabricator", "join_date": "2022-08-05", "leave_balance": 50.92}, {"id": "2573", "name": "Suresh Badhan Mistree", "designation": "Supervisor/Team Leader", "join_date": "2022-08-01", "leave_balance": 60.0}, {"id": "2575", "name": "Ahmed Abdul Latheef Nijar", "designation": "Logistics Manager", "join_date": "2022-08-17", "leave_balance": 60.0}, {"id": "2580", "name": "Nicolo Montesi", "designation": "Project Manager & Design leader", "join_date": "2022-09-05", "leave_balance": 45.58}, {"id": "2582", "name": "Niyas Mohamed Deen Mohamed", "designation": "Electrician /Fabricator", "join_date": "2022-10-11", "leave_balance": 60.0}, {"id": "2583", "name": "Thivas Thilakan", "designation": "Assistant   Manager - HR", "join_date": "2022-10-13", "leave_balance": 60.0}, {"id": "2589", "name": "Mohammed Sameer Sageer Ahmed", "designation": "Fabricator ( Windows & LGS)", "join_date": "2022-11-01", "leave_balance": 13.67}, {"id": "2590", "name": "Priyanti Prabhat Tatke", "designation": "Purchase Officer", "join_date": "2022-11-16", "leave_balance": 58.0}, {"id": "2591", "name": "Gedela Hari Prasad Reddy", "designation": "Graphic Designer/Video Editor", "join_date": "2022-11-18", "leave_balance": 60.0}, {"id": "2594", "name": "Naveed Shams Ur Rehman", "designation": "Supervisor", "join_date": "2022-11-22", "leave_balance": 32.5}, {"id": "2595", "name": "Nand Kishor Mahto", "designation": "Mason", "join_date": "2022-12-06", "leave_balance": 43.33}, {"id": "2596", "name": "Sahid Ahamad", "designation": "Steel Fixer", "join_date": "2022-11-01", "leave_balance": 46.25}, {"id": "2599", "name": "Abdul Rahman", "designation": "Helper", "join_date": "2022-11-07", "leave_balance": 59.75}, {"id": "2602", "name": "Azharudeen Sidik Batcha", "designation": "Head - LGS Division", "join_date": "2023-03-16", "leave_balance": 60.0}, {"id": "2606", "name": "Umair Ali Khan", "designation": "Sales Manager", "join_date": "2021-08-15", "leave_balance": 60.0}, {"id": "2609", "name": "Nirosh Tharindu Madhusanka Thewage Don", "designation": "Steel Fixer", "join_date": "2023-04-28", "leave_balance": 30.42}, {"id": "2610", "name": "Natalia Kolieva", "designation": "Director - Luxury Brands", "join_date": "2023-05-22", "leave_balance": 57.42}, {"id": "2611", "name": "Sreejesh Kumar", "designation": "CCL Planner", "join_date": "2023-06-02", "leave_balance": 30.67}, {"id": "2613", "name": "Amrish Pandey", "designation": "Helper", "join_date": "2023-06-07", "leave_balance": 60.0}, {"id": "2614", "name": "Manish Kumar Yadav", "designation": "Helper", "join_date": "2023-06-07", "leave_balance": 60.0}, {"id": "2615", "name": "Qamar Zaman Muhammad Akmal", "designation": "CNC Programmer & Operator", "join_date": "2023-06-20", "leave_balance": 28.83}, {"id": "2617", "name": "Masood Ur Rahman", "designation": "Helper", "join_date": "2023-07-17", "leave_balance": 60.0}, {"id": "2618", "name": "Atta Ur Rahman", "designation": "Helper", "join_date": "2023-07-17", "leave_balance": 24.75}, {"id": "2619", "name": "Atiq Ur Rahman", "designation": "Helper", "join_date": "2023-07-17", "leave_balance": 60.0}, {"id": "2621", "name": "Fawad Zada", "designation": "Helper", "join_date": "2023-07-19", "leave_balance": 21.33}, {"id": "2622", "name": "Ahtsham Khalid", "designation": "Helper", "join_date": "2023-07-21", "leave_balance": 60.0}, {"id": "2624", "name": "Ahmad Ullah", "designation": "Helper", "join_date": "2023-08-10", "leave_balance": 53.42}, {"id": "2626", "name": "Sanjeev Dubey", "designation": "Helper", "join_date": "2023-08-16", "leave_balance": 60.0}, {"id": "2627", "name": "Bheem Kumar Thakur", "designation": "Helper", "join_date": "2023-08-16", "leave_balance": 60.0}, {"id": "2628", "name": "Sona Kizhakudan Prince", "designation": "Sales Coordinator", "join_date": "2023-08-21", "leave_balance": 4.58}, {"id": "2630", "name": "Mohammed Ishaq Reddy", "designation": "Coordinator - Finance", "join_date": "2023-08-04", "leave_balance": 60.0}, {"id": "2631", "name": "Ujjwal Mishra", "designation": "Online QC - CCL", "join_date": "2023-09-20", "leave_balance": 60.0}, {"id": "2632", "name": "Ratheesh Pv", "designation": "Maintenance Manager", "join_date": "2023-09-18", "leave_balance": 60.0}, {"id": "2633", "name": "Anupam Chakraborty", "designation": "MEP Engineer", "join_date": "2023-09-01", "leave_balance": 60.0}, {"id": "2635", "name": "Muhamed Minhaj Nayarkandy", "designation": "Junior Accountant", "join_date": "2023-09-14", "leave_balance": 49.83}, {"id": "2636", "name": "Sanjoga Thapa", "designation": "Supervisor", "join_date": "2023-09-25", "leave_balance": 46.17}, {"id": "2638", "name": "Muhammad Saad Tanveer", "designation": "Assistant Manager - QC", "join_date": "2023-10-02", "leave_balance": 37.42}, {"id": "2642", "name": "Wazey Khan", "designation": "Sales Engineer", "join_date": "2023-12-11", "leave_balance": 60.0}, {"id": "2643", "name": "Muhammed Rassel", "designation": "MEP Supervisor", "join_date": "2023-12-11", "leave_balance": 42.5}, {"id": "2644", "name": "Muhammad Mushtaq", "designation": "Helper", "join_date": "2023-12-11", "leave_balance": 60.0}, {"id": "2645", "name": "Md Imran Ali", "designation": "Forklift Operator", "join_date": "2023-12-20", "leave_balance": 60.0}, {"id": "2646", "name": "Abraham John Thumpassery", "designation": "Director - Business Development", "join_date": "2023-12-04", "leave_balance": 60.0}, {"id": "2647", "name": "Sethu Kumar", "designation": "Senior Accountant", "join_date": "2024-01-02", "leave_balance": 52.67}, {"id": "2655", "name": "Chandan Mandal", "designation": "Welder", "join_date": "2024-01-23", "leave_balance": 60.0}, {"id": "2656", "name": "Amith V.R", "designation": "Junior Executive - HR", "join_date": "2024-02-22", "leave_balance": 11.33}, {"id": "2657", "name": "Vipulkumar Bhanuprasad Dvivedi", "designation": "Senior Project Manager", "join_date": "2024-03-07", "leave_balance": 60.0}, {"id": "2658", "name": "Satheesh Edassery", "designation": "Double Head Cutting Machine Operator", "join_date": "2024-04-03", "leave_balance": 60.0}, {"id": "2661", "name": "Mohammed Sayeed Ahmed", "designation": "Sales Manager", "join_date": "2024-04-16", "leave_balance": 60.0}, {"id": "2662", "name": "Hom Bahadur Gyawa", "designation": "Security Guard", "join_date": "2024-04-30", "leave_balance": 60.0}, {"id": "2663", "name": "Rishikesh Pulasseri", "designation": "Data Entry Operator", "join_date": "2024-05-06", "leave_balance": 60.0}, {"id": "2664", "name": "Musaddaq Kaleem", "designation": "Helper", "join_date": "2024-05-02", "leave_balance": 60.0}, {"id": "2665", "name": "Manmeet Singh", "designation": "Helper", "join_date": "2024-05-02", "leave_balance": 60.0}, {"id": "2666", "name": "Irfan Ali", "designation": "Helper", "join_date": "2024-05-02", "leave_balance": 60.0}, {"id": "2667", "name": "Shabaz Khan", "designation": "Helper", "join_date": "2024-05-02", "leave_balance": 60.0}, {"id": "2668", "name": "Zain Ul Rehman", "designation": "Helper", "join_date": "2024-05-02", "leave_balance": 60.0}, {"id": "2670", "name": "Bobby Singh Jaspal Singh", "designation": "Helper", "join_date": "2024-05-22", "leave_balance": 43.58}, {"id": "2671", "name": "Harpreet Singh", "designation": "Helper", "join_date": "2024-05-22", "leave_balance": 36.75}, {"id": "2672", "name": "Daljinder Singh", "designation": "Helper", "join_date": "2024-05-22", "leave_balance": 58.92}, {"id": "2673", "name": "Gurjit Kumar", "designation": "Helper", "join_date": "2024-05-22", "leave_balance": 58.92}, {"id": "2675", "name": "Muhammad Talha", "designation": "Helper", "join_date": "2024-05-23", "leave_balance": 58.83}, {"id": "2676", "name": "Adnan Ali", "designation": "Helper", "join_date": "2024-05-23", "leave_balance": 53.83}, {"id": "2677", "name": "Muhammad Sohail", "designation": "Helper", "join_date": "2024-05-27", "leave_balance": 58.5}, {"id": "2680", "name": "Gokul Mohan", "designation": "ACP Lamination Operator", "join_date": "2024-05-28", "leave_balance": 58.42}, {"id": "2681", "name": "Muhammad Hanzlah Awan", "designation": "Helper", "join_date": "2024-05-10", "leave_balance": 59.92}, {"id": "2682", "name": "Yasa Rakesh", "designation": "LGS Detailer", "join_date": "2024-05-30", "leave_balance": 28.25}, {"id": "2683", "name": "Karan Kumar", "designation": "Helper", "join_date": "2024-06-06", "leave_balance": 57.67}, {"id": "2684", "name": "Dheeraj", "designation": "Helper", "join_date": "2024-06-06", "leave_balance": 57.67}, {"id": "2685", "name": "Muhammad Zohaib Haider", "designation": "Helper", "join_date": "2024-06-06", "leave_balance": 57.67}, {"id": "2687", "name": "Shaheen Siraj Hunerkar", "designation": "MEP Draftsman", "join_date": "2024-06-13", "leave_balance": 24.08}, {"id": "2689", "name": "Mohammad Salman", "designation": "Purchase Executive", "join_date": "2024-06-24", "leave_balance": 56.17}, {"id": "2690", "name": "Joyce V Camposano", "designation": "Project Coordinator", "join_date": "2024-06-25", "leave_balance": 26.08}, {"id": "2691", "name": "Abu thahir", "designation": "Project Manager", "join_date": "2024-07-01", "leave_balance": 55.58}, {"id": "2692", "name": "Imran Ali", "designation": "Customs Officer", "join_date": "2024-07-04", "leave_balance": 24.33}, {"id": "2695", "name": "Sheikdawood Navaskhan", "designation": "Online QC", "join_date": "2024-07-15", "leave_balance": 54.42}, {"id": "2696", "name": "Mohd Abran Arif", "designation": "Junior Accountant", "join_date": "2024-07-17", "leave_balance": 24.25}, {"id": "2699", "name": "Sayuri Bhagyawi Jayarathna", "designation": "Sponsorship Manager", "join_date": "2024-08-01", "leave_balance": 38.0}, {"id": "2700", "name": "Kuthbudeen Shaik Allaudeen", "designation": "Trailer Driver", "join_date": "2024-08-01", "leave_balance": 43.08}, {"id": "2702", "name": "Nitheesh PV", "designation": "MEP Supervisor", "join_date": "2024-08-14", "leave_balance": 51.92}, {"id": "2703", "name": "Mohammed Sharique Anwar", "designation": "Sales Manager", "join_date": "2024-08-22", "leave_balance": 51.25}, {"id": "2705", "name": "Pradeep Kozhundil", "designation": "Senior Accountant", "join_date": "2024-08-20", "leave_balance": 51.42}, {"id": "2706", "name": "Deepak Sasidhara Panicker", "designation": "Senior Accountant", "join_date": "2024-09-04", "leave_balance": 50.17}, {"id": "2707", "name": "Mosim Khan", "designation": "Senior Supervisor", "join_date": "2024-07-08", "leave_balance": 39.0}, {"id": "2708", "name": "Samreen Mansoor Syed", "designation": "Front Office Executive", "join_date": "2024-08-29", "leave_balance": 50.67}, {"id": "2709", "name": "Sandeep Kumar Verma", "designation": "Assistant Manager QC/CCL", "join_date": "2024-08-29", "leave_balance": 20.67}, {"id": "2710", "name": "Midhun Parambathe Purayil", "designation": "Helper", "join_date": "2024-09-02", "leave_balance": 50.33}, {"id": "2711", "name": "Mohd Hafeezurrahman", "designation": "Office Boy", "join_date": "2024-09-06", "leave_balance": 50.0}, {"id": "2712", "name": "Imaad Ali Khan", "designation": "Sales Manager", "join_date": "2024-09-01", "leave_balance": 27.42}, {"id": "2713", "name": "Clement L Stremel", "designation": "General Manager", "join_date": "2024-07-01", "leave_balance": 55.58}, {"id": "2714", "name": "Sarfaraz Khan", "designation": "Commercial Manager", "join_date": "2024-07-01", "leave_balance": 55.58}, {"id": "2715", "name": "Paras Kumar Rakesh Kumar", "designation": "Helper", "join_date": "2024-09-16", "leave_balance": 49.17}, {"id": "2716", "name": "Satish Chandher Balwinder", "designation": "Helper", "join_date": "2024-09-16", "leave_balance": 49.17}, {"id": "2717", "name": "Vijay Kumar Des Raj", "designation": "Helper", "join_date": "2024-09-16", "leave_balance": 37.5}, {"id": "2718", "name": "Nitesh Kumar", "designation": "CCL operator", "join_date": "2024-09-16", "leave_balance": 49.17}, {"id": "2719", "name": "Moji Ram", "designation": "Helper", "join_date": "2024-09-24", "leave_balance": 48.5}, {"id": "2720", "name": "Motius Micheal", "designation": "Helper", "join_date": "2024-09-24", "leave_balance": 36.58}, {"id": "2721", "name": "Sachin Kumar Lakhan Singh", "designation": "Helper", "join_date": "2024-09-24", "leave_balance": 48.5}, {"id": "2724", "name": "Bijeeshkumar Valladiyil Gopi", "designation": "Maintenance Supervisor", "join_date": "2024-10-07", "leave_balance": 17.42}, {"id": "2725", "name": "Vipin Ponnumani", "designation": "End Cutting Operator", "join_date": "2024-10-24", "leave_balance": 46.0}, {"id": "2726", "name": "MD Ramjan Mrodha", "designation": "Office boy", "join_date": "2024-09-26", "leave_balance": 48.33}, {"id": "2727", "name": "Shais Tomy", "designation": "QC Coordinator", "join_date": "2024-10-15", "leave_balance": 46.75}, {"id": "2728", "name": "Nicole Anne Bacay", "designation": "Front Office Executive", "join_date": "2024-10-17", "leave_balance": 46.58}, {"id": "2729", "name": "Sakhawat Ali", "designation": "Tile/Marble Mason", "join_date": "2024-10-21", "leave_balance": 46.25}, {"id": "2730", "name": "Sarfaraj Mohammad Yusuf", "designation": "Finishing Mason", "join_date": "2024-10-21", "leave_balance": 46.25}, {"id": "2731", "name": "Mohammed Ehsan", "designation": "Tile/Marble Mason", "join_date": "2024-10-21", "leave_balance": 46.25}, {"id": "2733", "name": "Mohammad Mansoor Abdulrahman Younus Khadim", "designation": "Public Relations Officer", "join_date": "2024-10-01", "leave_balance": 47.92}, {"id": "2734", "name": "Muhammad Tauqeer", "designation": "Plumber", "join_date": "2024-10-29", "leave_balance": 45.58}, {"id": "2735", "name": "Venkatesh Nimmarajula", "designation": "Security Guard", "join_date": "2024-11-01", "leave_balance": 45.33}, {"id": "2736", "name": "Thoyyiba Mohammed Nishami", "designation": "Estimation Engineer", "join_date": "2024-11-06", "leave_balance": 44.92}, {"id": "2737", "name": "Anbu Vadivel Subbiah", "designation": "Store Keeper", "join_date": "2024-10-14", "leave_balance": 46.83}, {"id": "2738", "name": "Zabiullah Khan", "designation": "Sales Executive", "join_date": "2024-11-07", "leave_balance": 43.5}, {"id": "2739", "name": "Dharmalingam Ramalingam", "designation": "Finishing Carpenter", "join_date": "2024-11-08", "leave_balance": 44.75}, {"id": "2740", "name": "Jagadeesh Sethu", "designation": "Steel Fixer", "join_date": "2024-11-08", "leave_balance": 44.75}, {"id": "2742", "name": "Maninder Singh", "designation": "Helper", "join_date": "2024-11-24", "leave_balance": 43.42}, {"id": "2743", "name": "Abdurrahaman", "designation": "Helper", "join_date": "2024-11-23", "leave_balance": 43.5}, {"id": "2745", "name": "Md Atikur Rahman", "designation": "Helper", "join_date": "2024-11-27", "leave_balance": 43.17}, {"id": "2747", "name": "Rajesh Thapa", "designation": "Carpenter", "join_date": "2024-11-21", "leave_balance": 43.67}, {"id": "2751", "name": "Abid Hussain", "designation": "Helper", "join_date": "2024-12-09", "leave_balance": 42.17}, {"id": "2752", "name": "Madhav Kumar Yadav", "designation": "Coating Operator", "join_date": "2024-12-04", "leave_balance": 42.58}, {"id": "2757", "name": "Makesh Sali Rajan", "designation": "Senior Site Engineer", "join_date": "2024-12-30", "leave_balance": 40.42}, {"id": "2758", "name": "Sarath Ravali Valappil", "designation": "IT Assistant", "join_date": "2024-12-30", "leave_balance": 40.42}, {"id": "2760", "name": "Sony Mohan", "designation": "Production Supervisor", "join_date": "2025-01-02", "leave_balance": 40.17}, {"id": "2762", "name": "Kamlesh Kumar", "designation": "Helper", "join_date": "2025-01-02", "leave_balance": 40.17}, {"id": "2764", "name": "Indresh Kumar", "designation": "Helper", "join_date": "2025-01-02", "leave_balance": 40.17}, {"id": "2767", "name": "Ali Wajiuddin", "designation": "Metalplast Visa Holder", "join_date": "", "leave_balance": 0.0}, {"id": "2768", "name": "Lenie Amul Quilapio", "designation": "Metalplast Visa Holder", "join_date": "", "leave_balance": 0.0}, {"id": "2769", "name": "Gardyawasam Thanthulage Mohith Christopher De Silva", "designation": "Metalplast Visa Holder", "join_date": "", "leave_balance": 0.0}, {"id": "2770", "name": "Ashok", "designation": "Helper", "join_date": "2025-01-29", "leave_balance": 37.92}, {"id": "2772", "name": "Jasvant", "designation": "Helper", "join_date": "2025-01-29", "leave_balance": 37.92}, {"id": "2773", "name": "Arvind", "designation": "Helper", "join_date": "2025-01-29", "leave_balance": 37.92}, {"id": "2774", "name": "Ram Janam Paswan", "designation": "Helper", "join_date": "2025-01-29", "leave_balance": 37.92}, {"id": "2777", "name": "Prashant Kumar Singh", "designation": "Exit Operator", "join_date": "2025-01-10", "leave_balance": 39.5}, {"id": "2778", "name": "Nyzza Angelica Malapo", "designation": "Sales Coordinator", "join_date": "2025-01-20", "leave_balance": 38.67}, {"id": "2779", "name": "Adharsh Kaniyacheri Prakashan", "designation": "Online QC", "join_date": "2025-02-03", "leave_balance": 37.5}, {"id": "2780", "name": "Shyali Sri Tushangika Madavita Patabandige", "designation": "Sales Coordinator", "join_date": "2025-02-04", "leave_balance": 37.42}, {"id": "2781", "name": "Thouseef Madamulla Kovummal", "designation": "Group Head- HR Business Partnering", "join_date": "2025-02-06", "leave_balance": 37.25}, {"id": "2783", "name": "Manish Kumar", "designation": "Helper", "join_date": "2025-02-27", "leave_balance": 35.5}, {"id": "2784", "name": "Shaikh Mohammed", "designation": "Shaikh Mohammed", "join_date": "2025-02-12", "leave_balance": 36.75}, {"id": "2785", "name": "Ravinder Kumar", "designation": "Carpenter", "join_date": "2025-03-11", "leave_balance": 34.5}, {"id": "2786", "name": "Akashdeep Singh", "designation": "Helper", "join_date": "2025-03-11", "leave_balance": 34.5}, {"id": "2787", "name": "Sajan", "designation": "Helper", "join_date": "2025-03-11", "leave_balance": 34.5}, {"id": "2789", "name": "Vikas", "designation": "Helper", "join_date": "2025-03-11", "leave_balance": 34.5}, {"id": "2790", "name": "Thanvi Shameer", "designation": "Junior Accountant", "join_date": "2025-04-15", "leave_balance": 31.58}, {"id": "2791", "name": "Honest Gcwalisile Nylika", "designation": "Project Director", "join_date": "2025-03-06", "leave_balance": 34.92}, {"id": "2793", "name": "Pawan", "designation": "Helper", "join_date": "2025-05-07", "leave_balance": 29.75}, {"id": "2794", "name": "Surendra Nishad", "designation": "Helper", "join_date": "2025-05-09", "leave_balance": 29.58}, {"id": "2795", "name": "Kuldeep Singh", "designation": "Helper", "join_date": "2025-05-12", "leave_balance": 29.33}, {"id": "2796", "name": "Rajendra Kumar", "designation": "Helper", "join_date": "2025-05-12", "leave_balance": 29.33}, {"id": "2797", "name": "Abitha Biju", "designation": "Reception cum Marketing Intern", "join_date": "2025-05-16", "leave_balance": 29.0}, {"id": "2798", "name": "Sunny", "designation": "Helper", "join_date": "2025-05-30", "leave_balance": 27.83}, {"id": "2799", "name": "Ankit Kumar", "designation": "Helper", "join_date": "2025-06-01", "leave_balance": 27.67}, {"id": "2800", "name": "Mohammed Al Sweethu Parappurath Allinkeezhil", "designation": "HR Executive", "join_date": "2025-06-11", "leave_balance": 26.83}, {"id": "2801", "name": "Kuldeep Singh Krishan Kumar", "designation": "Helper", "join_date": "2025-06-21", "leave_balance": 26.0}, {"id": "2802", "name": "Vijay Singh", "designation": "Helper", "join_date": "2025-06-23", "leave_balance": 25.83}, {"id": "2803", "name": "Khim Singh", "designation": "Helper", "join_date": "2025-06-23", "leave_balance": 25.83}, {"id": "2804", "name": "Keval Singh", "designation": "Helper", "join_date": "2025-06-23", "leave_balance": 25.83}, {"id": "2805", "name": "Akshay Kumar", "designation": "Helper", "join_date": "2025-06-24", "leave_balance": 25.75}, {"id": "2806", "name": "Rajeev Kumar", "designation": "Helper", "join_date": "2025-06-30", "leave_balance": 25.25}, {"id": "2807", "name": "Akhilesh Anil More", "designation": "Structural Engineer", "join_date": "2025-07-01", "leave_balance": 25.17}, {"id": "2808", "name": "Noor Mohd Ansar", "designation": "Chef", "join_date": "", "leave_balance": 0.0}, {"id": "2810", "name": "Rahul Verma", "designation": "Carpenter", "join_date": "2025-07-14", "leave_balance": 24.08}, {"id": "2811", "name": "Awadhesh Yadav", "designation": "Carpenter", "join_date": "2025-07-14", "leave_balance": 24.08}, {"id": "2812", "name": "Arjun Gaur", "designation": "Carpenter", "join_date": "2025-07-14", "leave_balance": 24.08}, {"id": "2813", "name": "Jino Joy", "designation": "HSE Engineer", "join_date": "2025-07-10", "leave_balance": 24.42}, {"id": "2814", "name": "Anto Phinonson", "designation": "Site Supervisor", "join_date": "2025-07-08", "leave_balance": 24.58}, {"id": "2815", "name": "Sajid Noor Mohammed", "designation": "Painter", "join_date": "2025-07-21", "leave_balance": 23.5}, {"id": "2816", "name": "Henry Peter", "designation": "Sales Manager", "join_date": "2025-07-14", "leave_balance": 24.08}, {"id": "2817", "name": "Jessica Ann-Marie Burgess", "designation": "Sales Manager", "join_date": "2025-07-18", "leave_balance": 23.75}, {"id": "2818", "name": "Sowmiya Subramaniyan", "designation": "Project Coordinator", "join_date": "2025-07-21", "leave_balance": 23.5}, {"id": "2819", "name": "Ali Aamir", "designation": "Sales Manager", "join_date": "2025-07-28", "leave_balance": 22.92}, {"id": "2820", "name": "Badruddin", "designation": "Carpenter", "join_date": "", "leave_balance": 0.0}, {"id": "2821", "name": "Riyazul Haque", "designation": "Carpenter", "join_date": "", "leave_balance": 0.0}, {"id": "2822", "name": "Sandeep Kumar Yadav", "designation": "Carpenter", "join_date": "", "leave_balance": 0.0}, {"id": "2823", "name": "Subrati", "designation": "Carpenter", "join_date": "", "leave_balance": 0.0}];
+let leaveRecords = [{"emp_id": "2120", "name": "Siraj Ahmad", "leave_type": "Annual Leave", "start_date": "2024-11-11", "end_date": "2025-01-10", "days": 61.0, "rejoin_date": "2025-01-15", "status": "Rejoined", "status_as_on": "Rejoined", "extended_days": 5.0, "remark": ""}, {"emp_id": "2554", "name": "Sheikh Shahid", "leave_type": "Annual Leave", "start_date": "2024-11-15", "end_date": "2025-01-13", "days": 60.0, "rejoin_date": "2025-01-15", "status": "", "status_as_on": "Rejoined", "extended_days": 2.0, "remark": ""}, {"emp_id": "232", "name": "Ruhul Amin Haian Saiyal", "leave_type": "Annual Leave", "start_date": "2024-11-17", "end_date": "2025-01-15", "days": 60.0, "rejoin_date": "2025-01-19", "status": "Rejoined", "status_as_on": "Rejoined", "extended_days": 4.0, "remark": ""}, {"emp_id": "2450", "name": "Najir Hussain", "leave_type": "Annual Leave", "start_date": "2024-11-18", "end_date": "2025-01-16", "days": 60.0, "rejoin_date": "2025-01-20", "status": "Rejoined", "status_as_on": "Rejoined", "extended_days": 4.0, "remark": ""}, {"emp_id": "1806", "name": "Saroj Kumar Mukhram", "leave_type": "Annual Leave", "start_date": "2024-11-18", "end_date": "2025-01-16", "days": 60.0, "rejoin_date": "2025-01-20", "status": "", "status_as_on": "Rejoined", "extended_days": 4.0, "remark": ""}, {"emp_id": "2628", "name": "Sona Kizhakudan Prince", "leave_type": "Annual Leave", "start_date": "2024-11-26", "end_date": "2025-01-03", "days": 39.0, "rejoin_date": "2025-01-03", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2615", "name": "Qamar Zaman Muhammad Akmal", "leave_type": "Annual Leave", "start_date": "2024-12-03", "end_date": "2025-01-17", "days": 46.0, "rejoin_date": "2025-01-24", "status": "", "status_as_on": "Rejoined", "extended_days": 7.0, "remark": ""}, {"emp_id": "2599", "name": "Abdul Rahman", "leave_type": "Annual Leave", "start_date": "2024-12-04", "end_date": "2025-01-18", "days": 46.0, "rejoin_date": "2025-01-20", "status": "", "status_as_on": "Rejoined", "extended_days": 2.0, "remark": ""}, {"emp_id": "1016", "name": "Mohammed Abul Hasan", "leave_type": "Annual Leave", "start_date": "2024-12-09", "end_date": "2025-02-06", "days": 60.0, "rejoin_date": "2025-02-13", "status": "Rejoined", "status_as_on": "Rejoined", "extended_days": 7.0, "remark": ""}, {"emp_id": "2635", "name": "Muhamed Minhaj Nayarkandy", "leave_type": "Annual Leave", "start_date": "2024-12-09", "end_date": "2025-01-07", "days": 30.0, "rejoin_date": "2025-01-16", "status": "", "status_as_on": "Rejoined", "extended_days": 9.0, "remark": ""}, {"emp_id": "2538", "name": "Rasel Iman Hossain", "leave_type": "Annual Leave", "start_date": "2024-12-16", "end_date": "2025-02-13", "days": 60.0, "rejoin_date": "2025-02-21", "status": "", "status_as_on": "Rejoined", "extended_days": 8.0, "remark": ""}, {"emp_id": "2614", "name": "Manish Kumar Yadav", "leave_type": "Emergency Leave", "start_date": "2024-12-30", "end_date": "2025-02-14", "days": 47.0, "rejoin_date": "2025-03-10", "status": "", "status_as_on": "Rejoined", "extended_days": 24.0, "remark": ""}, {"emp_id": "1106", "name": "Ram Chandra Pradhan", "leave_type": "Annual Leave", "start_date": "2024-12-30", "end_date": "2025-02-27", "days": 60.0, "rejoin_date": "2025-02-28", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "999", "name": "Gul Meen Khan Lal Meer Khan", "leave_type": "Annual Leave", "start_date": "2024-12-30", "end_date": "2025-02-27", "days": 60.0, "rejoin_date": "2025-04-28", "status": "", "status_as_on": "Rejoined", "extended_days": 60.0, "remark": ""}, {"emp_id": "2610", "name": "Natalia Kolieva", "leave_type": "Annual Leave", "start_date": "2024-12-30", "end_date": "2025-01-03", "days": 5.0, "rejoin_date": "2025-01-04", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "67", "name": "Esoj Jose", "leave_type": "Annual Leave", "start_date": "2025-01-02", "end_date": "2025-01-31", "days": 30.0, "rejoin_date": "2025-02-03", "status": "", "status_as_on": "Rejoined", "extended_days": 3.0, "remark": ""}, {"emp_id": "2240", "name": "Rifas Ansary Mohammed", "leave_type": "Annual Leave", "start_date": "2025-01-06", "end_date": "2025-01-09", "days": 4.0, "rejoin_date": "2025-01-10", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2665", "name": "Manmeet Singh", "leave_type": "Emergency Leave", "start_date": "2025-01-09", "end_date": "2025-01-20", "days": 12.0, "rejoin_date": "", "status": "", "status_as_on": "Overstay", "extended_days": 0, "remark": ""}, {"emp_id": "394", "name": "Kamal Hossain Tofazzal Mollah", "leave_type": "Annual Leave", "start_date": "2025-01-12", "end_date": "2025-03-14", "days": 62.0, "rejoin_date": "2025-03-14", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2647", "name": "Sethu Kumar", "leave_type": "Annual Leave", "start_date": "2025-01-13", "end_date": "2025-01-30", "days": 18.0, "rejoin_date": "2025-01-31", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "1360", "name": "Buchi Babu Daram", "leave_type": "Annual Leave", "start_date": "2025-01-13", "end_date": "2025-01-27", "days": 15.0, "rejoin_date": "2025-01-28", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2247", "name": "Ajaya Kumar", "leave_type": "Annual Leave", "start_date": "2025-01-13", "end_date": "2025-03-14", "days": 61.0, "rejoin_date": "2025-03-20", "status": "", "status_as_on": "Rejoined", "extended_days": 6.0, "remark": ""}, {"emp_id": "2315", "name": "Mandresh  Khedan", "leave_type": "Annual Leave", "start_date": "2025-01-13", "end_date": "2025-03-13", "days": 60.0, "rejoin_date": "2025-03-22", "status": "", "status_as_on": "Rejoined", "extended_days": 9.0, "remark": ""}, {"emp_id": "14", "name": "Afroz Ali Khan Khan", "leave_type": "Annual Leave", "start_date": "2025-01-13", "end_date": "2025-01-21", "days": 9.0, "rejoin_date": "2025-01-22", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2545", "name": "Mohammad Jamal Badiyar", "leave_type": "Annual Leave", "start_date": "2025-01-14", "end_date": "2025-02-14", "days": 32.0, "rejoin_date": "2025-02-20", "status": "", "status_as_on": "Rejoined", "extended_days": 6.0, "remark": ""}, {"emp_id": "2737", "name": "Anbu Vadivel Subbiah", "leave_type": "Emergency Leave", "start_date": "2025-01-14", "end_date": "2025-01-21", "days": 8.0, "rejoin_date": "2025-01-22", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2550", "name": "Grasvin Grogory", "leave_type": "Annual Leave", "start_date": "2025-01-20", "end_date": "2025-02-10", "days": 22.0, "rejoin_date": "2025-03-03", "status": "", "status_as_on": "Rejoined", "extended_days": 21.0, "remark": ""}, {"emp_id": "835", "name": "Asim Abbas Sadiq Ali", "leave_type": "Annual Leave", "start_date": "2025-01-20", "end_date": "2025-02-10", "days": 22.0, "rejoin_date": "2025-02-11", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "1761", "name": "Syed Mushtaq Ahamad Syed Mukhtar Ahmed", "leave_type": "Annual Leave", "start_date": "2025-01-21", "end_date": "2025-02-04", "days": 15.0, "rejoin_date": "2025-02-05", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2611", "name": "Sreejesh Kumar", "leave_type": "Annual Leave", "start_date": "2025-01-22", "end_date": "2025-02-09", "days": 19.0, "rejoin_date": "2025-02-11", "status": "", "status_as_on": "Rejoined", "extended_days": 2.0, "remark": ""}, {"emp_id": "333", "name": "Zohirul Islam Nuruzzaman", "leave_type": "Annual Leave", "start_date": "2025-01-25", "end_date": "2025-02-24", "days": 31.0, "rejoin_date": "2025-02-25", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "34", "name": "Ashok Kumar Lekhu Ram", "leave_type": "Emergency Leave", "start_date": "2025-01-28", "end_date": "2025-02-27", "days": 31.0, "rejoin_date": "2025-03-05", "status": "", "status_as_on": "Rejoined", "extended_days": 6.0, "remark": ""}, {"emp_id": "2632", "name": "Ratheesh Pv", "leave_type": "Annual Leave", "start_date": "2025-02-03", "end_date": "2025-02-17", "days": 15.0, "rejoin_date": "2025-02-18", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "1611", "name": "Sunil Rana", "leave_type": "Annual Leave", "start_date": "2025-02-03", "end_date": "2025-02-10", "days": 8.0, "rejoin_date": "2025-02-11", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "266", "name": "Shareef Asadullah Muhammad", "leave_type": "Annual Leave", "start_date": "2025-02-03", "end_date": "2025-03-04", "days": 30.0, "rejoin_date": "2025-02-27", "status": "", "status_as_on": "Early Rejoin", "extended_days": 0, "remark": ""}, {"emp_id": "1693", "name": "Shaik Rasheed Ahmed", "leave_type": "Emergency Leave", "start_date": "2025-02-03", "end_date": "2025-02-06", "days": 4.0, "rejoin_date": "2025-02-07", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "22", "name": "Alamgir Hossin Mohammed Sattar", "leave_type": "Annual Leave(Medical)", "start_date": "2025-02-05", "end_date": "2025-02-19", "days": 15.0, "rejoin_date": "2025-02-20", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "1399", "name": "Bachittar Singh", "leave_type": "Emergency Leave", "start_date": "2025-02-12", "end_date": "2025-02-26", "days": 15.0, "rejoin_date": "2025-03-13", "status": "", "status_as_on": "Rejoined", "extended_days": 15.0, "remark": ""}, {"emp_id": "2738", "name": "Zabiullah Khan", "leave_type": "Emergency Leave", "start_date": "2025-02-15", "end_date": "2025-03-02", "days": 16.0, "rejoin_date": "2025-03-03", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2606", "name": "Umair Ali Khan", "leave_type": "Annual Leave (Umrah)", "start_date": "2025-02-17", "end_date": "2025-03-02", "days": 14.0, "rejoin_date": "2025-03-03", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2580", "name": "Nicolo Montesi", "leave_type": "Annual leave", "start_date": "2025-08-01", "end_date": "2025-09-05", "days": 36.0, "rejoin_date": "2025-09-06", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "1608", "name": "Fayaz Ali Mohammed", "leave_type": "Emergency Leave", "start_date": "2025-02-17", "end_date": "2025-02-28", "days": 12.0, "rejoin_date": "29/02/25", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "22", "name": "Alamgir Hossin Mohammed Sattar", "leave_type": "Emergency  Leave(Medical)", "start_date": "2025-02-19", "end_date": "2025-03-05", "days": 15.0, "rejoin_date": "2025-03-06", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "1282", "name": "Amrik Suman", "leave_type": "Annual Leave", "start_date": "2025-02-24", "end_date": "2025-05-04", "days": 70.0, "rejoin_date": "2025-05-06", "status": "", "status_as_on": "Rejoined", "extended_days": 2.0, "remark": ""}, {"emp_id": "356", "name": "Balwant Singh Munsha Singh", "leave_type": "Annual Leave", "start_date": "2025-02-24", "end_date": "2025-04-23", "days": 59.0, "rejoin_date": "2025-05-06", "status": "", "status_as_on": "Rejoined", "extended_days": 13.0, "remark": ""}, {"emp_id": "1194", "name": "Ravi Pal Singh", "leave_type": "Annual Leave", "start_date": "2025-02-24", "end_date": "2025-05-24", "days": 90.0, "rejoin_date": "2025-07-15", "status": "", "status_as_on": "Rejoined", "extended_days": 52.0, "remark": ""}, {"emp_id": "1376", "name": "Vishnu Mohanan", "leave_type": "Annual Leave", "start_date": "2025-03-02", "end_date": "2025-04-30", "days": 60.0, "rejoin_date": "2025-05-01", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2702", "name": "Nitheesh PV", "leave_type": "Emergency Leave", "start_date": "2025-03-04", "end_date": "2025-03-24", "days": 21.0, "rejoin_date": "2025-03-25", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "338", "name": "Jugdayal Sharma Sudeshwar Sharma", "leave_type": "Annual Leave", "start_date": "2025-03-10", "end_date": "2025-04-08", "days": 30.0, "rejoin_date": "2025-04-18", "status": "", "status_as_on": "Rejoined", "extended_days": 10.0, "remark": ""}, {"emp_id": "2317", "name": "Adbul Rauf", "leave_type": "Emergency Leave", "start_date": "2025-03-18", "end_date": "2025-04-01", "days": 15.0, "rejoin_date": "2025-06-16", "status": "", "status_as_on": "Rejoined", "extended_days": 76.0, "remark": ""}, {"emp_id": "2624", "name": "Ahmad Ullah", "leave_type": "Emergency Leave", "start_date": "2025-03-19", "end_date": "2025-03-30", "days": 12.0, "rejoin_date": "2025-06-25", "status": "", "status_as_on": "Rejoined", "extended_days": 87.0, "remark": ""}, {"emp_id": "1801", "name": "Amer Khan Mohammed", "leave_type": "Emergency Leave", "start_date": "2025-03-19", "end_date": "2025-04-03", "days": 16.0, "rejoin_date": "2025-10-12", "status": "", "status_as_on": "Rejoined", "extended_days": 192.0, "remark": ""}, {"emp_id": "310", "name": "Vijayalekshmi Neelakanta Pillai Sajeev Kumar", "leave_type": "Annual Leave", "start_date": "2025-03-20", "end_date": "2025-05-20", "days": 62.0, "rejoin_date": "2025-05-29", "status": "", "status_as_on": "Rejoined", "extended_days": 9.0, "remark": ""}, {"emp_id": "194", "name": "Olyullah Ali Akbor", "leave_type": "Annual Leave", "start_date": "2025-03-20", "end_date": "2025-04-23", "days": 35.0, "rejoin_date": "2025-04-24", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "1708", "name": "Nakul Terasi", "leave_type": "Annual Leave", "start_date": "2025-03-24", "end_date": "2025-05-22", "days": 60.0, "rejoin_date": "2025-05-29", "status": "", "status_as_on": "Rejoined", "extended_days": 7.0, "remark": ""}, {"emp_id": "1608", "name": "Fayaz Ali Mohammed", "leave_type": "Emergency Leave", "start_date": "2025-03-24", "end_date": "2025-03-25", "days": 2.0, "rejoin_date": "2025-03-26", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "1608", "name": "Fayaz Ali Mohammed", "leave_type": "Emergency Leave", "start_date": "2025-03-24", "end_date": "2025-03-25", "days": 2.0, "rejoin_date": "2025-03-26", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "976", "name": "Nasar Khan Muhammad Afzal Khan", "leave_type": "Annual Leave", "start_date": "2025-03-28", "end_date": "2025-05-05", "days": 39.0, "rejoin_date": "2025-05-12", "status": "", "status_as_on": "Rejoined", "extended_days": 7.0, "remark": ""}, {"emp_id": "2594", "name": "Naveed Shams Ur Rehman", "leave_type": "Annual Leave", "start_date": "2025-03-31", "end_date": "2025-05-10", "days": 41.0, "rejoin_date": "2025-05-12", "status": "", "status_as_on": "Rejoined", "extended_days": 2.0, "remark": ""}, {"emp_id": "801", "name": "Janeesh Jayakumar Baby", "leave_type": "Emergency Leave", "start_date": "2025-03-31", "end_date": "2025-05-18", "days": 49.0, "rejoin_date": "2025-05-19", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2691", "name": "Abu thahir", "leave_type": "Emergency Leave", "start_date": "2025-04-01", "end_date": "2025-04-13", "days": 13.0, "rejoin_date": "2025-04-14", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2690", "name": "Joyce V Camposano", "leave_type": "Annual Leave", "start_date": "2025-04-01", "end_date": "2025-04-30", "days": 30.0, "rejoin_date": "31/04/25", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "266", "name": "Shareef Asadullah Muhammad", "leave_type": "Annual Leave", "start_date": "2025-04-02", "end_date": "2025-04-04", "days": 3.0, "rejoin_date": "2025-04-07", "status": "", "status_as_on": "Rejoined", "extended_days": 3.0, "remark": ""}, {"emp_id": "2078", "name": "Jabeena Ponmanichi Baboo", "leave_type": "Annual Leave", "start_date": "2025-04-03", "end_date": "2025-04-09", "days": 7.0, "rejoin_date": "2025-04-10", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "1417", "name": "Nawab Afaque Mohammed Khan", "leave_type": "Annual Leave", "start_date": "2025-04-03", "end_date": "2025-04-21", "days": 19.0, "rejoin_date": "2025-04-21", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2397", "name": "Justin Jose", "leave_type": "Emergency Leave", "start_date": "2025-04-04", "end_date": "2025-04-24", "days": 21.0, "rejoin_date": "2025-04-24", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "1399", "name": "Bachittar Singh", "leave_type": "Emergency Leave", "start_date": "2025-04-08", "end_date": "2025-04-14", "days": 7.0, "rejoin_date": "2025-05-26", "status": "", "status_as_on": "Rejoined", "extended_days": 42.0, "remark": ""}, {"emp_id": "1699", "name": "Rejanesh Kumar Raghavan", "leave_type": "Annual Leave", "start_date": "2025-04-11", "end_date": "2025-06-10", "days": 61.0, "rejoin_date": "2025-06-18", "status": "", "status_as_on": "Rejoined", "extended_days": 8.0, "remark": ""}, {"emp_id": "2472", "name": "Abdur Rehman", "leave_type": "Annual Leave", "start_date": "2025-04-12", "end_date": "2025-06-11", "days": 61.0, "rejoin_date": "2025-08-08", "status": "", "status_as_on": "Rejoined", "extended_days": 58.0, "remark": ""}, {"emp_id": "279", "name": "Siful Islam Abdul Samad", "leave_type": "Annual Leave", "start_date": "2025-04-13", "end_date": "2025-05-13", "days": 31.0, "rejoin_date": "2025-05-14", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2595", "name": "Nand Kishor Mahto", "leave_type": "Annual Leave", "start_date": "2025-04-14", "end_date": "2025-06-12", "days": 60.0, "rejoin_date": "2025-06-22", "status": "", "status_as_on": "Rejoined", "extended_days": 10.0, "remark": ""}, {"emp_id": "2381", "name": "Sunil Kumar Kuswaha", "leave_type": "Annual Leave", "start_date": "2025-04-14", "end_date": "2025-06-13", "days": 61.0, "rejoin_date": "2025-05-30", "status": "", "status_as_on": "Early Rejoin", "extended_days": 0, "remark": ""}, {"emp_id": "334", "name": "Zulfikar Ali Abdul Majeed", "leave_type": "Annual Leave", "start_date": "2025-04-14", "end_date": "2025-04-15", "days": 2.0, "rejoin_date": "2025-04-16", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "1206", "name": "Muhammad Saleem Muhammad Asghar", "leave_type": "Annual Leave", "start_date": "2025-04-14", "end_date": "2025-06-12", "days": 60.0, "rejoin_date": "2025-06-27", "status": "", "status_as_on": "Rejoined", "extended_days": 15.0, "remark": ""}, {"emp_id": "2777", "name": "", "leave_type": "Emergency Leave", "start_date": "2025-04-14", "end_date": "2025-04-23", "days": 10.0, "rejoin_date": "2025-05-01", "status": "", "status_as_on": "Rejoined", "extended_days": 8.0, "remark": ""}, {"emp_id": "835", "name": "Asim Abbas Sadiq Ali", "leave_type": "Paternity Leave", "start_date": "2025-04-17", "end_date": "2025-04-23", "days": 7.0, "rejoin_date": "2025-04-24", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2580", "name": "Nicolo Montesi", "leave_type": "other, (Easter)", "start_date": "2025-04-18", "end_date": "2025-04-27", "days": 10.0, "rejoin_date": "2025-04-28", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "334", "name": "Zulfikar Ali Abdul Majeed", "leave_type": "Emergency Leave", "start_date": "2025-04-19", "end_date": "2025-04-23", "days": 5.0, "rejoin_date": "2025-04-24", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "439", "name": "Prasith Ponnara Kandy", "leave_type": "Annual Leave", "start_date": "2025-04-21", "end_date": "2025-05-05", "days": 15.0, "rejoin_date": "2025-05-06", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2286", "name": "Aqil Javed", "leave_type": "Emergency Leave", "start_date": "2025-04-25", "end_date": "2025-05-05", "days": 11.0, "rejoin_date": "2025-06-24", "status": "", "status_as_on": "Rejoined", "extended_days": 50.0, "remark": ""}, {"emp_id": "1307", "name": "Praveen Prakash Noha", "leave_type": "Emergency Leave", "start_date": "2025-04-28", "end_date": "2025-05-12", "days": 15.0, "rejoin_date": "2025-05-16", "status": "", "status_as_on": "Rejoined", "extended_days": 4.0, "remark": ""}, {"emp_id": "791", "name": "Yuvaraj Chauhan", "leave_type": "Emergency Leave", "start_date": "2025-05-01", "end_date": "2025-05-27", "days": 27.0, "rejoin_date": "2025-05-28", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2481", "name": "Albin Kavil Joseph", "leave_type": "Emergency Leave", "start_date": "2025-05-05", "end_date": "2025-05-19", "days": 15.0, "rejoin_date": "2025-05-27", "status": "", "status_as_on": "Rejoined", "extended_days": 8.0, "remark": ""}, {"emp_id": "2446", "name": "", "leave_type": "Emergency Leave", "start_date": "2025-05-08", "end_date": "2025-05-14", "days": 7.0, "rejoin_date": "2025-05-15", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2682", "name": "Yasa Rakesh", "leave_type": "Emergency Leave", "start_date": "2025-05-08", "end_date": "2025-05-15", "days": 8.0, "rejoin_date": "2025-05-19", "status": "", "status_as_on": "Rejoined", "extended_days": 4.0, "remark": ""}, {"emp_id": "2471", "name": "Gobri Yadav", "leave_type": "Annual Leave", "start_date": "2025-05-10", "end_date": "2025-07-10", "days": 62.0, "rejoin_date": "2025-07-29", "status": "", "status_as_on": "Rejoined", "extended_days": 19.0, "remark": ""}, {"emp_id": "399", "name": "Mohammed Parvez Kamal Uddin", "leave_type": "Annual Leave", "start_date": "2025-05-11", "end_date": "2025-07-16", "days": 67.0, "rejoin_date": "2025-07-20", "status": "", "status_as_on": "Rejoined", "extended_days": 4.0, "remark": ""}, {"emp_id": "2331", "name": "Sanjeet Kumar", "leave_type": "Annual Leave", "start_date": "2025-05-12", "end_date": "2025-07-10", "days": 60.0, "rejoin_date": "2025-07-24", "status": "", "status_as_on": "Rejoined", "extended_days": 14.0, "remark": ""}, {"emp_id": "2720", "name": "Motius Micheal", "leave_type": "Emergency Leave", "start_date": "2025-05-14", "end_date": "2025-05-24", "days": 11.0, "rejoin_date": "2025-06-04", "status": "", "status_as_on": "Rejoined", "extended_days": 11.0, "remark": ""}, {"emp_id": "2643", "name": "Muhammed Rassel", "leave_type": "Annual Leave", "start_date": "2025-05-19", "end_date": "2025-06-17", "days": 30.0, "rejoin_date": "2025-06-29", "status": "", "status_as_on": "Rejoined", "extended_days": 12.0, "remark": ""}, {"emp_id": "2628", "name": "Sona Kizhakudan Prince", "leave_type": "Emergency Leave", "start_date": "2025-05-19", "end_date": "2025-05-30", "days": 12.0, "rejoin_date": "2025-05-31", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2330", "name": "Amritlal Ramanand", "leave_type": "Annual Leave", "start_date": "2025-05-19", "end_date": "2025-07-19", "days": 62.0, "rejoin_date": "2025-07-23", "status": "", "status_as_on": "Rejoined", "extended_days": 4.0, "remark": ""}, {"emp_id": "2430", "name": "Md Masum", "leave_type": "Annual Leave", "start_date": "2025-05-20", "end_date": "2025-07-18", "days": 60.0, "rejoin_date": "2025-08-18", "status": "", "status_as_on": "Rejoined", "extended_days": 31.0, "remark": ""}, {"emp_id": "571", "name": "Abdur Rashid Abdul Awal", "leave_type": "Annual Leave", "start_date": "2025-05-20", "end_date": "2025-07-18", "days": 60.0, "rejoin_date": "2025-08-15", "status": "", "status_as_on": "Rejoined", "extended_days": 28.0, "remark": ""}, {"emp_id": "2621", "name": "Fawad Zada", "leave_type": "Annual Leave", "start_date": "2025-05-20", "end_date": "2025-07-20", "days": 62.0, "rejoin_date": "2025-07-15", "status": "", "status_as_on": "Early Rejoin", "extended_days": 0, "remark": ""}, {"emp_id": "2501", "name": "Kamlesh Kumar Kushwaha", "leave_type": "Emergency Leave", "start_date": "2025-05-21", "end_date": "2025-06-03", "days": 14.0, "rejoin_date": "2025-06-13", "status": "", "status_as_on": "Rejoined", "extended_days": 10.0, "remark": ""}, {"emp_id": "924", "name": "Chandrakant Bhaskarbhai Pawar", "leave_type": "Annual Leave", "start_date": "2025-05-21", "end_date": "2025-05-23", "days": 3.0, "rejoin_date": "2025-05-24", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2567", "name": "Muhammad Imran Muhammad Akram", "leave_type": "Annual Leave", "start_date": "2025-05-22", "end_date": "2025-07-25", "days": 65.0, "rejoin_date": "2025-07-21", "status": "", "status_as_on": "Early Rejoin", "extended_days": 0, "remark": ""}, {"emp_id": "2556", "name": "Pritish Ghosh", "leave_type": "Annual Leave", "start_date": "2025-05-26", "end_date": "2025-06-22", "days": 28.0, "rejoin_date": "2025-08-25", "status": "", "status_as_on": "Rejoined", "extended_days": 64.0, "remark": ""}, {"emp_id": "333", "name": "Zohirul Islam Nuruzzaman", "leave_type": "Annual Leave", "start_date": "2025-05-26", "end_date": "2025-06-26", "days": 32.0, "rejoin_date": "2025-07-17", "status": "", "status_as_on": "Rejoined", "extended_days": 21.0, "remark": ""}, {"emp_id": "630", "name": "Amir Hossain Kabir Ahmed", "leave_type": "Annual Leave", "start_date": "2025-05-26", "end_date": "2025-07-24", "days": 60.0, "rejoin_date": "2025-07-24", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2027", "name": "Rahumathulla Mohamed Naseer", "leave_type": "Annual Leave", "start_date": "2025-05-27", "end_date": "2025-06-26", "days": 26.0, "rejoin_date": "2025-06-20", "status": "", "status_as_on": "Early Rejoin", "extended_days": 0, "remark": ""}, {"emp_id": "1186", "name": "Israr Ahmed Bashir Ahmed", "leave_type": "Annual Leave", "start_date": "2025-06-01", "end_date": "2025-08-01", "days": 62.0, "rejoin_date": "2025-08-03", "status": "", "status_as_on": "Rejoined", "extended_days": 2.0, "remark": ""}, {"emp_id": "603", "name": "Mafijur Matubber Shajahan Fakir", "leave_type": "Annual Leave", "start_date": "2025-06-01", "end_date": "2025-08-05", "days": 66.0, "rejoin_date": "2025-08-06", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2628", "name": "Sona Kizhakudan Prince", "leave_type": "Maternity Leave", "start_date": "2025-06-02", "end_date": "2025-07-31", "days": 60.0, "rejoin_date": "2025-08-01", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "1608", "name": "Fayaz Ali Mohammed", "leave_type": "Annual Leave", "start_date": "2025-06-09", "end_date": "2025-06-13", "days": 5.0, "rejoin_date": "2025-06-14", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "266", "name": "Shareef Asadullah Muhammad", "leave_type": "Annual Leave", "start_date": "2025-06-09", "end_date": "2025-06-23", "days": 15.0, "rejoin_date": "2025-06-26", "status": "", "status_as_on": "Rejoined", "extended_days": 3.0, "remark": ""}, {"emp_id": "68", "name": "Esrafil Patu Ali", "leave_type": "Annual Leave", "start_date": "2025-06-09", "end_date": "2025-07-08", "days": 30.0, "rejoin_date": "2025-07-09", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "802", "name": "Muhammad Pervez Muhammad Idrees", "leave_type": "Annual Leave", "start_date": "2025-06-09", "end_date": "2025-08-07", "days": 60.0, "rejoin_date": "2025-08-14", "status": "", "status_as_on": "Rejoined", "extended_days": 7.0, "remark": ""}, {"emp_id": "2491", "name": "Sahib Zada Sher Afzal Khan", "leave_type": "Annual Leave", "start_date": "2025-06-09", "end_date": "2025-07-21", "days": 43.0, "rejoin_date": "2025-08-13", "status": "", "status_as_on": "Rejoined", "extended_days": 23.0, "remark": ""}, {"emp_id": "2632", "name": "Ratheesh Pv", "leave_type": "Others (Paternity)", "start_date": "2025-06-10", "end_date": "2025-06-13", "days": 4.0, "rejoin_date": "2025-06-14", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "14", "name": "Afroz Ali Khan Khan", "leave_type": "Annual Leave", "start_date": "2025-06-11", "end_date": "2025-06-15", "days": 5.0, "rejoin_date": "2025-06-16", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2575", "name": "Ahmed Abdul Latheef Nijar", "leave_type": "Annual Leave", "start_date": "2025-06-11", "end_date": "2025-06-29", "days": 19.0, "rejoin_date": "2025-06-30", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": "Requested from thouseef to extend"}, {"emp_id": "379", "name": "Mirza Shafiullah Baig", "leave_type": "Annual Leave", "start_date": "2025-06-11", "end_date": "2025-07-10", "days": 30.0, "rejoin_date": "2025-07-11", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2228", "name": "Mohammad Jawed", "leave_type": "Emergency Leave", "start_date": "2025-06-15", "end_date": "2025-06-30", "days": 16.0, "rejoin_date": "2025-07-10", "status": "", "status_as_on": "Rejoined", "extended_days": 10.0, "remark": ""}, {"emp_id": "2502", "name": "Sahadat Sheikh", "leave_type": "Annual Leave", "start_date": "2025-06-16", "end_date": "2025-08-24", "days": 70.0, "rejoin_date": "2025-08-28", "status": "", "status_as_on": "Rejoined", "extended_days": 4.0, "remark": ""}, {"emp_id": "2638", "name": "Muhammad Saad Tanveer", "leave_type": "Annual Leave", "start_date": "2025-06-23", "end_date": "2025-06-27", "days": 5.0, "rejoin_date": "2025-06-27", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "459", "name": "Zahangir Alom Abdul Gony", "leave_type": "Annual Leave", "start_date": "2025-06-23", "end_date": "2025-08-23", "days": 62.0, "rejoin_date": "2025-10-16", "status": "", "status_as_on": "Rejoined", "extended_days": 54.0, "remark": ""}, {"emp_id": "1654", "name": "Nehal Ahamad Najirullah", "leave_type": "Annual Leave", "start_date": "2025-06-28", "end_date": "2025-07-27", "days": 30.0, "rejoin_date": "2025-08-06", "status": "", "status_as_on": "Rejoined", "extended_days": 10.0, "remark": ""}, {"emp_id": "600", "name": "Monir Hossain Nurul Islam Patoari", "leave_type": "Annual Leave", "start_date": "2025-07-01", "end_date": "2025-08-29", "days": 60.0, "rejoin_date": "2025-09-02", "status": "", "status_as_on": "Rejoined", "extended_days": 4.0, "remark": ""}, {"emp_id": "235", "name": "Saiyed Anwar Hussain Rizvi", "leave_type": "Annual Leave", "start_date": "2025-07-07", "end_date": "2025-07-25", "days": 19.0, "rejoin_date": "2025-07-26", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "1608", "name": "Fayaz Ali Mohammed", "leave_type": "Annual Leave", "start_date": "2025-07-09", "end_date": "2025-07-16", "days": 8.0, "rejoin_date": "2025-07-17", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2611", "name": "Sreejesh Kumar", "leave_type": "Annual Leave", "start_date": "2025-07-10", "end_date": "2025-08-08", "days": 30.0, "rejoin_date": "2025-08-09", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2520", "name": "Salman Qureshi Mohammed", "leave_type": "Annual Leave", "start_date": "2025-07-12", "end_date": "2025-08-11", "days": 31.0, "rejoin_date": "2025-08-12", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "1219", "name": "Azam Qureshi Mohammed", "leave_type": "Annual Leave", "start_date": "2025-07-14", "end_date": "2025-08-12", "days": 30.0, "rejoin_date": "2025-08-13", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2590", "name": "Priyanti Prabhat Tatke", "leave_type": "Annual Leave", "start_date": "2025-07-14", "end_date": "2025-07-30", "days": 17.0, "rejoin_date": "2025-07-31", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2558", "name": "Sowrab Mia", "leave_type": "Annual Leave", "start_date": "2025-07-20", "end_date": "2025-09-17", "days": 60.0, "rejoin_date": "2025-09-23", "status": "", "status_as_on": "Rejoined", "extended_days": 6.0, "remark": ""}, {"emp_id": "1617", "name": "Mohammed Mubeen Mahmood Ali", "leave_type": "Annual Leave", "start_date": "2025-07-21", "end_date": "2025-08-07", "days": 18.0, "rejoin_date": "2025-08-08", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2535", "name": "Abul Hossain", "leave_type": "Annual Leave", "start_date": "2025-07-21", "end_date": "2025-09-19", "days": 61.0, "rejoin_date": "2025-09-20", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2736", "name": "Thoyyiba", "leave_type": "Sick Levae", "start_date": "2025-07-30", "end_date": "2025-07-30", "days": 1.0, "rejoin_date": "2025-07-31", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2628", "name": "Sona Kizhakudan Prince", "leave_type": "Annual Leave", "start_date": "2025-08-01", "end_date": "2025-08-30", "days": 30.0, "rejoin_date": "2025-10-03", "status": "", "status_as_on": "Rejoined", "extended_days": 34.0, "remark": ""}, {"emp_id": "142", "name": "Mary Jaya Francis", "leave_type": "Annual Leave", "start_date": "2025-08-04", "end_date": "2025-08-18", "days": 15.0, "rejoin_date": "2025-08-19", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2534", "name": "Alomgir Md Huqum Ali", "leave_type": "Emergency Leave", "start_date": "2025-08-05", "end_date": "2025-08-20", "days": 16.0, "rejoin_date": "2025-10-08", "status": "", "status_as_on": "Rejoined", "extended_days": 49.0, "remark": ""}, {"emp_id": "102", "name": "Jayesh Krishnan Gopalakrishnan", "leave_type": "Annual Leave", "start_date": "2025-08-11", "end_date": "2025-09-08", "days": 29.0, "rejoin_date": "2025-09-09", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2565", "name": "Rajkumar Ganesan", "leave_type": "Annual Leave", "start_date": "2025-08-11", "end_date": "2025-09-01", "days": 22.0, "rejoin_date": "2025-09-02", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2682", "name": "Yasa Rakesh", "leave_type": "Annual Leave", "start_date": "2025-08-11", "end_date": "2025-09-09", "days": 30.0, "rejoin_date": "2025-09-12", "status": "", "status_as_on": "Rejoined", "extended_days": 3.0, "remark": ""}, {"emp_id": "2499", "name": "Mohammed Ramjan Ali", "leave_type": "Annual Leave", "start_date": "2025-08-12", "end_date": "2025-08-26", "days": 15.0, "rejoin_date": "2025-08-27", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "1884", "name": "Akhin Varghese", "leave_type": "Annual Leave", "start_date": "2025-08-18", "end_date": "2025-08-25", "days": 8.0, "rejoin_date": "2025-08-26", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2406", "name": "Alben Johnson", "leave_type": "Annual Leave", "start_date": "2025-08-21", "end_date": "2025-09-15", "days": 26.0, "rejoin_date": "2025-09-16", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "93", "name": "Esmaeil Hassan Rahideh", "leave_type": "Annual Levae", "start_date": "2025-07-21", "end_date": "2025-07-22", "days": 2.0, "rejoin_date": "2025-07-23", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "951", "name": "Biju Sasidharan Susheela", "leave_type": "Annual Leave", "start_date": "2025-08-23", "end_date": "2025-10-21", "days": 60.0, "rejoin_date": "2025-10-28", "status": "", "status_as_on": "Rejoined", "extended_days": 7.0, "remark": ""}, {"emp_id": "1539", "name": "Salahudheen Karikuzhiyan Variyath", "leave_type": "Annual Leave", "start_date": "2025-08-25", "end_date": "2025-09-24", "days": 31.0, "rejoin_date": "2025-09-29", "status": "", "status_as_on": "Rejoined", "extended_days": 5.0, "remark": ""}, {"emp_id": "835", "name": "Asim Abbas Sadiq Ali", "leave_type": "Annual Leave", "start_date": "2025-08-27", "end_date": "2025-09-10", "days": 15.0, "rejoin_date": "2025-09-11", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "1417", "name": "Nawab Afaque Mohammed Khan", "leave_type": "Annual Leave", "start_date": "2025-09-01", "end_date": "2025-09-30", "days": 30.0, "rejoin_date": "2025-10-01", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "979", "name": "Gopakumar Gopinathan Pillai", "leave_type": "Annual Leave", "start_date": "2025-09-04", "end_date": "2025-09-19", "days": 16.0, "rejoin_date": "2025-09-20", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "1221", "name": "Amarnath Kundan", "leave_type": "Annual Leave", "start_date": "2025-09-08", "end_date": "2025-11-06", "days": 60.0, "rejoin_date": "2025-11-09", "status": "", "status_as_on": "Rejoined", "extended_days": 3.0, "remark": ""}, {"emp_id": "2656", "name": "Amith V.R", "leave_type": "Annual Leave", "start_date": "2025-09-08", "end_date": "2025-10-10", "days": 33.0, "rejoin_date": "2025-10-11", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "1093", "name": "Rafiqul Islam Abu Bakkar", "leave_type": "Annual Leave", "start_date": "2025-09-11", "end_date": "2025-11-09", "days": 60.0, "rejoin_date": "2025-11-17", "status": "", "status_as_on": "Rejoined", "extended_days": 8.0, "remark": ""}, {"emp_id": "2449", "name": "Md Fahad", "leave_type": "Annual Leave", "start_date": "2025-09-22", "end_date": "2025-11-20", "days": 60.0, "rejoin_date": "2025-11-21", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "1087", "name": "Aneesh Jose", "leave_type": "Annual Leave", "start_date": "2025-10-07", "end_date": "2025-11-05", "days": 30.0, "rejoin_date": "2025-11-06", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2699", "name": "Sayuri Bhagyawi Jayarathna", "leave_type": "Annual Leave", "start_date": "2025-08-04", "end_date": "2025-08-18", "days": 15.0, "rejoin_date": "2025-08-19", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2656", "name": "Amith V.R", "leave_type": "Annual Leave", "start_date": "2025-02-07", "end_date": "2025-02-14", "days": 8.0, "rejoin_date": "2025-02-15", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "190", "name": "Nasir Aziz Masih Aziz", "leave_type": "Annual leave", "start_date": "2025-08-19", "end_date": "2025-08-22", "days": 4.0, "rejoin_date": "2025-08-23", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2526", "name": "Shahid Rafique", "leave_type": "Annual Leave", "start_date": "2025-09-20", "end_date": "2025-10-19", "days": 30.0, "rejoin_date": "2025-10-20", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2707", "name": "Mosim Khan", "leave_type": "Annual Leave", "start_date": "2025-08-20", "end_date": "2025-09-04", "days": 16.0, "rejoin_date": "2025-09-05", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2670", "name": "Bobby Singh Jaspal Singh", "leave_type": "Emergency Leave", "start_date": "2025-08-07", "end_date": "2025-08-20", "days": 14.0, "rejoin_date": "2025-09-16", "status": "", "status_as_on": "Rejoined", "extended_days": 27.0, "remark": ""}, {"emp_id": "2240", "name": "Rifas Ansary Mohammed", "leave_type": "Annual Leave", "start_date": "2025-08-11", "end_date": "2025-10-09", "days": 60.0, "rejoin_date": "2025-10-10", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2610", "name": "Natalia Kolieva", "leave_type": "Annual Leave", "start_date": "2025-07-21", "end_date": "2025-08-04", "days": 15.0, "rejoin_date": "2025-08-05", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2231", "name": "Mohanad Tarek Ghziel", "leave_type": "Annual Leave", "start_date": "2025-08-11", "end_date": "2025-08-29", "days": 19.0, "rejoin_date": "2025-08-30", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2429", "name": "Anowar Hossain", "leave_type": "Annual Leave", "start_date": "2025-09-22", "end_date": "2025-11-20", "days": 60.0, "rejoin_date": "2025-11-24", "status": "", "status_as_on": "Rejoined", "extended_days": 4.0, "remark": ""}, {"emp_id": "659", "name": "Monir Hossain Reno Miah", "leave_type": "Annual Leave", "start_date": "2025-10-13", "end_date": "2025-12-11", "days": 60.0, "rejoin_date": "2025-12-15", "status": "", "status_as_on": "Rejoined", "extended_days": 4.0, "remark": ""}, {"emp_id": "2739", "name": "Dharmalingam Ramalingam", "leave_type": "Emergency Leave", "start_date": "2025-08-04", "end_date": "2025-08-21", "days": 18.0, "rejoin_date": "2025-08-22", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": "change to medical leave 10 and annual leave 8"}, {"emp_id": "2692", "name": "Imran Ali", "leave_type": "Annual Leave", "start_date": "2025-08-11", "end_date": "2025-09-10", "days": 31.0, "rejoin_date": "2025-09-10", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "1061", "name": "Syed Mushtaq Ahamad", "leave_type": "Annual Leave", "start_date": "2025-08-18", "end_date": "2025-08-21", "days": 4.0, "rejoin_date": "2025-08-22", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2417", "name": "Mohammad Shafiq", "leave_type": "Annual Leave", "start_date": "2025-08-11", "end_date": "2025-10-09", "days": 60.0, "rejoin_date": "2025-10-13", "status": "", "status_as_on": "Rejoined", "extended_days": 4.0, "remark": ""}, {"emp_id": "276", "name": "Shoukath Ahmed Khan", "leave_type": "Emergency Leave", "start_date": "2025-07-24", "end_date": "2025-08-07", "days": 15.0, "rejoin_date": "2025-08-08", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "945", "name": "Muhammad Irfan Ramzan", "leave_type": "Annual Leave", "start_date": "2025-04-25", "end_date": "2025-06-23", "days": 60.0, "rejoin_date": "2025-07-31", "status": "", "status_as_on": "Rejoined", "extended_days": 38.0, "remark": ""}, {"emp_id": "351", "name": "Shameem Hossain Mofser Mollah", "leave_type": "Annual Leave", "start_date": "2025-08-18", "end_date": "2025-09-16", "days": 30.0, "rejoin_date": "2025-09-17", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "276", "name": "Shoukath Ahmed Khan", "leave_type": "Emergency Leave", "start_date": "2025-07-24", "end_date": "2025-08-07", "days": 15.0, "rejoin_date": "2025-08-08", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "565", "name": "Md Zahangir Alam Abdur Rahoman", "leave_type": "Annual Leave", "start_date": "2025-07-02", "end_date": "2025-08-30", "days": 60.0, "rejoin_date": "2025-09-12", "status": "", "status_as_on": "Rejoined", "extended_days": 13.0, "remark": "Due to Wife medical condition document submitted"}, {"emp_id": "1856", "name": "Kumar Gautam Kamal Kishore Prasad", "leave_type": "Annual Leave", "start_date": "2025-07-11", "end_date": "2025-07-20", "days": 10.0, "rejoin_date": "2025-07-21", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": "Requested from thouseef"}, {"emp_id": "2724", "name": "Bijeeshkumar Valladiyil Gopi", "leave_type": "Annual Leave", "start_date": "2025-10-09", "end_date": "2025-11-07", "days": 30.0, "rejoin_date": "2025-11-08", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "1319", "name": "Mohammed Ziyauddin Shaikh\u200e", "leave_type": "Annual Leave", "start_date": "2025-04-03", "end_date": "2025-04-07", "days": 5.0, "rejoin_date": "2025-04-08", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "1319", "name": "Mohammed Ziyauddin Shaikh\u200e", "leave_type": "Annual leave", "start_date": "2025-08-12", "end_date": "2025-09-02", "days": 22.0, "rejoin_date": "2025-09-03", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "360", "name": "Moazam Qureshi Mohammed", "leave_type": "Annual leave", "start_date": "2025-09-01", "end_date": "2025-09-20", "days": 20.0, "rejoin_date": "2025-09-21", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2451", "name": "Faisal Yousaf Muhammad", "leave_type": "Annual leave", "start_date": "2025-10-13", "end_date": "2025-11-11", "days": 30.0, "rejoin_date": "2025-11-14", "status": "", "status_as_on": "Rejoined", "extended_days": 3.0, "remark": ""}, {"emp_id": "2687", "name": "Shaheen Siraj Hunerkar", "leave_type": "Annual leave", "start_date": "2025-10-20", "end_date": "2025-11-21", "days": 33.0, "rejoin_date": "2025-11-22", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2589", "name": "Mohammed Sameer Sageer Ahmed", "leave_type": "Annual Leave", "start_date": "2025-11-20", "end_date": "2026-01-18", "days": 60.0, "rejoin_date": "2026-02-19", "status": "", "status_as_on": "Rejoined", "extended_days": 32.0, "remark": ""}, {"emp_id": "2436", "name": "Mumeen Khan", "leave_type": "Annual Leave", "start_date": "2025-10-25", "end_date": "2025-12-23", "days": 60.0, "rejoin_date": "2025-12-26", "status": "", "status_as_on": "Rejoined", "extended_days": 3.0, "remark": ""}, {"emp_id": "2709", "name": "Sandeep Kumar Verma", "leave_type": "Annual Leave", "start_date": "2025-10-06", "end_date": "2025-11-04", "days": 30.0, "rejoin_date": "2025-11-06", "status": "", "status_as_on": "Rejoined", "extended_days": 2.0, "remark": ""}, {"emp_id": "190", "name": "Nasir Aziz Masih Aziz", "leave_type": "Annual Leave", "start_date": "2025-09-29", "end_date": "2025-10-03", "days": 5.0, "rejoin_date": "2025-10-04", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2609", "name": "Nirosh Tharindu Madhusanka Thewage Don", "leave_type": "Annual leave", "start_date": "2025-10-06", "end_date": "2025-12-05", "days": 61.0, "rejoin_date": "2025-12-06", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "1944", "name": "Kamlesh Kumar Chaudhary", "leave_type": "Annual Leave", "start_date": "2025-10-20", "end_date": "2025-12-20", "days": 62.0, "rejoin_date": "2025-12-27", "status": "", "status_as_on": "Rejoined", "extended_days": 7.0, "remark": ""}, {"emp_id": "1867", "name": "Hassan Bilal Abdul Sattar", "leave_type": "Annual Leave", "start_date": "2025-09-22", "end_date": "2025-11-10", "days": 50.0, "rejoin_date": "2025-11-30", "status": "", "status_as_on": "Rejoined", "extended_days": 20.0, "remark": ""}, {"emp_id": "1090", "name": "Ashraful Alam Jalil Sheikh", "leave_type": "Annual leave", "start_date": "2025-11-27", "end_date": "2026-01-27", "days": 62.0, "rejoin_date": "2026-02-02", "status": "", "status_as_on": "Rejoined", "extended_days": 6.0, "remark": ""}, {"emp_id": "2407", "name": "Radhakrishnan Ramankutty", "leave_type": "Annual leave", "start_date": "2025-08-25", "end_date": "2025-09-23", "days": 30.0, "rejoin_date": "2025-09-24", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2696", "name": "Mohd Abran Arif", "leave_type": "Annual Leave", "start_date": "2025-10-27", "end_date": "2025-11-25", "days": 30.0, "rejoin_date": "2025-11-28", "status": "", "status_as_on": "Rejoined", "extended_days": 3.0, "remark": ""}, {"emp_id": "2027", "name": "Rahumathulla Mohamed Naseer", "leave_type": "Annual Leave", "start_date": "2025-10-06", "end_date": "2025-10-16", "days": 11.0, "rejoin_date": "2025-10-17", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2638", "name": "Muhammad Saad Tanveer", "leave_type": "Annual Leave", "start_date": "2025-10-20", "end_date": "2025-11-06", "days": 18.0, "rejoin_date": "2025-11-07", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2486", "name": "Maaz Ahmed", "leave_type": "Annual Leave", "start_date": "2025-10-28", "end_date": "2025-11-16", "days": 20.0, "rejoin_date": "2025-11-17", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "41", "name": "Babuu Ansar Ali", "leave_type": "Annual Leave", "start_date": "2025-11-27", "end_date": "2026-01-25", "days": 60.0, "rejoin_date": "2026-02-02", "status": "", "status_as_on": "Rejoined", "extended_days": 8.0, "remark": ""}, {"emp_id": "1544", "name": "Sanjay Kumar Kamala Prasad", "leave_type": "Annual leave", "start_date": "2025-11-10", "end_date": "2026-01-08", "days": 60.0, "rejoin_date": "2026-01-19", "status": "", "status_as_on": "Rejoined", "extended_days": 11.0, "remark": ""}, {"emp_id": "2318", "name": "Salim Akhter Khan", "leave_type": "Emergency Leave", "start_date": "2025-12-01", "end_date": "2025-12-30", "days": 30.0, "rejoin_date": "2026-01-01", "status": "", "status_as_on": "Rejoined", "extended_days": 2.0, "remark": ""}, {"emp_id": "2606", "name": "Umair Ali Khan", "leave_type": "Annual Leave", "start_date": "2025-10-06", "end_date": "2025-10-19", "days": 14.0, "rejoin_date": "2025-10-20", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2078", "name": "Jabeena Ponmanichi Baboo", "leave_type": "Annual Levae", "start_date": "2025-10-20", "end_date": "2025-10-30", "days": 11.0, "rejoin_date": "2025-10-31", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "1605", "name": "Manoj Indika Kelum Mahingoda Mahingoda Naidelage", "leave_type": "Annual leave", "start_date": "2025-10-06", "end_date": "2025-12-04", "days": 60.0, "rejoin_date": "2025-12-05", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2816", "name": "Henry Peter", "leave_type": "Emergency leave", "start_date": "2025-10-09", "end_date": "2025-10-13", "days": 5.0, "rejoin_date": "2025-10-14", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "1856", "name": "Kumar Gautam Kamal Kishore Prasad", "leave_type": "Annual Leave", "start_date": "2025-10-01", "end_date": "2025-10-03", "days": 3.0, "rejoin_date": "2025-10-04", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "1263", "name": "Unni Chuttakatt", "leave_type": "Annual Levae", "start_date": "2025-10-20", "end_date": "2025-10-30", "days": 11.0, "rejoin_date": "2025-10-31", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "1220", "name": "Tufail Khan Kamin Shah", "leave_type": "Annual leave", "start_date": "2025-11-17", "end_date": "2026-01-15", "days": 60.0, "rejoin_date": "2026-02-17", "status": "", "status_as_on": "Rejoined", "extended_days": 33.0, "remark": ""}, {"emp_id": "2120", "name": "Siraj Ahmad", "leave_type": "Annual Leave", "start_date": "2025-11-02", "end_date": "2025-12-01", "days": 30.0, "rejoin_date": "2025-12-04", "status": "", "status_as_on": "Rejoined", "extended_days": 3.0, "remark": ""}, {"emp_id": "2712", "name": "Imaad Ali Khan", "leave_type": "Annual Leave", "start_date": "2025-10-05", "end_date": "2025-10-27", "days": 23.0, "rejoin_date": "2025-10-28", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2635", "name": "Muhamed Minhaj Nayarkandy", "leave_type": "Annual leave", "start_date": "2025-12-15", "end_date": "2026-01-09", "days": 26.0, "rejoin_date": "2026-01-10", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "602", "name": "Alaim Md Motalab", "leave_type": "Annual Leave", "start_date": "2025-09-01", "end_date": "2025-11-03", "days": 64.0, "rejoin_date": "2025-11-04", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "483", "name": "Khairul Hasan Bhuiyan Md Abdur Rashid Bhuiyan", "leave_type": "Emergency Leave", "start_date": "2025-11-05", "end_date": "2025-11-19", "days": 15.0, "rejoin_date": "2025-12-10", "status": "", "status_as_on": "Rejoined", "extended_days": 21.0, "remark": ""}, {"emp_id": "2636", "name": "Sanjoga Thapa", "leave_type": "Annual Leave", "start_date": "2025-10-09", "end_date": "2025-11-07", "days": 30.0, "rejoin_date": "2025-11-08", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2596", "name": "Sahid Ahamad", "leave_type": "Emergency Leave", "start_date": "2025-11-09", "end_date": "2025-11-25", "days": 17.0, "rejoin_date": "2026-02-18", "status": "", "status_as_on": "Rejoined", "extended_days": 85.0, "remark": ""}, {"emp_id": "2692", "name": "Imran Ali", "leave_type": "Paternity Leave", "start_date": "2025-12-01", "end_date": "2025-12-04", "days": 4.0, "rejoin_date": "2025-12-05", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "234", "name": "Saidur Abdul Samad", "leave_type": "Annual leave", "start_date": "2025-11-07", "end_date": "2026-01-06", "days": 61.0, "rejoin_date": "2026-02-06", "status": "", "status_as_on": "Rejoined", "extended_days": 31.0, "remark": ""}, {"emp_id": "2507", "name": "Umar Farooq", "leave_type": "Emergency Leave", "start_date": "2025-11-07", "end_date": "2025-11-16", "days": 10.0, "rejoin_date": "2025-11-17", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "1315", "name": "Amarjeet Raja Ram", "leave_type": "Annual leave", "start_date": "2025-11-10", "end_date": "2025-12-05", "days": 26.0, "rejoin_date": "2025-12-06", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2736", "name": "Thoyyiba", "leave_type": "Annual leave", "start_date": "2025-11-17", "end_date": "2025-12-18", "days": 32.0, "rejoin_date": "2025-12-19", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2727", "name": "Shais Tomy", "leave_type": "Annual Leave", "start_date": "2025-12-29", "end_date": "2026-01-27", "days": 30.0, "rejoin_date": "2026-01-28", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2618", "name": "Atta Ur Rahman", "leave_type": "Annual Leave", "start_date": "2025-11-15", "end_date": "2026-01-13", "days": 60.0, "rejoin_date": "2026-01-19", "status": "", "status_as_on": "Rejoined", "extended_days": 6.0, "remark": ""}, {"emp_id": "2628", "name": "Sona Kizhakudan Prince", "leave_type": "Emergency Leave", "start_date": "2025-12-04", "end_date": "2025-12-05", "days": 2.0, "rejoin_date": "2025-12-06", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2538", "name": "Rasel Iman Hossain", "leave_type": "Emergency Leave", "start_date": "2025-11-18", "end_date": "2025-11-28", "days": 11.0, "rejoin_date": "2026-01-16", "status": "", "status_as_on": "Rejoined", "extended_days": 49.0, "remark": ""}, {"emp_id": "2403", "name": "Pramodkumar Rajan", "leave_type": "Emergency Leave", "start_date": "2025-11-08", "end_date": "2025-11-20", "days": 13.0, "rejoin_date": "2025-11-21", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "924", "name": "Chandrakant Bhaskarbhai Pawar", "leave_type": "Annual Leave", "start_date": "2025-11-26", "end_date": "2025-12-03", "days": 8.0, "rejoin_date": "2025-12-04", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2231", "name": "Mohanad Tarek Ghziel", "leave_type": "Annual Leave", "start_date": "2025-12-08", "end_date": "2026-01-02", "days": 26.0, "rejoin_date": "2026-01-03", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2760", "name": "Sony Mohan", "leave_type": "Annual Leave", "start_date": "2026-01-22", "end_date": "2026-02-21", "days": 31.0, "rejoin_date": "2026-02-22", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2626", "name": "Sanjeev Dubey", "leave_type": "Annual Leave", "start_date": "2025-12-24", "end_date": "2026-02-21", "days": 60.0, "rejoin_date": "", "status": "", "status_as_on": "Not Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2565", "name": "Rajkumar Ganesan", "leave_type": "Annual Leave", "start_date": "2026-01-05", "end_date": "2026-01-23", "days": 19.0, "rejoin_date": "2026-01-24", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2630", "name": "Mohammed Ishaq Reddy", "leave_type": "Annual Leave", "start_date": "2026-01-08", "end_date": "2026-02-09", "days": 33.0, "rejoin_date": "2026-02-10", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "67", "name": "Esoj Jose", "leave_type": "Annual Leave", "start_date": "2025-12-08", "end_date": "2026-01-15", "days": 39.0, "rejoin_date": "2026-01-16", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": "LEAVE EXTENDEND AS PER APPROVAL FROM THOUSEEF"}, {"emp_id": "2481", "name": "Albin Kavil Joseph", "leave_type": "Annual Leave", "start_date": "2026-01-19", "end_date": "2026-02-17", "days": 30.0, "rejoin_date": "2026-02-23", "status": "", "status_as_on": "Rejoined", "extended_days": 6.0, "remark": ""}, {"emp_id": "2613", "name": "Amrish Pandey", "leave_type": "Annual Leave", "start_date": "2025-12-06", "end_date": "2026-02-07", "days": 64.0, "rejoin_date": "", "status": "", "status_as_on": "Not Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "14", "name": "Afroz Ali Khan Khan", "leave_type": "Annual Leave", "start_date": "2026-01-07", "end_date": "2026-01-22", "days": 16.0, "rejoin_date": "2026-01-23", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2632", "name": "Ratheesh Pv", "leave_type": "Annual Leave", "start_date": "2025-12-15", "end_date": "2026-01-02", "days": 19.0, "rejoin_date": "2026-01-03", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2632", "name": "Ratheesh Pv", "leave_type": "Sick Leave", "start_date": "2025-11-18", "end_date": "2025-11-24", "days": 7.0, "rejoin_date": "2025-11-25", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "1399", "name": "Bachittar Singh", "leave_type": "Annual Leave", "start_date": "2026-01-10", "end_date": "2026-03-11", "days": 61.0, "rejoin_date": "2026-04-20", "status": "", "status_as_on": "Rejoined", "extended_days": 40.0, "remark": ""}, {"emp_id": "2778", "name": "Nyzza", "leave_type": "Annual Leave", "start_date": "2026-01-16", "end_date": "2026-02-16", "days": 32.0, "rejoin_date": "2026-02-17", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "1106", "name": "Ram Chandra Pradhan", "leave_type": "Emergency Leave", "start_date": "2025-11-27", "end_date": "2025-12-11", "days": 15.0, "rejoin_date": "2025-12-12", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2503", "name": "Md Rajib Hossen", "leave_type": "Annual Leave", "start_date": "2025-11-18", "end_date": "2026-01-30", "days": 74.0, "rejoin_date": "2026-02-01", "status": "", "status_as_on": "Rejoined", "extended_days": 2.0, "remark": ""}, {"emp_id": "2615", "name": "Qamar Zaman Muhammad Akmal", "leave_type": "Annual Leave", "start_date": "2025-12-04", "end_date": "2025-12-31", "days": 28.0, "rejoin_date": "2026-01-01", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "1608", "name": "Fayaz Ali Mohammed", "leave_type": "Annual Leave", "start_date": "2025-12-18", "end_date": "2025-12-31", "days": 14.0, "rejoin_date": "2026-01-01", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2699", "name": "Sayuri Bhagyawi Jayarathna", "leave_type": "Annual Leave", "start_date": "2025-12-15", "end_date": "2025-12-31", "days": 17.0, "rejoin_date": "2026-01-01", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "hi", "name": "", "leave_type": "Annual Leave", "start_date": "2026-01-26", "end_date": "2026-03-26", "days": 60.0, "rejoin_date": "", "status": "", "status_as_on": "Not Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "1402", "name": "Khushali Bhagirath", "leave_type": "Annual Leave", "start_date": "2026-01-26", "end_date": "2026-03-26", "days": 60.0, "rejoin_date": "", "status": "", "status_as_on": "Not Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "235", "name": "Saiyed Anwar Hussain Rizvi", "leave_type": "Annual Leave", "start_date": "2026-01-21", "end_date": "2026-02-01", "days": 12.0, "rejoin_date": "2026-02-02", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "1699", "name": "Rejanesh Kumar Raghavan", "leave_type": "Emergency Leave", "start_date": "2025-12-31", "end_date": "2026-01-12", "days": 13.0, "rejoin_date": "2026-02-06", "status": "", "status_as_on": "Rejoined", "extended_days": 25.0, "remark": ""}, {"emp_id": "2758", "name": "Sarath", "leave_type": "Annual Leave", "start_date": "2026-02-02", "end_date": "2026-03-03", "days": 30.0, "rejoin_date": "2026-03-16", "status": "", "status_as_on": "Rejoined", "extended_days": 13.0, "remark": ""}, {"emp_id": "2440", "name": "Md Alamgir Hossain", "leave_type": "Ummrah", "start_date": "2026-01-21", "end_date": "2026-01-31", "days": 11.0, "rejoin_date": "2026-02-01", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2500", "name": "Dhurba Prakash Neupane", "leave_type": "Annual Leave", "start_date": "2026-02-02", "end_date": "2026-03-01", "days": 28.0, "rejoin_date": "2026-03-10", "status": "", "status_as_on": "Rejoined", "extended_days": 9.0, "remark": ""}, {"emp_id": "2478", "name": "Saqib Raza", "leave_type": "Annual Leave", "start_date": "2026-03-23", "end_date": "2026-05-24", "days": 63.0, "rejoin_date": "", "status": "", "status_as_on": "On Leave", "extended_days": 0, "remark": ""}, {"emp_id": "2575", "name": "Ahmed Abdul Latheef Nijar", "leave_type": "Annual Leave", "start_date": "2026-02-02", "end_date": "2026-02-06", "days": 5.0, "rejoin_date": "2026-02-07", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2795", "name": "Kuldeep Singh", "leave_type": "Emergency Leave", "start_date": "2026-02-01", "end_date": "2026-02-10", "days": 10.0, "rejoin_date": "2026-02-11", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2834", "name": "Virendra Singh", "leave_type": "Emergency Leave", "start_date": "2025-12-27", "end_date": "2026-01-07", "days": 12.0, "rejoin_date": "", "status": "", "status_as_on": "Not Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2499", "name": "Mohammed Ramjan Ali", "leave_type": "Annual Leave", "start_date": "2026-05-12", "end_date": "2026-06-10", "days": 30.0, "rejoin_date": "", "status": "", "status_as_on": "Applied", "extended_days": 0, "remark": ""}, {"emp_id": "2516", "name": "Rajesh Kumar Choudhary", "leave_type": "Annual Leave", "start_date": "2026-02-20", "end_date": "2026-04-20", "days": 60.0, "rejoin_date": "", "status": "", "status_as_on": "Not Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2545", "name": "Mohammad Jamal Badiyar", "leave_type": "Annual Leave", "start_date": "2026-01-22", "end_date": "2026-02-20", "days": 30.0, "rejoin_date": "2026-02-21", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2550", "name": "Grasvin Grogory", "leave_type": "Annual Leave", "start_date": "2026-01-23", "end_date": "2026-02-13", "days": 22.0, "rejoin_date": "2026-02-16", "status": "", "status_as_on": "Rejoined", "extended_days": 3.0, "remark": ""}, {"emp_id": "2510", "name": "Sanjay Kumar", "leave_type": "Annual Leave", "start_date": "2026-02-20", "end_date": "2026-04-20", "days": 60.0, "rejoin_date": "", "status": "", "status_as_on": "Not Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2725", "name": "Vipin Ponnumani", "leave_type": "Emergency Leave", "start_date": "2026-01-17", "end_date": "2026-02-03", "days": 18.0, "rejoin_date": "2026-02-05", "status": "", "status_as_on": "Rejoined", "extended_days": 2.0, "remark": ""}, {"emp_id": "2777", "name": "Prasantha Kumar", "leave_type": "Annual Leave", "start_date": "2026-02-09", "end_date": "2026-03-10", "days": 30.0, "rejoin_date": "2026-04-17", "status": "", "status_as_on": "Rejoined", "extended_days": 38.0, "remark": ""}, {"emp_id": "2594", "name": "Naveed Shams Ur Rehman", "leave_type": "Annual Leave", "start_date": "2026-03-16", "end_date": "2026-04-10", "days": 26.0, "rejoin_date": "", "status": "", "status_as_on": "Not Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "266", "name": "Shareef Asadullah Muhammad", "leave_type": "Annual Leave", "start_date": "2026-01-26", "end_date": "2026-02-06", "days": 12.0, "rejoin_date": "2026-02-07", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "1539", "name": "Salahudheen Karikuzhiyan Variyath", "leave_type": "Emergency Leave", "start_date": "2026-02-02", "end_date": "2026-02-11", "days": 10.0, "rejoin_date": "2026-02-12", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2627", "name": "Bheem Kumar Thakur", "leave_type": "Annual Leave", "start_date": "2026-02-23", "end_date": "2026-04-23", "days": 60.0, "rejoin_date": "", "status": "", "status_as_on": "Not Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2606", "name": "Umair Ali Khan", "leave_type": "Annual Leave", "start_date": "2026-01-26", "end_date": "2026-01-27", "days": 2.0, "rejoin_date": "2026-01-28", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2078", "name": "Jabeena Ponmanichi Baboo", "leave_type": "Annual Leave", "start_date": "2025-12-23", "end_date": "2025-12-30", "days": 8.0, "rejoin_date": "2025-12-31", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2856", "name": "Laxman Armoori", "leave_type": "Emergency Leave", "start_date": "2026-02-21", "end_date": "2026-03-08", "days": 16.0, "rejoin_date": "", "status": "", "status_as_on": "Not Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2707", "name": "Mosim Khan", "leave_type": "Annual Leave", "start_date": "2026-03-23", "end_date": "2026-04-21", "days": 30.0, "rejoin_date": "2026-04-28", "status": "", "status_as_on": "Rejoined", "extended_days": 7.0, "remark": ""}, {"emp_id": "2740", "name": "Jagedeesh", "leave_type": "Annual Leave", "start_date": "2026-02-25", "end_date": "2026-03-27", "days": 31.0, "rejoin_date": "", "status": "", "status_as_on": "Not Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2504", "name": "Muhammad Tayyab", "leave_type": "Annual Leave", "start_date": "2026-03-23", "end_date": "2026-05-21", "days": 60.0, "rejoin_date": "", "status": "", "status_as_on": "On Leave", "extended_days": 0, "remark": ""}, {"emp_id": "2582", "name": "Niyas Mohamed Deen Mohamed", "leave_type": "Annual Leave", "start_date": "2026-05-29", "end_date": "2026-07-29", "days": 62.0, "rejoin_date": "", "status": "", "status_as_on": "Applied", "extended_days": 0, "remark": ""}, {"emp_id": "2594", "name": "Naveed Shams Ur Rehman", "leave_type": "Umrah", "start_date": "2026-02-25", "end_date": "2026-03-06", "days": 10.0, "rejoin_date": "", "status": "", "status_as_on": "Not Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2726", "name": "MD Ramjan Mrodha", "leave_type": "Emergency Leave", "start_date": "2026-02-18", "end_date": "2026-03-01", "days": 12.0, "rejoin_date": "2026-03-02", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "338", "name": "Jugdayal Sharma Sudeshwar Sharma", "leave_type": "Annual Leave", "start_date": "2026-02-28", "end_date": "2026-03-31", "days": 32.0, "rejoin_date": "2026-04-15", "status": "", "status_as_on": "Rejoined", "extended_days": 15.0, "remark": ""}, {"emp_id": "2641", "name": "Chanaka", "leave_type": "Annual Leave", "start_date": "2026-03-23", "end_date": "2026-05-23", "days": 62.0, "rejoin_date": "", "status": "", "status_as_on": "On Leave", "extended_days": 0, "remark": ""}, {"emp_id": "2622", "name": "Ahtsham Khalid", "leave_type": "Annual Leave", "start_date": "2026-03-24", "end_date": "2026-05-26", "days": 64.0, "rejoin_date": "", "status": "", "status_as_on": "On Leave", "extended_days": 0, "remark": ""}, {"emp_id": "1076", "name": "Naveed Anjum Muhammad Ramzan Bagoo", "leave_type": "Annual Leave", "start_date": "2026-03-08", "end_date": "2026-05-07", "days": 61.0, "rejoin_date": "", "status": "", "status_as_on": "On Leave", "extended_days": 0, "remark": ""}, {"emp_id": "629", "name": "Amir Alam Khan Bahar Karam", "leave_type": "Annual Leave", "start_date": "2026-03-16", "end_date": "2026-05-16", "days": 62.0, "rejoin_date": "", "status": "", "status_as_on": "On Leave", "extended_days": 0, "remark": ""}, {"emp_id": "2712", "name": "Imaad Ali Khan", "leave_type": "Annual Leave", "start_date": "2025-10-05", "end_date": "2025-10-27", "days": 23.0, "rejoin_date": "2025-10-28", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2286", "name": "Aqil Javed", "leave_type": "Umrah", "start_date": "2026-02-25", "end_date": "2026-03-08", "days": 12.0, "rejoin_date": "2026-03-09", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2537", "name": "Rasel Ali Sha", "leave_type": "Annual Leave", "start_date": "2026-02-27", "end_date": "2026-04-27", "days": 60.0, "rejoin_date": "", "status": "", "status_as_on": "Not Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "976", "name": "Nasar Khan Muhammad Afzal Khan", "leave_type": "Annual Leave", "start_date": "2026-03-23", "end_date": "2026-04-21", "days": 30.0, "rejoin_date": "", "status": "", "status_as_on": "Not Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "979", "name": "Gopakumar Gopinathan Pillai", "leave_type": "Annual Leave", "start_date": "2026-04-06", "end_date": "2026-04-16", "days": 11.0, "rejoin_date": "2026-04-17", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2656", "name": "Amith V.R", "leave_type": "Annual Leave", "start_date": "2026-04-01", "end_date": "2026-04-16", "days": 16.0, "rejoin_date": "2026-04-17", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2787", "name": "Sajan", "leave_type": "Annual Leave", "start_date": "2026-05-15", "end_date": "2026-05-24", "days": 10.0, "rejoin_date": "", "status": "", "status_as_on": "Applied", "extended_days": 0, "remark": ""}, {"emp_id": "2014", "name": "Bacha Rashid Fazal Wahid", "leave_type": "Emergency Leave", "start_date": "2026-04-13", "end_date": "2026-06-11", "days": 60.0, "rejoin_date": "", "status": "", "status_as_on": "On Leave", "extended_days": 0, "remark": ""}, {"emp_id": "1016", "name": "Mohammed Abul Hasan", "leave_type": "Annual Leave", "start_date": "2026-03-23", "end_date": "2026-04-21", "days": 30.0, "rejoin_date": "", "status": "", "status_as_on": "Not Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "1693", "name": "Shaik Rasheed Ahmed", "leave_type": "Annual Leave", "start_date": "2026-03-23", "end_date": "2026-04-09", "days": 18.0, "rejoin_date": "2026-04-10", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2887", "name": "Govindu Ari", "leave_type": "Emergency Leave", "start_date": "2026-04-12", "end_date": "2026-05-01", "days": 20.0, "rejoin_date": "", "status": "", "status_as_on": "On Leave", "extended_days": 0, "remark": ""}, {"emp_id": "1617", "name": "Mohammed Mubeen Mahmood Ali", "leave_type": "Annual Leave", "start_date": "2026-04-13", "end_date": "2026-04-16", "days": 4.0, "rejoin_date": "2026-04-17", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2407", "name": "Radhakrishnan Ramankutty", "leave_type": "Annual Leave", "start_date": "2026-04-15", "end_date": "2026-05-04", "days": 20.0, "rejoin_date": "", "status": "", "status_as_on": "On Leave", "extended_days": 0, "remark": ""}, {"emp_id": "1856", "name": "Kumar Gautam Kamal Kishore Prasad", "leave_type": "Annual Leave", "start_date": "2026-04-13", "end_date": "2026-04-27", "days": 15.0, "rejoin_date": "", "status": "", "status_as_on": "Not Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2636", "name": "Sanjoga Thapa", "leave_type": "Emergency Leave", "start_date": "2026-04-07", "end_date": "2026-04-21", "days": 15.0, "rejoin_date": "2026-04-22", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2845", "name": "Jafar Ali", "leave_type": "Emergency Leave", "start_date": "2026-04-20", "end_date": "2026-05-01", "days": 12.0, "rejoin_date": "", "status": "", "status_as_on": "On Leave", "extended_days": 0, "remark": ""}, {"emp_id": "2658", "name": "Satheesh Edassery", "leave_type": "Annual Leave", "start_date": "2026-04-19", "end_date": "2026-06-17", "days": 60.0, "rejoin_date": "", "status": "", "status_as_on": "On Leave", "extended_days": 0, "remark": ""}, {"emp_id": "1884", "name": "Akhin Varghese", "leave_type": "Annual Leave", "start_date": "2026-04-20", "end_date": "2026-05-20", "days": 31.0, "rejoin_date": "", "status": "", "status_as_on": "On Leave", "extended_days": 0, "remark": ""}, {"emp_id": "629", "name": "Amir Alam Khan Bahar Karam", "leave_type": "Annual Leave", "start_date": "2026-03-30", "end_date": "2026-05-28", "days": 60.0, "rejoin_date": " ", "status": "", "status_as_on": "", "extended_days": 0, "remark": ""}, {"emp_id": "2752", "name": "Madhavkumar", "leave_type": "Emergency Leave", "start_date": "2026-02-10", "end_date": "2026-03-15", "days": 34.0, "rejoin_date": "", "status": "", "status_as_on": "Not Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "1376", "name": "Vishnu Mohanan", "leave_type": "Annual Leave", "start_date": "2026-04-22", "end_date": "2026-05-31", "days": 40.0, "rejoin_date": "", "status": "", "status_as_on": "On Leave", "extended_days": 0, "remark": ""}, {"emp_id": "434", "name": "Liton Zamal Hossain", "leave_type": "Annual Leave", "start_date": "2026-05-08", "end_date": "2026-07-08", "days": 62.0, "rejoin_date": "", "status": "", "status_as_on": "Applied", "extended_days": 0, "remark": ""}, {"emp_id": "2743", "name": "Abdurrahman", "leave_type": "Umrah Leave", "start_date": "2026-02-25", "end_date": "2026-03-08", "days": 12.0, "rejoin_date": "2026-03-09", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "147", "name": "Md Mosharaf Hossain", "leave_type": "Annual Leave", "start_date": "2026-05-15", "end_date": "2026-06-13", "days": 30.0, "rejoin_date": "", "status": "", "status_as_on": "Applied", "extended_days": 0, "remark": ""}, {"emp_id": "2614", "name": "Manish Kumar Yadav", "leave_type": "Emergency Leave", "start_date": "2026-04-23", "end_date": "2026-05-07", "days": 15.0, "rejoin_date": "", "status": "", "status_as_on": "On Leave", "extended_days": 0, "remark": ""}, {"emp_id": "227", "name": "Rezaul Karim Abdur Rouf", "leave_type": "Emergency Leave", "start_date": "2026-02-03", "end_date": "2026-03-04", "days": 30.0, "rejoin_date": "", "status": "", "status_as_on": "Not Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "2690", "name": "Joyce V Camposano", "leave_type": "Annual Leave", "start_date": "2026-03-03", "end_date": "2026-03-18", "days": 16.0, "rejoin_date": "2026-03-19", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}, {"emp_id": "142", "name": "Mary Jaya Francis", "leave_type": "Annual Leave", "start_date": "2026-01-12", "end_date": "2026-02-01", "days": 21.0, "rejoin_date": "2026-02-02", "status": "", "status_as_on": "Rejoined", "extended_days": 0, "remark": ""}];
+
+const MAX_LEAVE = 60;
+const ROWS_PER_PAGE = 20;
+let empPage = 1;
+let leavePage = 1;
+
+// ========== INIT ==========
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('dash-date').textContent = new Date().toLocaleDateString('en-US', {weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  renderDashboard();
+});
+
+// ========== NAVIGATION ==========
+function showPage(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('active');
+  const navMap = {'dashboard':0,'employees':1,'leaves':2,'balance':3,'add-leave':4,'add-employee':5};
+  document.querySelectorAll('.nav-item')[navMap[page]]?.classList.add('active');
+
+  if (page === 'dashboard') renderDashboard();
+  if (page === 'employees') renderEmployees();
+  if (page === 'leaves') renderLeaves();
+  if (page === 'add-leave') populateEmpDropdown();
+}
+
+// ========== HELPERS ==========
+function getLeavesByEmp(empId) {
+  return leaveRecords.filter(l => String(l.emp_id) === String(empId));
+}
+
+function getTotalLeavesTaken(empId) {
+  return getLeavesByEmp(empId).reduce((s, l) => s + (Number(l.days) || 0), 0);
+}
+
+function getEmpById(id) {
+  return employees.find(e => String(e.id) === String(id).trim());
+}
+
+function statusPill(status) {
+  const s = (status || '').toLowerCase();
+  if (s.includes('on leave')) return '<span class="pill orange">On Leave</span>';
+  if (s.includes('not rejoined')) return '<span class="pill red">Not Rejoined</span>';
+  if (s.includes('rejoined') && !s.includes('not')) return '<span class="pill green">Rejoined</span>';
+  if (s.includes('applied')) return '<span class="pill blue">Applied</span>';
+  if (s.includes('early')) return '<span class="pill purple">Early Rejoin</span>';
+  if (s.includes('overstay')) return '<span class="pill red">Overstay</span>';
+  return '<span class="pill blue">' + (status || '-') + '</span>';
+}
+
+function balanceBar(balance) {
+  const pct = Math.min(100, Math.max(0, (balance / MAX_LEAVE) * 100));
+  const color = pct > 60 ? 'var(--green)' : pct > 20 ? 'var(--orange)' : 'var(--red)';
+  const textColor = pct > 60 ? 'var(--green)' : pct > 20 ? 'var(--orange)' : 'var(--red)';
+  return `<div class="balance-bar-wrap">
+    <div class="balance-bar"><div class="balance-bar-fill" style="width:${pct}%;background:${color}"></div></div>
+    <div class="balance-num" style="color:${textColor}">${balance.toFixed(1)}</div>
+  </div>`;
+}
+
+function formatDate(d) {
+  if (!d || d === 'NaT' || d === 'nan' || d === 'None') return '-';
+  try {
+    const dt = new Date(d);
+    if (isNaN(dt)) return d;
+    return dt.toLocaleDateString('en-GB', {day:'2-digit',month:'short',year:'numeric'});
+  } catch { return d; }
+}
+
+function toast(msg, type='success') {
+  const el = document.getElementById('toast');
+  const icon = type === 'success' ? '✅' : '❌';
+  document.getElementById('toast-icon').textContent = icon;
+  document.getElementById('toast-msg').textContent = msg;
+  el.className = 'toast show ' + type;
+  setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+
+// ========== DASHBOARD ==========
+function renderDashboard() {
+  document.getElementById('stat-total').textContent = employees.length;
+
+  const onLeave = leaveRecords.filter(l => l.status_as_on && (l.status_as_on.toLowerCase().includes('on leave') || l.status_as_on.toLowerCase().includes('not rejoined')));
+  const notRejoined = leaveRecords.filter(l => l.status_as_on && l.status_as_on.toLowerCase().includes('not rejoined'));
+
+  document.getElementById('stat-onleave').textContent = onLeave.length;
+  document.getElementById('stat-notrejoined').textContent = notRejoined.length;
+
+  const totalBal = employees.reduce((s, e) => s + (Number(e.leave_balance) || 0), 0);
+  document.getElementById('stat-avgbal').textContent = (totalBal / employees.length).toFixed(1);
+
+  const recentActive = [...onLeave, ...leaveRecords.filter(l => l.status_as_on && l.status_as_on.toLowerCase() === 'not rejoined')];
+  const unique = Array.from(new Map(recentActive.map(l => [l.emp_id + l.start_date, l])).values()).slice(0, 15);
+
+  const tbody = document.getElementById('dash-table-body');
+  tbody.innerHTML = unique.length ? unique.map(l => {
+    const emp = getEmpById(l.emp_id);
+    const bal = emp ? Number(emp.leave_balance) : '-';
+    return `<tr>
+      <td><span class="emp-id">${l.emp_id}</span></td>
+      <td><div class="emp-name">${l.name || '-'}</div></td>
+      <td><span style="font-size:12px;color:var(--text2)">${l.leave_type}</span></td>
+      <td>${formatDate(l.start_date)}</td>
+      <td>${formatDate(l.end_date)}</td>
+      <td><b>${l.days}</b></td>
+      <td>${statusPill(l.status_as_on)}</td>
+      <td>${typeof bal === 'number' ? balanceBar(bal) : '-'}</td>
+    </tr>`;
+  }).join('') : '<tr><td colspan="8"><div class="empty-state"><div class="empty-state-icon">✅</div><div class="empty-state-text">No active leaves found</div></div></td></tr>';
+}
+
+// ========== EMPLOYEES ==========
+function renderEmployees() {
+  const search = document.getElementById('emp-search').value.toLowerCase();
+  const sortBy = document.getElementById('emp-sort').value;
+
+  let filtered = employees.filter(e =>
+    e.name.toLowerCase().includes(search) ||
+    String(e.id).includes(search)
+  );
+
+  if (sortBy === 'name') filtered.sort((a,b) => a.name.localeCompare(b.name));
+  else if (sortBy === 'id') filtered.sort((a,b) => Number(a.id) - Number(b.id));
+  else if (sortBy === 'balance_asc') filtered.sort((a,b) => Number(a.leave_balance) - Number(b.leave_balance));
+  else if (sortBy === 'balance_desc') filtered.sort((a,b) => Number(b.leave_balance) - Number(a.leave_balance));
+
+  document.getElementById('emp-count-label').textContent = filtered.length + ' employees found';
+
+  const total = filtered.length;
+  const pages = Math.ceil(total / ROWS_PER_PAGE);
+  if (empPage > pages) empPage = 1;
+  const start = (empPage - 1) * ROWS_PER_PAGE;
+  const slice = filtered.slice(start, start + ROWS_PER_PAGE);
+
+  const tbody = document.getElementById('emp-table-body');
+  tbody.innerHTML = slice.length ? slice.map(e => {
+    const taken = getTotalLeavesTaken(e.id);
+    return `<tr>
+      <td><span class="emp-id">${e.id}</span></td>
+      <td>
+        <div class="emp-name">${e.name}</div>
+        <div class="emp-desig">${e.designation}</div>
+      </td>
+      <td style="font-size:13px;color:var(--text2)">${e.designation}</td>
+      <td style="font-size:13px">${formatDate(e.join_date)}</td>
+      <td>${balanceBar(Number(e.leave_balance))}</td>
+      <td><span style="font-family:var(--mono);font-size:13px">${taken.toFixed(1)}</span></td>
+      <td>
+        <button class="btn btn-secondary btn-sm" onclick='viewEmployee("${e.id}")'>View</button>
+      </td>
+    </tr>`;
+  }).join('') : '<tr><td colspan="7"><div class="empty-state"><div class="empty-state-icon">🔍</div><div class="empty-state-text">No employees found</div></div></td></tr>';
+
+  renderPagination('emp-pagination', empPage, pages, (p) => { empPage = p; renderEmployees(); });
+}
+
+// ========== VIEW EMPLOYEE MODAL ==========
+function viewEmployee(id) {
+  const emp = getEmpById(id);
+  if (!emp) return;
+  const leaves = getLeavesByEmp(id);
+  const taken = getTotalLeavesTaken(id);
+
+  document.getElementById('modal-emp-title').textContent = emp.name;
+  document.getElementById('modal-emp-body').innerHTML = `
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+      <span class="pill blue">ID: ${emp.id}</span>
+      <span class="pill green">${emp.designation}</span>
+      <span class="pill orange">Joined: ${formatDate(emp.join_date)}</span>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:20px">
+      <div class="result-item">
+        <div class="result-item-label">Leave Balance</div>
+        <div class="result-item-value" style="color:var(--green)">${Number(emp.leave_balance).toFixed(1)}</div>
+        <div style="font-size:11px;color:var(--text3)">out of 60 days</div>
+      </div>
+      <div class="result-item">
+        <div class="result-item-label">Total Taken</div>
+        <div class="result-item-value" style="color:var(--orange)">${taken.toFixed(1)}</div>
+        <div style="font-size:11px;color:var(--text3)">all leave records</div>
+      </div>
+      <div class="result-item">
+        <div class="result-item-label">Leave Records</div>
+        <div class="result-item-value" style="color:var(--accent)">${leaves.length}</div>
+        <div style="font-size:11px;color:var(--text3)">total entries</div>
+      </div>
+    </div>
+    <div style="font-size:13px;font-weight:700;margin-bottom:10px">Leave History</div>
+    <div style="overflow-x:auto">
+      <table>
+        <thead>
+          <tr><th>Type</th><th>Start</th><th>End</th><th>Days</th><th>Status</th></tr>
+        </thead>
+        <tbody>
+          ${leaves.length ? leaves.map(l => `<tr>
+            <td style="font-size:12px">${l.leave_type}</td>
+            <td style="font-size:12px">${formatDate(l.start_date)}</td>
+            <td style="font-size:12px">${formatDate(l.end_date)}</td>
+            <td><b>${l.days}</b></td>
+            <td>${statusPill(l.status_as_on || l.status)}</td>
+          </tr>`).join('') : '<tr><td colspan="5" style="text-align:center;color:var(--text3);padding:20px">No leave records</td></tr>'}
+        </tbody>
+      </table>
+    </div>`;
+  document.getElementById('emp-modal').classList.add('show');
+}
+
+// ========== LEAVE RECORDS ==========
+function renderLeaves() {
+  const search = document.getElementById('leave-search').value.toLowerCase();
+  const statusF = document.getElementById('leave-status-filter').value;
+  const typeF = document.getElementById('leave-type-filter').value;
+  const yearF = document.getElementById('leave-year-filter').value;
+
+  let filtered = leaveRecords.filter(l => {
+    const matchSearch = l.name.toLowerCase().includes(search) || String(l.emp_id).includes(search);
+    const matchStatus = !statusF || (l.status_as_on || '').includes(statusF);
+    const matchType = !typeF || l.leave_type.toLowerCase().includes(typeF.toLowerCase());
+    const matchYear = !yearF || (l.start_date && l.start_date.startsWith(yearF));
+    return matchSearch && matchStatus && matchType && matchYear;
+  });
+
+  document.getElementById('leave-count-label').textContent = filtered.length + ' records found';
+
+  const total = filtered.length;
+  const pages = Math.ceil(total / ROWS_PER_PAGE);
+  if (leavePage > pages) leavePage = 1;
+  const start = (leavePage - 1) * ROWS_PER_PAGE;
+  const slice = filtered.slice(start, start + ROWS_PER_PAGE);
+
+  const tbody = document.getElementById('leave-table-body');
+  tbody.innerHTML = slice.length ? slice.map(l => `<tr>
+    <td><span class="emp-id">${l.emp_id}</span></td>
+    <td><div class="emp-name" style="white-space:nowrap">${l.name || '-'}</div></td>
+    <td><span style="font-size:12px;color:var(--text2);white-space:nowrap">${l.leave_type}</span></td>
+    <td style="white-space:nowrap">${formatDate(l.start_date)}</td>
+    <td style="white-space:nowrap">${formatDate(l.end_date)}</td>
+    <td><b style="font-family:var(--mono)">${l.days}</b></td>
+    <td style="white-space:nowrap">${formatDate(l.rejoin_date)}</td>
+    <td>${statusPill(l.status_as_on || l.status)}</td>
+    <td><span style="font-family:var(--mono);color:var(--text3)">${l.extended_days || '-'}</span></td>
+  </tr>`).join('') : '<tr><td colspan="9"><div class="empty-state"><div class="empty-state-icon">🔍</div><div class="empty-state-text">No records found</div></div></td></tr>';
+
+  renderPagination('leave-pagination', leavePage, pages, (p) => { leavePage = p; renderLeaves(); });
+}
+
+// ========== PAGINATION ==========
+function renderPagination(containerId, currentPage, totalPages, cb) {
+  const el = document.getElementById(containerId);
+  if (totalPages <= 1) { el.innerHTML = ''; return; }
+
+  let html = `<span class="pg-info">Page ${currentPage} of ${totalPages}</span>`;
+  html += `<button class="pg-btn" onclick="(${cb.toString()}(${currentPage-1}))" ${currentPage===1?'disabled':''}>‹</button>`;
+
+  let start = Math.max(1, currentPage - 2);
+  let end = Math.min(totalPages, start + 4);
+  for (let i = start; i <= end; i++) {
+    html += `<button class="pg-btn${i===currentPage?' active':''}" onclick="(${cb.toString()}(${i}))">${i}</button>`;
+  }
+  html += `<button class="pg-btn" onclick="(${cb.toString()}(${currentPage+1}))" ${currentPage===totalPages?'disabled':''}>›</button>`;
+  el.innerHTML = html;
+}
+
+// ========== LOOKUP ==========
+function lookupEmployee() {
+  const id = document.getElementById('lookup-id').value.trim();
+  const err = document.getElementById('lookup-error');
+  const res = document.getElementById('lookup-result');
+  err.classList.remove('show');
+  res.classList.remove('show');
+
+  if (!id) {
+    document.getElementById('lookup-error-text').textContent = 'Please enter an Employee ID.';
+    err.classList.add('show');
+    return;
+  }
+
+  const emp = getEmpById(id);
+  if (!emp) {
+    document.getElementById('lookup-error-text').textContent = 'Employee ID "' + id + '" not found in the system.';
+    err.classList.add('show');
+    return;
+  }
+
+  const leaves = getLeavesByEmp(id);
+  const taken = getTotalLeavesTaken(id);
+  const latestLeave = leaves.sort((a,b) => new Date(b.start_date) - new Date(a.start_date))[0];
+  const latestStatus = latestLeave ? (latestLeave.status_as_on || latestLeave.status) : '';
+
+  document.getElementById('res-name').textContent = emp.name;
+  document.getElementById('res-id-desig').textContent = 'ID: ' + emp.id + ' · ' + emp.designation;
+  document.getElementById('res-status-pill').innerHTML = latestStatus ? statusPill(latestStatus) : '';
+  document.getElementById('res-balance').textContent = Number(emp.leave_balance).toFixed(1) + ' days';
+  document.getElementById('res-taken').textContent = taken.toFixed(1) + ' days';
+  document.getElementById('res-join').textContent = formatDate(emp.join_date);
+
+  const histBody = document.getElementById('res-history');
+  histBody.innerHTML = leaves.length ? leaves.map(l => `<tr>
+    <td style="font-size:12px">${l.leave_type}</td>
+    <td style="font-size:12px">${formatDate(l.start_date)}</td>
+    <td style="font-size:12px">${formatDate(l.end_date)}</td>
+    <td><b style="font-family:var(--mono)">${l.days}</b></td>
+    <td style="font-size:12px">${formatDate(l.rejoin_date)}</td>
+    <td>${statusPill(l.status_as_on || l.status)}</td>
+  </tr>`).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--text3);padding:20px">No leave records found</td></tr>';
+
+  res.classList.add('show');
+}
+
+// ========== ADD LEAVE ==========
+function populateEmpDropdown() {
+  // just clear fields
+}
+
+function autofillEmployee() {
+  const id = document.getElementById('al-emp-id').value.trim();
+  const emp = getEmpById(id);
+  document.getElementById('al-emp-name').value = emp ? emp.name : '';
+  if (emp) checkLeaveBalance();
+}
+
+function calcLeaveDays() {
+  const s = document.getElementById('al-start').value;
+  const e = document.getElementById('al-end').value;
+  if (s && e) {
+    const diff = Math.round((new Date(e) - new Date(s)) / (1000*60*60*24)) + 1;
+    document.getElementById('al-days').value = Math.max(0, diff);
+    checkLeaveBalance();
+  }
+}
+
+function checkLeaveBalance() {
+  const id = document.getElementById('al-emp-id').value.trim();
+  const days = Number(document.getElementById('al-days').value) || 0;
+  const emp = getEmpById(id);
+  const warnEl = document.getElementById('al-balance-warn');
+  const wrapEl = document.getElementById('al-balance-info');
+
+  if (emp && days > 0) {
+    const bal = Number(emp.leave_balance);
+    wrapEl.style.display = 'block';
+    if (days > MAX_LEAVE) {
+      warnEl.textContent = `⚠️ Requested ${days} days exceeds the maximum allowed leave of ${MAX_LEAVE} days!`;
+      warnEl.className = 'alert error show';
+    } else if (days > bal) {
+      warnEl.textContent = `⚠️ Requested ${days} days exceeds the current balance of ${bal.toFixed(1)} days. Balance will go into negative.`;
+      warnEl.className = 'alert warning show';
+    } else {
+      warnEl.textContent = `✅ Leave request of ${days} days is within the balance of ${bal.toFixed(1)} days.`;
+      warnEl.className = 'alert success show';
+    }
+  } else {
+    wrapEl.style.display = 'none';
+  }
+}
+
+function addLeaveRecord() {
+  const id = document.getElementById('al-emp-id').value.trim();
+  const type = document.getElementById('al-leave-type').value;
+  const start = document.getElementById('al-start').value;
+  const end = document.getElementById('al-end').value;
+  const status = document.getElementById('al-status').value;
+  const rejoin = document.getElementById('al-rejoin').value;
+  const remark = document.getElementById('al-remark').value;
+  const days = Number(document.getElementById('al-days').value) || 0;
+  const alertEl = document.getElementById('add-leave-alert');
+
+  if (!id || !type || !start || !end) {
+    alertEl.textContent = '❌ Please fill all required fields (ID, Type, Start Date, End Date).';
+    alertEl.className = 'alert error show';
+    return;
+  }
+
+  const emp = getEmpById(id);
+  if (!emp) {
+    alertEl.textContent = '❌ Employee ID "' + id + '" not found. Please add the employee first.';
+    alertEl.className = 'alert error show';
+    return;
+  }
+
+  if (days > MAX_LEAVE) {
+    alertEl.textContent = '❌ Leave cannot exceed ' + MAX_LEAVE + ' days. Please adjust the dates.';
+    alertEl.className = 'alert error show';
+    return;
+  }
+
+  // Add record
+  const record = {
+    emp_id: id,
+    name: emp.name,
+    leave_type: type,
+    start_date: start,
+    end_date: end,
+    days: days,
+    rejoin_date: rejoin,
+    status: status,
+    status_as_on: status,
+    extended_days: 0,
+    remark: remark
+  };
+  leaveRecords.push(record);
+
+  // Deduct from balance
+  emp.leave_balance = Math.max(0, Number(emp.leave_balance) - days);
+
+  alertEl.textContent = '✅ Leave record added successfully! New balance for ' + emp.name + ': ' + emp.leave_balance.toFixed(1) + ' days.';
+  alertEl.className = 'alert success show';
+  toast('Leave record saved for ' + emp.name, 'success');
+  clearLeaveForm();
+
+  setTimeout(() => alertEl.className = 'alert', 4000);
+}
+
+function clearLeaveForm() {
+  ['al-emp-id','al-emp-name','al-start','al-end','al-days','al-rejoin','al-remark'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('al-balance-info').style.display = 'none';
+  document.getElementById('add-leave-alert').className = 'alert';
+}
+
+// ========== ADD EMPLOYEE ==========
+function calcNewEmpBalance() {
+  const joinDate = document.getElementById('ae-join').value;
+  if (!joinDate) return;
+
+  const join = new Date(joinDate);
+  const today = new Date();
+  const days = Math.floor((today - join) / (1000*60*60*24));
+  // 1 day per 26 working days (UAE standard)
+  const balance = Math.min(MAX_LEAVE, Math.floor(days / 26));
+
+  document.getElementById('ae-balance').value = balance;
+  const infoEl = document.getElementById('ae-calc-info');
+  infoEl.style.display = 'block';
+  infoEl.textContent = `Service: ${days} days → Accrued: ${Math.floor(days/26)} days → Capped at: ${balance} days (max ${MAX_LEAVE})`;
+}
+
+function addEmployee() {
+  const id = document.getElementById('ae-id').value.trim();
+  const name = document.getElementById('ae-name').value.trim();
+  const desig = document.getElementById('ae-desig').value.trim();
+  const join = document.getElementById('ae-join').value;
+  const balance = Number(document.getElementById('ae-balance').value) || 0;
+  const alertEl = document.getElementById('add-emp-alert');
+
+  if (!id || !name || !join) {
+    alertEl.textContent = '❌ Please fill ID, Name, and Joining Date.';
+    alertEl.className = 'alert error show';
+    return;
+  }
+
+  if (getEmpById(id)) {
+    alertEl.textContent = '❌ Employee ID "' + id + '" already exists in the system.';
+    alertEl.className = 'alert error show';
+    return;
+  }
+
+  if (balance > MAX_LEAVE) {
+    alertEl.textContent = '❌ Leave balance cannot exceed ' + MAX_LEAVE + ' days.';
+    alertEl.className = 'alert error show';
+    return;
+  }
+
+  employees.push({
+    id, name, designation: desig, join_date: join,
+    leave_balance: Math.min(balance, MAX_LEAVE)
+  });
+
+  alertEl.textContent = '✅ Employee "' + name + '" (ID: ' + id + ') added with ' + balance + ' days leave balance.';
+  alertEl.className = 'alert success show';
+  toast('Employee ' + name + ' added!', 'success');
+  clearEmpForm();
+  setTimeout(() => alertEl.className = 'alert', 4000);
+}
+
+function clearEmpForm() {
+  ['ae-id','ae-name','ae-desig','ae-join','ae-balance'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('ae-calc-info').style.display = 'none';
+  document.getElementById('add-emp-alert').className = 'alert';
+}
+
+// ========== EXPORT ==========
+function exportAllExcel() {
+  const wb = XLSX.utils.book_new();
+
+  // Summary sheet
+  const summaryData = employees.map(e => ({
+    'Employee ID': e.id,
+    'Name': e.name,
+    'Designation': e.designation,
+    'Join Date': e.join_date,
+    'Leave Balance (Days)': Number(e.leave_balance).toFixed(1),
+    'Max Leave (Days)': MAX_LEAVE,
+    'Total Leave Taken': getTotalLeavesTaken(e.id).toFixed(1),
+    'Leave Records Count': getLeavesByEmp(e.id).length
+  }));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryData), 'Employee Summary');
+
+  // Leave Records sheet
+  const leaveData = leaveRecords.map(l => ({
+    'Employee ID': l.emp_id,
+    'Name': l.name,
+    'Leave Type': l.leave_type,
+    'Start Date': l.start_date,
+    'End Date': l.end_date,
+    'Number of Days': l.days,
+    'Rejoining Date': l.rejoin_date,
+    'Status': l.status_as_on || l.status,
+    'Extended Days': l.extended_days,
+    'Remarks': l.remark
+  }));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(leaveData), 'Leave Records');
+
+  XLSX.writeFile(wb, 'LeaveManagement_Export_' + new Date().toISOString().slice(0,10) + '.xlsx');
+  toast('Excel exported successfully!', 'success');
+}
+
+function exportLeavesExcel() {
+  const wb = XLSX.utils.book_new();
+  const leaveData = leaveRecords.map(l => ({
+    'Employee ID': l.emp_id,
+    'Name': l.name,
+    'Leave Type': l.leave_type,
+    'Start Date': l.start_date,
+    'End Date': l.end_date,
+    'Number of Days': l.days,
+    'Rejoining Date': l.rejoin_date,
+    'Status': l.status_as_on || l.status,
+    'Extended Days': l.extended_days,
+    'Remarks': l.remark
+  }));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(leaveData), 'Leave Records');
+  XLSX.writeFile(wb, 'LeaveRecords_' + new Date().toISOString().slice(0,10) + '.xlsx');
+  toast('Leave records exported!', 'success');
+}
+
+function exportEmployeesExcel() {
+  const wb = XLSX.utils.book_new();
+  const data = employees.map(e => ({
+    'Employee ID': e.id,
+    'Name': e.name,
+    'Designation': e.designation,
+    'Join Date': e.join_date,
+    'Leave Balance': Number(e.leave_balance).toFixed(1),
+    'Total Taken': getTotalLeavesTaken(e.id).toFixed(1)
+  }));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data), 'Employees');
+  XLSX.writeFile(wb, 'Employees_' + new Date().toISOString().slice(0,10) + '.xlsx');
+  toast('Employee list exported!', 'success');
+}
+</script>
+</body>
+</html>
