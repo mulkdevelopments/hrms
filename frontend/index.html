@@ -537,6 +537,7 @@ body::before {
 .header-title span { color: var(--text-muted); font-weight: 400; font-size: 14px; font-family: 'Inter', sans-serif; }
 
 .header-actions { display: flex; gap: 10px; align-items: center; }
+.header-att-actions { display: flex; gap: 6px; align-items: center; }
 .mobile-menu-btn { display: none; }
 .icon-btn {
   width: 36px; height: 36px; border-radius: 9px; border: 1px solid var(--border-bright);
@@ -1112,6 +1113,7 @@ textarea { resize: vertical; min-height: 80px; }
 @media (max-width: 640px) {
   #header { gap: 10px; }
   .header-actions { gap: 6px; }
+  .header-att-actions .btn-sm { padding: 5px 9px; font-size: 11px; }
   .icon-btn {
     width: 34px;
     height: 34px;
@@ -1220,6 +1222,10 @@ textarea { resize: vertical; min-height: 80px; }
   </button>
   <div class="header-title" id="header-title">Dashboard <span>/ Overview</span></div>
   <div class="header-actions">
+    <div class="header-att-actions">
+      <button id="header-check-in-btn" class="btn btn-primary btn-sm" onclick="window.__attendanceCheckIn()">Check In</button>
+      <button id="header-check-out-btn" class="btn btn-secondary btn-sm" style="display:none" onclick="window.__attendanceCheckOut()">Check Out</button>
+    </div>
     <div class="icon-btn" title="Notifications" onclick="toggleNotifPanel()">
       <i class="bi bi-bell"></i> <span class="dot" id="notif-dot"></span>
     </div>
@@ -2347,133 +2353,36 @@ textarea { resize: vertical; min-height: 80px; }
      SETTINGS
 ════════════════════════════════════════════════════ -->
 <div id="view-settings" class="view">
-  <div class="tabs">
-    <button class="tab-btn active" onclick="switchTab(this,'set-general')">General</button>
-    <button class="tab-btn" onclick="switchTab(this,'set-integrations')">Integrations</button>
-    <button class="tab-btn" onclick="switchTab(this,'set-security')">Security</button>
+  <div class="card" style="max-width:560px">
+    <div class="section-title">Reset Password</div>
+    <div class="text-muted" style="font-size:12px;margin-bottom:10px">Update your login password securely.</div>
+    <div class="form-grid">
+      <div class="form-group full">
+        <label>Current Password</label>
+        <input id="set-current-password" type="password" placeholder="Enter current password">
+      </div>
+      <div class="form-group full">
+        <label>New Password</label>
+        <input id="set-new-password" type="password" placeholder="Minimum 8 characters">
+      </div>
+      <div class="form-group full">
+        <label>Confirm New Password</label>
+        <input id="set-confirm-password" type="password" placeholder="Re-enter new password">
+      </div>
+    </div>
+    <button class="btn btn-primary mt-16" style="margin-top:14px" onclick="window.__changeMyPassword()">Update Password</button>
   </div>
-
-  <div id="set-general" class="tab-pane active">
-    <div class="card" style="max-width:640px">
-      <div class="section-title">System Configuration</div>
-      <div class="form-grid">
-        <div class="form-group">
-          <label>Company Name</label>
-          <input type="text" value="Emirates Corp LLC">
-        </div>
-        <div class="form-group">
-          <label>Trade License No.</label>
-          <input type="text" value="TL-2018-DUBAI-12345">
-        </div>
-        <div class="form-group">
-          <label>Country</label>
-          <select><option>UAE — United Arab Emirates</option></select>
-        </div>
-        <div class="form-group">
-          <label>Labour Law</label>
-          <input type="text" value="Federal Decree No. 33 of 2021" readonly>
-        </div>
-        <div class="form-group">
-          <label>Currency</label>
-          <select><option>AED — UAE Dirham</option><option>USD</option></select>
-        </div>
-        <div class="form-group">
-          <label>Working Week</label>
-          <select><option>Mon – Fri (5 days)</option><option>Mon – Sat (6 days)</option></select>
-        </div>
-        <div class="form-group">
-          <label>Default Language</label>
-          <select><option>English</option><option>العربية (Arabic)</option></select>
-        </div>
-        <div class="form-group">
-          <label>Payroll Cycle</label>
-          <select><option>Monthly</option><option>Bi-weekly</option><option>Weekly</option></select>
-        </div>
-        <div class="form-group full">
-          <label>Company Address</label>
-          <textarea>Office 402, Business Bay Tower, Dubai, UAE</textarea>
-        </div>
+  <div class="card" style="max-width:560px;margin-top:14px">
+    <div class="section-title">Face Recognition for Check-In</div>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div class="flex-between">
+        <span>Enrollment status</span>
+        <span id="face-enroll-status" class="badge badge-amber">Not enrolled</span>
       </div>
-      <button class="btn btn-primary mt-16" style="margin-top:14px" onclick="showToast('Settings saved successfully')">Save Configuration</button>
-    </div>
-  </div>
-
-  <div id="set-integrations" class="tab-pane">
-    <div class="grid2">
-      <div class="card">
-        <div class="section-title">Integration Points</div>
-        <div style="display:flex;flex-direction:column;gap:12px">
-          <div class="flex-between" style="padding:10px;background:rgba(0,137,123,0.08);border-radius:8px"><div><b>Biometric / Attendance</b><div class="text-muted">API / File Import</div></div><span class="badge badge-green">Connected</span></div>
-          <div class="flex-between" style="padding:10px;background:rgba(0,137,123,0.08);border-radius:8px"><div><b>Bank / WPS Portal</b><div class="text-muted">SIF file to finance</div></div><span class="badge badge-green">Connected</span></div>
-          <div class="flex-between" style="padding:10px;background:rgba(0,137,123,0.08);border-radius:8px"><div><b>ERP / Accounting</b><div class="text-muted">REST API / GL Export</div></div><span class="badge badge-green">Connected</span></div>
-          <div class="flex-between" style="padding:10px;background:rgba(255,179,0,0.08);border-radius:8px"><div><b>SMS Gateway</b><div class="text-muted">REST API</div></div><span class="badge badge-amber">Configure</span></div>
-          <div class="flex-between" style="padding:10px;background:rgba(21,101,192,0.08);border-radius:8px"><div><b>LinkedIn / Bayt</b><div class="text-muted">API Push — Job Portals</div></div><span class="badge badge-blue">Medium Priority</span></div>
-          <div class="flex-between" style="padding:10px;background:rgba(21,101,192,0.08);border-radius:8px"><div><b>LMS (Learning Mgmt)</b><div class="text-muted">REST API</div></div><span class="badge badge-purple">Not Connected</span></div>
-        </div>
-      </div>
-      <div class="card">
-        <div class="section-title">Technical Stack</div>
-        <div style="display:flex;flex-direction:column;gap:8px;font-size:13.5px">
-          <div class="flex-between"><span class="text-muted">Architecture</span><span>SaaS / Multi-tenant</span></div>
-          <div class="flex-between"><span class="text-muted">Backend</span><span>RESTful API + OpenAPI</span></div>
-          <div class="flex-between"><span class="text-muted">Frontend</span><span>Responsive PWA</span></div>
-          <div class="flex-between"><span class="text-muted">Database</span><span>PostgreSQL (PITR)</span></div>
-          <div class="flex-between"><span class="text-muted">Auth</span><span>OAuth 2.0 / SAML 2.0</span></div>
-          <div class="flex-between"><span class="text-muted">Languages</span><span>English + Arabic (RTL)</span></div>
-          <div class="flex-between"><span class="text-muted">Uptime SLA</span><span style="color:var(--accent)">99.9%</span></div>
-          <div class="flex-between"><span class="text-muted">Data Residency</span><span>UAE / GCC DC</span></div>
-          <div class="flex-between"><span class="text-muted">Backup</span><span>Daily encrypted · 30-day</span></div>
-          <div class="flex-between"><span class="text-muted">Page Load</span><span>&lt; 2 seconds</span></div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div id="set-security" class="tab-pane">
-    <div class="card" style="max-width:560px">
-      <div class="section-title">Security Settings</div>
-      <div class="alert alert-success mb-20"><span class="alert-icon">🔒</span>bcrypt password hashing · HTTPS enforced · IP whitelist active · 2-year audit retention</div>
-      <div style="display:flex;flex-direction:column;gap:14px">
-        <div class="flex-between"><span>Two-Factor Authentication (2FA)</span><button class="btn btn-accent btn-sm" onclick="showToast('2FA enforced for all users')">Enforce All</button></div>
-        <div class="flex-between"><span>Session Timeout (minutes)</span><input type="number" value="30" style="width:80px"></div>
-        <div class="flex-between"><span>Password Min Length</span><input type="number" value="10" style="width:80px"></div>
-        <div class="flex-between"><span>IP Whitelist</span><button class="btn btn-secondary btn-sm" onclick="showToast('IP whitelist manager opened')">Manage IPs</button></div>
-        <div class="flex-between"><span>Annual Pen-Test</span><span class="badge badge-green">Jan 2025 ✓</span></div>
-        <div class="flex-between"><span>OWASP Top 10</span><span class="badge badge-green">Compliant ✓</span></div>
-      </div>
-      <button class="btn btn-primary mt-16" style="margin-top:14px" onclick="showToast('Security settings saved')">Save Security Settings</button>
-    </div>
-    <div class="card" style="max-width:560px;margin-top:14px">
-      <div class="section-title">Reset Password</div>
-      <div class="text-muted" style="font-size:12px;margin-bottom:10px">Update your login password securely.</div>
-      <div class="form-grid">
-        <div class="form-group full">
-          <label>Current Password</label>
-          <input id="set-current-password" type="password" placeholder="Enter current password">
-        </div>
-        <div class="form-group full">
-          <label>New Password</label>
-          <input id="set-new-password" type="password" placeholder="Minimum 8 characters">
-        </div>
-        <div class="form-group full">
-          <label>Confirm New Password</label>
-          <input id="set-confirm-password" type="password" placeholder="Re-enter new password">
-        </div>
-      </div>
-      <button class="btn btn-primary mt-16" style="margin-top:14px" onclick="window.__changeMyPassword()">Update Password</button>
-    </div>
-    <div class="card" style="max-width:560px;margin-top:14px">
-      <div class="section-title">Face Recognition for Check-In</div>
-      <div style="display:flex;flex-direction:column;gap:12px">
-        <div class="flex-between">
-          <span>Enrollment status</span>
-          <span id="face-enroll-status" class="badge badge-amber">Not enrolled</span>
-        </div>
-        <div class="flex gap-8" style="flex-wrap:wrap">
-          <button id="face-enroll-btn" class="btn btn-primary btn-sm" onclick="window.__faceEnrollFromSettings()">Enroll Face</button>
-          <button id="face-update-btn" class="btn btn-secondary btn-sm" onclick="window.__faceUpdateFromSettings()" style="display:none">Update Face</button>
-          <button class="btn btn-danger btn-sm" onclick="window.__faceResetFromSettings()">Reset Face</button>
-        </div>
+      <div class="flex gap-8" style="flex-wrap:wrap">
+        <button id="face-enroll-btn" class="btn btn-primary btn-sm" onclick="window.__faceEnrollFromSettings()">Enroll Face</button>
+        <button id="face-update-btn" class="btn btn-secondary btn-sm" onclick="window.__faceUpdateFromSettings()" style="display:none">Update Face</button>
+        <button class="btn btn-danger btn-sm" onclick="window.__faceResetFromSettings()">Reset Face</button>
       </div>
     </div>
   </div>

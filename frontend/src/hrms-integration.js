@@ -196,7 +196,7 @@ function applyRoleBasedUi() {
     HR: ["dashboard", "employees", "leave", "payroll", "ess", "attendance", "calendar", "offices", "profile", "performance", "recruitment", "documents", "compliance", "reports", "settings"],
     HR_OFFICER: ["dashboard", "employees", "leave", "payroll", "ess", "attendance", "calendar", "offices", "profile", "performance", "recruitment", "documents", "compliance", "reports", "settings"],
     MANAGER: ["dashboard", "employees", "leave", "ess", "attendance", "calendar", "profile"],
-    EMPLOYEE: ["leave", "ess", "attendance", "calendar", "profile"],
+    EMPLOYEE: ["leave", "ess", "attendance", "calendar", "profile", "settings"],
   };
   const allViews = ["dashboard", "employees", "leave", "payroll", "ess", "attendance", "calendar", "offices", "profile", "performance", "recruitment", "documents", "compliance", "reports", "settings"];
   const allowed = new Set(roleViews[role] ?? roleViews.EMPLOYEE);
@@ -1948,6 +1948,8 @@ async function loadAttendanceStatus() {
   const checkInBtn = document.getElementById("att-check-in-btn");
   const checkedInPill = document.getElementById("att-checked-in-pill");
   const checkOutBtn = document.getElementById("att-check-out-btn");
+  const headerCheckInBtn = document.getElementById("header-check-in-btn");
+  const headerCheckOutBtn = document.getElementById("header-check-out-btn");
   if (!badge || !workMode || !officeName || !lastLocation || !geofenceState || !policyNote) return;
 
   const active = Boolean(data?.activeSession?.isActive);
@@ -1961,6 +1963,12 @@ async function loadAttendanceStatus() {
   }
   if (checkOutBtn) {
     checkOutBtn.style.display = active ? "" : "none";
+  }
+  if (headerCheckInBtn) {
+    headerCheckInBtn.style.display = active ? "none" : "";
+  }
+  if (headerCheckOutBtn) {
+    headerCheckOutBtn.style.display = active ? "" : "none";
   }
 
   const mode = data?.employee?.workMode ?? "OFFICE";
