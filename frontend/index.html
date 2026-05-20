@@ -7,6 +7,7 @@
 <link rel="icon" type="image/avif" href="/Mask%20group.avif">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 <style>
 :root {
   --navy: #0f172a;
@@ -39,6 +40,394 @@ body {
   color: var(--text);
   min-height: 100vh;
   overflow-x: hidden;
+}
+
+#att-map {
+  height: 420px;
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid var(--border-bright);
+  overflow: hidden;
+}
+
+#offices-map {
+  height: 420px;
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid var(--border-bright);
+  overflow: hidden;
+}
+
+.office-geofence-circle {
+  stroke: #ef4444 !important;
+  fill: #ef4444 !important;
+  stroke-width: 2.5 !important;
+  animation: geofencePulse 2.4s ease-in-out infinite;
+}
+
+@keyframes geofencePulse {
+  0% {
+    stroke-opacity: 0.7;
+    fill-opacity: 0.08;
+  }
+  50% {
+    stroke-opacity: 1;
+    fill-opacity: 0.2;
+  }
+  100% {
+    stroke-opacity: 0.7;
+    fill-opacity: 0.08;
+  }
+}
+
+.office-pulse-marker {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #ef4444;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 rgba(239, 68, 68, 0.55);
+  animation: officePulse 1.8s infinite;
+}
+
+@keyframes officePulse {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.55);
+  }
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 16px rgba(239, 68, 68, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+  }
+}
+
+.emp-human-marker {
+  position: relative;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #ef4444, #f97316);
+  border: 2px solid #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 13px;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.45);
+}
+
+.emp-human-marker.green {
+  background: linear-gradient(135deg, #10b981, #22c55e);
+}
+
+.emp-human-count {
+  position: absolute;
+  right: -6px;
+  top: -6px;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: #0f172a;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255,255,255,0.7);
+  padding: 0 4px;
+}
+
+.emp-map-tooltip {
+  background: rgba(15, 23, 42, 0.96);
+  color: #e5e7eb;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(2, 6, 23, 0.5);
+  padding: 10px 12px;
+}
+
+.emp-map-tooltip .leaflet-tooltip-content {
+  margin: 0;
+}
+
+.emp-tooltip-title {
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 6px;
+  color: #fca5a5;
+}
+
+.emp-tooltip-list {
+  list-style: none;
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+}
+
+.emp-tooltip-list li {
+  font-size: 12px;
+  color: #e2e8f0;
+}
+
+.face-cam-wrap {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--border-bright);
+  background: #0f172a;
+}
+
+.face-cam-wrap video {
+  width: 100%;
+  display: block;
+  background: #0f172a;
+}
+
+.face-status-corner {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 999px;
+  padding: 6px 10px;
+  backdrop-filter: blur(8px);
+}
+
+.face-scan-icon {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #f59e0b;
+}
+
+.face-scan-icon.scanning {
+  background: #3b82f6;
+  box-shadow: 0 0 0 rgba(59, 130, 246, 0.6);
+  animation: faceScanPulse 1.4s ease-in-out infinite;
+}
+
+.face-scan-icon.ready {
+  background: #10b981;
+}
+
+.face-scan-icon.error {
+  background: #ef4444;
+}
+
+.face-scan-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #e2e8f0;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+@keyframes faceScanPulse {
+  0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.6); }
+  70% { box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+}
+
+.face-guide-panel {
+  display: grid;
+  gap: 6px;
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 10px;
+  padding: 8px 10px;
+  max-width: 92%;
+  backdrop-filter: blur(8px);
+  margin: 0 auto;
+}
+
+.face-guide-text {
+  color: #e2e8f0;
+  font-size: 12px;
+  text-align: center;
+}
+
+.face-angle-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.face-angle-chip {
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  border: 1px solid rgba(148,163,184,.45);
+  color: #cbd5e1;
+}
+
+.face-angle-chip.active {
+  border-color: rgba(59,130,246,.7);
+  color: #93c5fd;
+}
+
+.face-angle-chip.done {
+  border-color: rgba(16,185,129,.75);
+  color: #6ee7b7;
+}
+
+.calendar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.calendar-month-label {
+  font-size: 20px;
+  font-weight: 800;
+  color: #f8fafc;
+}
+
+.calendar-weekdays,
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.calendar-weekday {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 4px 0;
+}
+
+.calendar-day {
+  min-height: 92px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #111827;
+  color: #e2e8f0;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  cursor: pointer;
+}
+
+.calendar-day:hover {
+  border-color: var(--border-bright);
+}
+
+.calendar-day.other-month {
+  opacity: 0.45;
+}
+
+.calendar-day.selected {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 1px rgba(59,130,246,0.4) inset;
+}
+
+.calendar-day.today {
+  border-color: rgba(16,185,129,0.75);
+  box-shadow: 0 0 0 1px rgba(16,185,129,0.35) inset;
+}
+
+.calendar-day-num {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.calendar-day-minutes {
+  font-size: 12px;
+  color: #93c5fd;
+  font-weight: 700;
+}
+
+#cal-day-map {
+  height: 380px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+
+#emp-live-map {
+  height: 360px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+
+.emp-action-menu-wrap {
+  position: relative;
+  display: inline-block;
+}
+
+.emp-action-toggle {
+  width: 34px;
+  height: 30px;
+  padding: 0;
+}
+
+.emp-action-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  display: none;
+  min-width: 160px;
+  border: 1px solid var(--border-bright);
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.98);
+  box-shadow: 0 12px 28px rgba(2, 6, 23, 0.45);
+  z-index: 30;
+  padding: 6px;
+}
+
+.emp-action-menu.open {
+  display: block;
+}
+
+.emp-action-item {
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  border-radius: 8px;
+  padding: 7px 9px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.emp-action-item:hover {
+  background: rgba(30, 64, 175, 0.18);
+}
+
+.distance-line-label {
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: #ef4444;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  text-shadow:
+    -1px 0 0 #fff,
+    1px 0 0 #fff,
+    0 -1px 0 #fff,
+    0 1px 0 #fff,
+    0 2px 8px rgba(2, 6, 23, 0.35);
+  white-space: nowrap;
 }
 
 /* ─── BACKGROUND ─── */
@@ -769,6 +1158,12 @@ textarea { resize: vertical; min-height: 80px; }
       <div class="nav-item" onclick="navigate('ess', this)">
         <i class="bi bi-person-workspace nav-icon"></i> ESS Portal
       </div>
+      <div class="nav-item" onclick="navigate('attendance', this)">
+        <i class="bi bi-geo-alt nav-icon"></i> Attendance & Tracking
+      </div>
+      <div class="nav-item" onclick="navigate('calendar', this)">
+        <i class="bi bi-calendar3 nav-icon"></i> Calendar
+      </div>
       <div class="nav-item" onclick="navigate('profile', this)">
         <i class="bi bi-person-vcard nav-icon"></i> My Profile
       </div>
@@ -785,6 +1180,9 @@ textarea { resize: vertical; min-height: 80px; }
     </div>
     <div class="nav-section">
       <div class="nav-label">Administration</div>
+      <div class="nav-item" onclick="navigate('offices', this)">
+        <i class="bi bi-buildings nav-icon"></i> Offices
+      </div>
       <div class="nav-item" onclick="navigate('documents', this)">
         <i class="bi bi-folder2-open nav-icon"></i> Documents
         <span class="nav-badge">2</span>
@@ -973,7 +1371,7 @@ textarea { resize: vertical; min-height: 80px; }
         <thead><tr>
           <th>Employee</th><th>ID</th><th>Department</th>
           <th>Designation</th><th>Type</th><th>Join Date</th>
-          <th>Emirates ID</th><th>Status</th><th>Actions</th>
+          <th>Emirates ID</th><th>Status</th><th>Attendance</th><th>Actions</th>
         </tr></thead>
         <tbody>
           <tr>
@@ -1141,8 +1539,20 @@ textarea { resize: vertical; min-height: 80px; }
           <input type="file" style="padding:8px">
         </div>
       </div>
+      <div id="leave-maturity-box" class="alert alert-info" style="margin-top:10px">
+        <span class="alert-icon">🗓️</span>
+        <div style="display:grid;gap:6px;flex:1">
+          <div style="display:flex;flex-wrap:wrap;gap:8px">
+            <span class="badge badge-blue" id="leave-earned-chip">Earned: 0.00</span>
+            <span class="badge badge-blue" id="leave-used-chip">Used: 0.00</span>
+            <span class="badge badge-green" id="leave-available-chip">Available: 0.00</span>
+            <span class="badge badge-amber" id="leave-worked-chip">Days worked: 0</span>
+          </div>
+          <div id="leave-selected-days-text" class="text-muted" style="font-size:12px">Selected days: 0.00</div>
+        </div>
+      </div>
       <div class="flex gap-8 mt-16">
-        <button class="btn btn-primary" onclick="showToast('Leave request submitted successfully')">Submit Request</button>
+        <button id="leave-submit-btn" class="btn btn-primary" onclick="showToast('Leave request submitted successfully')">Submit Request</button>
         <button class="btn btn-secondary" onclick="showToast('Cleared')">Clear</button>
       </div>
     </div>
@@ -1192,6 +1602,174 @@ textarea { resize: vertical; min-height: 80px; }
         <div class="calc-amount" id="gratuity-amount">AED 0</div>
         <div class="text-muted mt-16" style="margin-top:8px;font-size:11.5px" id="gratuity-formula"></div>
         <div class="alert alert-info" style="margin-top:12px;font-size:12px"><span class="alert-icon">ℹ️</span>Cap: Cannot exceed 2 years' total salary. Formula: Basic Daily Salary × Days × Years</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════
+     ATTENDANCE & TRACKING
+════════════════════════════════════════════════════ -->
+<div id="view-attendance" class="view">
+  <div class="grid2 mb-20">
+    <div class="card">
+      <div class="section-title">My Attendance Status</div>
+      <div style="display:grid;gap:10px">
+        <div class="flex-between"><span class="text-muted">Current State</span><span id="att-status-badge" class="badge badge-amber">Offline</span></div>
+        <div class="flex-between"><span class="text-muted">Work Mode</span><span id="att-work-mode">—</span></div>
+        <div class="flex-between"><span class="text-muted">Assigned Office</span><span id="att-office-name">—</span></div>
+        <div class="flex-between"><span class="text-muted">Last Location</span><span id="att-last-location">—</span></div>
+        <div class="flex-between"><span class="text-muted">Geofence State</span><span id="att-geofence-state">—</span></div>
+      </div>
+      <div class="flex gap-8 mt-16" style="margin-top:14px">
+        <button id="att-check-in-btn" class="btn btn-primary btn-sm" onclick="window.__attendanceCheckIn()">Check In</button>
+        <span
+          id="att-checked-in-pill"
+          class="badge badge-green"
+          style="display:none;align-self:center;padding:6px 10px"
+        >
+          Checked In
+        </span>
+        <button
+          id="att-check-out-btn"
+          class="btn btn-secondary btn-sm"
+          style="display:none"
+          onclick="window.__attendanceCheckOut()"
+        >
+          Check Out
+        </button>
+        <button class="btn btn-secondary btn-sm" onclick="window.__attendanceRefresh()">Refresh</button>
+      </div>
+      <div class="text-muted mt-16" style="margin-top:10px;font-size:12px" id="att-policy-note">
+        Office employees auto check-in/out based on geofence; onsite/hybrid can check in from anywhere with live tracking.
+      </div>
+    </div>
+    <div class="card" id="att-live-workforce-card">
+      <div class="section-title">Live Workforce Online</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Employee</th><th>Mode</th><th>Office</th><th>Latest Coordinates</th><th>Last Ping</th></tr></thead>
+          <tbody id="att-online-body">
+            <tr><td colspan="5" class="text-muted">Loading live attendance…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="section-title">Live Map</div>
+    <div id="att-map"></div>
+  </div>
+</div>
+
+<div id="view-calendar" class="view">
+  <div class="card">
+    <div class="section-title">Attendance Calendar</div>
+    <div id="cal-employee-title" style="margin-bottom:8px;font-size:13px;color:#ef4444;font-weight:700">My attendance</div>
+    <div class="calendar-head">
+      <button class="btn btn-secondary btn-sm" onclick="window.__calendarPrevMonth()">← Previous</button>
+      <div id="cal-month-label" class="calendar-month-label">Month</div>
+      <button class="btn btn-secondary btn-sm" onclick="window.__calendarNextMonth()">Next →</button>
+    </div>
+    <div class="calendar-weekdays">
+      <div class="calendar-weekday">Sun</div>
+      <div class="calendar-weekday">Mon</div>
+      <div class="calendar-weekday">Tue</div>
+      <div class="calendar-weekday">Wed</div>
+      <div class="calendar-weekday">Thu</div>
+      <div class="calendar-weekday">Fri</div>
+      <div class="calendar-weekday">Sat</div>
+    </div>
+    <div id="cal-grid" class="calendar-grid"></div>
+  </div>
+  <div class="card" style="margin-top:14px">
+    <div class="section-title">Selected Date Route Map</div>
+    <div class="flex-between" style="margin-bottom:8px">
+      <div id="cal-selected-date" class="text-muted">Select a date</div>
+      <div id="cal-day-summary" class="badge badge-amber">No data</div>
+    </div>
+    <div id="cal-employee-label" class="text-muted" style="margin-bottom:8px;font-size:12px">Showing: My attendance</div>
+    <div id="cal-day-map"></div>
+  </div>
+  <div class="card" style="margin-top:14px">
+    <div class="section-title">Check-In / Check-Out Timeline</div>
+    <div id="cal-day-timeline" class="timeline">
+      <div class="text-muted">Select a date to load timeline.</div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="emp-live-map-modal">
+  <div class="modal" style="max-width:760px">
+    <div class="modal-header">
+      <div class="modal-title">Employee Live Location</div>
+      <button class="modal-close" onclick="closeModal('emp-live-map-modal')">✕</button>
+    </div>
+    <div class="text-muted" id="emp-live-map-meta" style="margin-bottom:10px">Loading location…</div>
+    <div id="emp-live-map"></div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════
+     OFFICES
+════════════════════════════════════════════════════ -->
+<div id="view-offices" class="view">
+  <div class="grid2 mb-20">
+    <div class="card">
+      <div class="section-title">Office Master</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Office Name</label>
+          <input id="off-name" type="text" placeholder="Dubai HQ">
+        </div>
+        <div class="form-group">
+          <label>Radius (meters)</label>
+          <input id="off-radius" type="number" min="50" max="5000" value="500">
+        </div>
+        <div class="form-group">
+          <label>Latitude</label>
+          <input id="off-lat" type="number" step="0.000001" placeholder="Click map to pick">
+        </div>
+        <div class="form-group">
+          <label>Longitude</label>
+          <input id="off-lng" type="number" step="0.000001" placeholder="Click map to pick">
+        </div>
+      <div class="form-group full">
+        <label>Search Location on Map</label>
+        <div class="flex gap-8" style="flex-wrap:wrap">
+          <input id="off-map-search" type="text" placeholder="Search by place, area, or address (e.g., Business Bay Dubai)" style="flex:1;min-width:280px">
+          <button class="btn btn-secondary btn-sm" onclick="window.__officesSearchLocation()">Search</button>
+        </div>
+      </div>
+      </div>
+      <div class="flex gap-8 mt-16" style="margin-top:12px;flex-wrap:wrap">
+        <button class="btn btn-secondary btn-sm" onclick="window.__officesTogglePicker()">Pick From Map</button>
+        <button class="btn btn-primary btn-sm" onclick="window.__officesSave()">Save Office</button>
+        <button class="btn btn-secondary btn-sm" onclick="window.__officesResetForm()">Clear</button>
+      </div>
+      <div class="text-muted mt-16" style="font-size:12px;margin-top:8px;" id="off-picker-note">
+        Pick mode off. Enable and click map to select coordinates.
+      </div>
+    </div>
+    <div class="card">
+      <div class="section-title">Offices List</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Office</th><th>Radius</th><th>Coordinates</th><th>Actions</th></tr></thead>
+          <tbody id="offices-table-body">
+            <tr><td colspan="4" class="text-muted">Loading offices…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="section-title">Office Geo View & Nearby Employees</div>
+    <div id="offices-map"></div>
+    <div style="margin-top:12px">
+      <div class="text-muted" style="margin-bottom:8px">Nearby Employee Tags</div>
+      <div class="flex gap-8" style="flex-wrap:wrap" id="off-nearby-tags">
+        <span class="badge badge-blue">Select an office to view nearby tags</span>
       </div>
     </div>
   </div>
@@ -1865,6 +2443,39 @@ textarea { resize: vertical; min-height: 80px; }
       </div>
       <button class="btn btn-primary mt-16" style="margin-top:14px" onclick="showToast('Security settings saved')">Save Security Settings</button>
     </div>
+    <div class="card" style="max-width:560px;margin-top:14px">
+      <div class="section-title">Reset Password</div>
+      <div class="text-muted" style="font-size:12px;margin-bottom:10px">Update your login password securely.</div>
+      <div class="form-grid">
+        <div class="form-group full">
+          <label>Current Password</label>
+          <input id="set-current-password" type="password" placeholder="Enter current password">
+        </div>
+        <div class="form-group full">
+          <label>New Password</label>
+          <input id="set-new-password" type="password" placeholder="Minimum 8 characters">
+        </div>
+        <div class="form-group full">
+          <label>Confirm New Password</label>
+          <input id="set-confirm-password" type="password" placeholder="Re-enter new password">
+        </div>
+      </div>
+      <button class="btn btn-primary mt-16" style="margin-top:14px" onclick="window.__changeMyPassword()">Update Password</button>
+    </div>
+    <div class="card" style="max-width:560px;margin-top:14px">
+      <div class="section-title">Face Recognition for Check-In</div>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div class="flex-between">
+          <span>Enrollment status</span>
+          <span id="face-enroll-status" class="badge badge-amber">Not enrolled</span>
+        </div>
+        <div class="flex gap-8" style="flex-wrap:wrap">
+          <button id="face-enroll-btn" class="btn btn-primary btn-sm" onclick="window.__faceEnrollFromSettings()">Enroll Face</button>
+          <button id="face-update-btn" class="btn btn-secondary btn-sm" onclick="window.__faceUpdateFromSettings()" style="display:none">Update Face</button>
+          <button class="btn btn-danger btn-sm" onclick="window.__faceResetFromSettings()">Reset Face</button>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -1910,6 +2521,8 @@ textarea { resize: vertical; min-height: 80px; }
               <input id="emp-line-manager" type="hidden" value="">
             </div>
           </div>
+          <div class="form-group"><label>Work Mode</label><select id="emp-work-mode"><option value="OFFICE">Office Employee</option><option value="ONSITE">Onsite Employee</option><option value="HYBRID">Hybrid Employee</option></select></div>
+          <div class="form-group"><label>Assigned Office</label><select id="emp-office-id"><option value="">Select office</option></select></div>
           <div class="form-group"><label>Employment Type</label><select id="emp-employment-type"><option>Full-Time</option><option>Part-Time</option><option>Contract</option></select></div>
           <div class="form-group"><label>Join Date</label><input id="emp-join-date" type="date"></div>
           <div class="form-group">
@@ -2021,6 +2634,34 @@ textarea { resize: vertical; min-height: 80px; }
 <!-- Toast -->
 <div id="toast"></div>
 
+<div class="modal-overlay" id="face-modal">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header">
+      <div class="modal-title" id="face-modal-title">Face Verification</div>
+      <button class="modal-close" onclick="window.__closeFaceModal()">✕</button>
+    </div>
+    <div style="display:grid;gap:10px">
+      <div class="face-cam-wrap">
+        <video id="face-video" autoplay playsinline muted></video>
+        <canvas id="face-overlay" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:3;"></canvas>
+        <div class="face-status-corner">
+          <span id="face-scan-icon" class="face-scan-icon scanning"></span>
+          <span id="face-scan-label" class="face-scan-label">Scanning</span>
+        </div>
+        <div style="position:absolute;left:0;right:0;bottom:10px;z-index:4;pointer-events:none;">
+          <div class="face-guide-panel">
+            <div class="face-guide-text" id="face-modal-guide">Keep your face centered and well-lit.</div>
+            <div id="face-angle-progress" class="face-angle-row" style="display:none"></div>
+          </div>
+        </div>
+      </div>
+      <div class="text-muted" style="font-size:12px">
+        Auto-capture is enabled. Hold steady while instructions are satisfied.
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 const HRMS_ACTIVE_VIEW_KEY = 'hrms_active_view';
 const HRMS_ACTIVE_TAB_KEY = 'hrms_active_tab';
@@ -2059,6 +2700,9 @@ function navigate(view, el) {
     leave: 'Leave Management <span>/ Module 02</span>',
     payroll: 'Payroll & Overtime <span>/ Module 03</span>',
     ess: 'ESS Portal <span>/ Employee Self-Service</span>',
+    attendance: 'Attendance & Tracking <span>/ Live Workforce Map</span>',
+    calendar: 'Calendar <span>/ Attendance & Route Map</span>',
+    offices: 'Office Master <span>/ Geofence Setup</span>',
     profile: 'My Profile <span>/ Employee Information</span>',
     performance: 'Performance Management <span>/ Module 05</span>',
     recruitment: 'Recruitment <span>/ Module 07</span>',
@@ -2213,6 +2857,8 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 </script>
 
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 <script type="module" src="/src/hrms-integration.js"></script>
 </body>
 </html>

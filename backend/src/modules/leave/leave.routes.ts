@@ -10,6 +10,9 @@ const LeaveStatus = {
   APPROVED: "APPROVED",
   REJECTED: "REJECTED",
 } as const;
+const LEAVE_YEARLY_PAID = 30;
+const LEAVE_MATURITY_MAX_CAP = 60;
+const LEAVE_MATURITY_DAILY = LEAVE_YEARLY_PAID / 365;
 
 const leaveTypeSchema = z.object({
   name: z.string().min(1),
@@ -26,7 +29,7 @@ const applySchema = z.object({
   startDate: z.string().datetime(),
   endDate: z.string().datetime(),
   days: z.number().positive().max(60),
-  reason: z.string().min(5),
+  reason: z.string().trim().optional().default(""),
 });
 
 const rejectSchema = z.object({
@@ -42,6 +45,51 @@ function isHrOrAdmin(role?: string) {
 
 function isDeptManager(role?: string) {
   return role === "MANAGER";
+}
+
+function startOfDay(date: Date) {
+  const value = new Date(date);
+  value.setHours(0, 0, 0, 0);
+  return value;
+}
+
+function startOfYear(date: Date) {
+  return new Date(date.getFullYear(), 0, 1, 0, 0, 0, 0);
+}
+
+function computeMaturedLeaveDays(dateOfJoining: Date, asOf = new Date()) {
+  const dayMs = 24 * 60 * 60 * 1000;
+  const join = startOfDay(dateOfJoining);
+  const today = startOfDay(asOf);
+  if (join > today) {
+    return { daysWorked: 0, maturedDays: 0 };
+  }
+  const daysWorked = Math.floor((today.getTime() - join.getTime()) / dayMs) + 1;
+  const maturedDays = Math.min(LEAVE_MATURITY_MAX_CAP, Math.floor(daysWorked * LEAVE_MATURITY_DAILY));
+  return { daysWorked, maturedDays };
+}
+
+async function resolveLeaveActorEmployee(req: AuthRequest, employeeId: string) {
+  const auth = req.auth;
+  if (!auth?.employeeId) return { error: "Employee identity missing for this account", status: 400 as const };
+  if (isHrOrAdmin(auth.role)) return { employeeId };
+  if (auth.employeeId === employeeId) return { employeeId };
+  if (isDeptManager(auth.role)) {
+    const [manager, target] = await Promise.all([
+      prisma.employee.findUnique({
+        where: { id: auth.employeeId },
+        select: { department: true },
+      }),
+      prisma.employee.findUnique({
+        where: { id: employeeId },
+        select: { department: true },
+      }),
+    ]);
+    if (manager?.department && target?.department && manager.department === target.department) {
+      return { employeeId };
+    }
+  }
+  return { error: "You do not have access to this employee leave data", status: 403 as const };
 }
 
 leaveRouter.get("/types", async (_req, res) => {
@@ -108,12 +156,54 @@ leaveRouter.post("/requests", async (req: AuthRequest, res) => {
     return res.status(403).json({ message: "You can only apply leave for your own employee profile" });
   }
 
-  const applicant = await prisma.employee.findUnique({
+  const [applicant, leaveType] = await Promise.all([
+    prisma.employee.findUnique({
     where: { id: payload.employeeId },
-    select: { id: true, role: true, managerId: true },
-  });
+      select: { id: true, role: true, managerId: true, dateOfJoining: true },
+    }),
+    prisma.leaveType.findUnique({
+      where: { id: payload.leaveTypeId },
+      select: { id: true, paidLeave: true },
+    }),
+  ]);
   if (!applicant) {
     return res.status(404).json({ message: "Employee profile not found for leave request" });
+  }
+  if (!leaveType) {
+    return res.status(404).json({ message: "Leave type not found" });
+  }
+
+  if (leaveType.paidLeave) {
+    const now = new Date();
+    const { daysWorked, maturedDays } = computeMaturedLeaveDays(applicant.dateOfJoining, now);
+    const usedLeaves = await prisma.leaveRequest.aggregate({
+      where: {
+        employeeId: applicant.id,
+        status: LeaveStatus.APPROVED,
+        approvedAt: {
+          gte: startOfYear(now),
+          lte: now,
+        },
+        leaveType: {
+          paidLeave: true,
+        },
+      },
+      _sum: { days: true },
+    });
+    const usedDays = Number(usedLeaves._sum.days ?? 0);
+    const availableDays = Math.max(0, maturedDays - usedDays);
+    if (payload.days > availableDays) {
+      return res.status(400).json({
+        message: `Available matured leave is ${availableDays.toFixed(2)} day(s). Requested ${payload.days.toFixed(2)} day(s).`,
+        maturity: {
+          daysWorked,
+          maturedDays,
+          usedDays,
+          availableDays,
+          dailyRate: LEAVE_MATURITY_DAILY,
+        },
+      });
+    }
   }
 
   // Normal flow: employee -> manager (L1) -> HR/Admin (L2)
@@ -130,13 +220,63 @@ leaveRouter.post("/requests", async (req: AuthRequest, res) => {
       startDate: new Date(payload.startDate),
       endDate: new Date(payload.endDate),
       days: payload.days,
-      reason: payload.reason,
+      reason: payload.reason || "",
       status: isManagerApplicant ? LeaveStatus.PENDING_L2 : LeaveStatus.PENDING_L1,
       l1ApprovedById: isManagerApplicant ? applicant.id : null,
     },
   });
 
   return res.status(201).json(leave);
+});
+
+leaveRouter.get("/maturity/:employeeId", async (req: AuthRequest, res) => {
+  const targetEmployeeId = String(req.params.employeeId);
+  const access = await resolveLeaveActorEmployee(req, targetEmployeeId);
+  if ("error" in access && access.error) {
+    return res.status(access.status ?? 403).json({ message: access.error });
+  }
+
+  const employee = await prisma.employee.findUnique({
+    where: { id: access.employeeId },
+    select: {
+      id: true,
+      dateOfJoining: true,
+    },
+  });
+  if (!employee) {
+    return res.status(404).json({ message: "Employee profile not found" });
+  }
+
+  const now = new Date();
+  const { daysWorked, maturedDays } = computeMaturedLeaveDays(employee.dateOfJoining, now);
+  const usedLeaves = await prisma.leaveRequest.aggregate({
+    where: {
+      employeeId: employee.id,
+      status: LeaveStatus.APPROVED,
+      approvedAt: {
+        gte: startOfYear(now),
+        lte: now,
+      },
+      leaveType: {
+        paidLeave: true,
+      },
+    },
+    _sum: { days: true },
+  });
+  const usedDays = Number(usedLeaves._sum.days ?? 0);
+  const availableDays = Math.max(0, maturedDays - usedDays);
+
+  return res.json({
+    employeeId: employee.id,
+    asOf: now.toISOString(),
+    daysWorked,
+    maturedDays,
+    usedDays,
+    availableDays,
+    dailyRate: LEAVE_MATURITY_DAILY,
+    yearlyCap: LEAVE_MATURITY_MAX_CAP,
+    yearlyPaidLeave: LEAVE_YEARLY_PAID,
+  });
 });
 
 leaveRouter.post("/requests/:id/l1-approve", requireRoles("MANAGER"), async (req: AuthRequest, res) => {

@@ -11,6 +11,10 @@ const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
 });
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(8),
+});
 
 export const authRouter = Router();
 
@@ -75,4 +79,40 @@ authRouter.get("/me", authMiddleware, async (req: AuthRequest, res) => {
     role: normalizedEmployee.role,
     employee: normalizedEmployee,
   });
+});
+
+authRouter.post("/change-password", authMiddleware, async (req: AuthRequest, res) => {
+  const auth = req.auth;
+  const employeeId = auth?.employeeId ?? auth?.userId;
+  if (!employeeId) {
+    return res.status(400).json({ message: "Employee identity missing for this account" });
+  }
+
+  const payload = changePasswordSchema.parse(req.body);
+  const employee = await prisma.employee.findUnique({
+    where: { id: employeeId },
+    select: {
+      id: true,
+      passwordHash: true,
+      accessEnabled: true,
+    },
+  });
+  if (!employee || !employee.accessEnabled || !employee.passwordHash) {
+    return res.status(400).json({ message: "Password reset is unavailable for this account" });
+  }
+
+  const currentPasswordValid = await bcrypt.compare(payload.currentPassword, employee.passwordHash);
+  if (!currentPasswordValid) {
+    return res.status(401).json({ message: "Current password is incorrect" });
+  }
+  if (payload.currentPassword === payload.newPassword) {
+    return res.status(400).json({ message: "New password must be different from current password" });
+  }
+
+  const passwordHash = await bcrypt.hash(payload.newPassword, 10);
+  await prisma.employee.update({
+    where: { id: employee.id },
+    data: { passwordHash },
+  });
+  return res.json({ message: "Password updated successfully" });
 });

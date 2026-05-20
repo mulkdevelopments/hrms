@@ -4,6 +4,7 @@ let me = null;
 let leaveTypes = [];
 let employees = [];
 let allEmployees = [];
+let offices = [];
 let editingEmployeeId = null;
 let managerSearchTerm = "";
 const elevatedRoles = new Set(["SUPER_ADMIN", "HR", "HR_OFFICER"]);
@@ -17,9 +18,41 @@ const employeeFilters = {
 };
 let leaveRequestsCache = [];
 let dashboardCache = null;
+let attendanceCache = null;
+let attendanceTrackingTimer = null;
+let attendanceMap = null;
+let attendanceMapMarkers = [];
+let attendanceOfficeCircles = [];
+let attendanceOfficePins = [];
+let attendancePathLine = null;
+let attendanceDistanceLabel = null;
+let latestOnlineAttendanceRows = [];
+let employeePresenceMap = new Map();
+let employeeLiveMap = null;
+let employeeLiveMarker = null;
+let calendarCurrentMonth = new Date();
+let calendarSelectedDate = null;
+let calendarMap = null;
+let calendarRouteLayer = null;
+let calendarEmployeeId = null;
+let calendarEmployeeName = null;
+let selectedOfficeId = null;
+let officeFormEditingId = null;
+let officesMap = null;
+let officesMapOfficeCircle = null;
+let officesMapOfficePin = null;
+let officesMapMarkers = [];
+let officesMapPickerMarker = null;
+let officesPickerEnabled = false;
 let notificationsUnread = true;
 const liveNotifications = [];
 const leaveStatusSnapshot = new Map();
+let faceModelPromise = null;
+let activeFaceStream = null;
+let faceConfigCache = { enabled: true, enrolled: false, faceEnrolledAt: null };
+let faceDetectionTimer = null;
+let faceCaptureReject = null;
+let faceDetectionFrameId = null;
 
 function relativeTimeLabel(date) {
   const diffMs = Date.now() - date.getTime();
@@ -159,13 +192,13 @@ function setViewVisibility(view, visible) {
 function applyRoleBasedUi() {
   const role = me?.role ?? "EMPLOYEE";
   const roleViews = {
-    SUPER_ADMIN: ["dashboard", "employees", "leave", "payroll", "ess", "profile", "performance", "recruitment", "documents", "compliance", "reports", "settings"],
-    HR: ["dashboard", "employees", "leave", "payroll", "ess", "profile", "performance", "recruitment", "documents", "compliance", "reports", "settings"],
-    HR_OFFICER: ["dashboard", "employees", "leave", "payroll", "ess", "profile", "performance", "recruitment", "documents", "compliance", "reports", "settings"],
-    MANAGER: ["dashboard", "employees", "leave", "ess", "profile"],
-    EMPLOYEE: ["leave", "ess", "profile"],
+    SUPER_ADMIN: ["dashboard", "employees", "leave", "payroll", "ess", "attendance", "calendar", "offices", "profile", "performance", "recruitment", "documents", "compliance", "reports", "settings"],
+    HR: ["dashboard", "employees", "leave", "payroll", "ess", "attendance", "calendar", "offices", "profile", "performance", "recruitment", "documents", "compliance", "reports", "settings"],
+    HR_OFFICER: ["dashboard", "employees", "leave", "payroll", "ess", "attendance", "calendar", "offices", "profile", "performance", "recruitment", "documents", "compliance", "reports", "settings"],
+    MANAGER: ["dashboard", "employees", "leave", "ess", "attendance", "calendar", "profile"],
+    EMPLOYEE: ["leave", "ess", "attendance", "calendar", "profile"],
   };
-  const allViews = ["dashboard", "employees", "leave", "payroll", "ess", "profile", "performance", "recruitment", "documents", "compliance", "reports", "settings"];
+  const allViews = ["dashboard", "employees", "leave", "payroll", "ess", "attendance", "calendar", "offices", "profile", "performance", "recruitment", "documents", "compliance", "reports", "settings"];
   const allowed = new Set(roleViews[role] ?? roleViews.EMPLOYEE);
   allViews.forEach((view) => setViewVisibility(view, allowed.has(view)));
 
@@ -181,6 +214,10 @@ function applyRoleBasedUi() {
   const pendingApprovalsTab = document.querySelector("button[onclick*=\"leave-pending\"]");
   if (pendingApprovalsTab) {
     pendingApprovalsTab.style.display = role === "EMPLOYEE" ? "none" : "";
+  }
+  const liveWorkforceCard = document.getElementById("att-live-workforce-card");
+  if (liveWorkforceCard) {
+    liveWorkforceCard.style.display = role === "EMPLOYEE" ? "none" : "";
   }
 
   document.querySelectorAll(".sidebar-nav .nav-section").forEach((section) => {
@@ -441,6 +478,28 @@ function populateManagerOptions(selectedManagerId = "", currentEmployeeId = "") 
   managerTrigger.textContent = selectedLabel;
 }
 
+function populateOfficeOptions(selectedOfficeId = "") {
+  const officeSelect = document.getElementById("emp-office-id");
+  if (!officeSelect) return;
+  officeSelect.innerHTML = `<option value="">Select office</option>` + offices
+    .map((office) => `<option value="${office.id}">${escapeAttr(office.name)} (${office.radiusMeters}m)</option>`)
+    .join("");
+  if (selectedOfficeId) {
+    officeSelect.value = selectedOfficeId;
+  }
+}
+
+function syncWorkModeOfficeState() {
+  const workModeSelect = document.getElementById("emp-work-mode");
+  const officeSelect = document.getElementById("emp-office-id");
+  if (!workModeSelect || !officeSelect) return;
+  const workMode = workModeSelect.value || "OFFICE";
+  const officeRequired = workMode === "OFFICE";
+  officeSelect.disabled = workMode === "ONSITE";
+  officeSelect.style.opacity = officeSelect.disabled ? "0.6" : "1";
+  officeSelect.setAttribute("data-required", officeRequired ? "true" : "false");
+}
+
 function resetEmployeeModalForm() {
   const modal = document.getElementById("emp-modal");
   if (!modal) return;
@@ -450,7 +509,7 @@ function resetEmployeeModalForm() {
   [
     "emp-full-name", "emp-code", "emp-dob", "emp-mobile", "emp-email", "emp-designation",
     "emp-join-date", "emp-basic-salary", "emp-emirates-id", "emp-passport", "emp-iban",
-    "emp-bank-name", "emp-labour-card", "emp-line-manager-search", "emp-login-email", "emp-login-password",
+    "emp-bank-name", "emp-labour-card", "emp-line-manager-search", "emp-login-email", "emp-login-password", "emp-office-id",
   ].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
@@ -458,7 +517,7 @@ function resetEmployeeModalForm() {
 
   [
     "emp-gender", "emp-nationality", "emp-marital-status", "emp-department", "emp-employment-type",
-    "emp-pay-frequency", "emp-probation", "emp-notice", "emp-wps", "emp-access-enabled", "emp-user-role",
+    "emp-pay-frequency", "emp-probation", "emp-notice", "emp-wps", "emp-access-enabled", "emp-user-role", "emp-work-mode",
   ].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.selectedIndex = 0;
@@ -472,6 +531,8 @@ function resetEmployeeModalForm() {
   if (saveBtn) saveBtn.textContent = "Create Employee";
   const accessEnabledSelect = document.getElementById("emp-access-enabled");
   accessEnabledSelect?.dispatchEvent(new Event("change"));
+  populateOfficeOptions();
+  syncWorkModeOfficeState();
   updateEmploymentStatusBadge();
   editingEmployeeId = null;
 }
@@ -513,6 +574,8 @@ function readEmployeePayloadFromModal() {
     passportNumber: document.getElementById("emp-passport").value.trim() || undefined,
     managerId: document.getElementById("emp-line-manager").value || undefined,
     employmentType: document.getElementById("emp-employment-type").value,
+    workMode: document.getElementById("emp-work-mode").value || "OFFICE",
+    officeId: document.getElementById("emp-office-id").value || undefined,
     iban: document.getElementById("emp-iban").value.trim() || undefined,
     bankName: document.getElementById("emp-bank-name").value.trim() || undefined,
     wpsEnabled: document.getElementById("emp-wps").value === "true",
@@ -536,6 +599,26 @@ function renderEmployeesTable() {
     .map((employee) => {
       const initials = `${employee.firstName[0] ?? ""}${employee.lastName[0] ?? ""}`.toUpperCase();
       const name = `${employee.firstName} ${employee.lastName}`;
+      const presence = employeePresenceMap.get(employee.id);
+      const attendanceBadge = presence?.isOnline
+        ? `<span class="badge badge-green">Checked In</span>`
+        : `<span class="badge badge-amber">Offline</span>`;
+      const actionItems = [
+        `<button class="emp-action-item" type="button" onclick="window.__viewEmployeeById('${employee.id}')">View</button>`,
+        presence?.isOnline
+          ? `<button class="emp-action-item" type="button" onclick="window.__viewEmployeeLiveLocation('${employee.id}')">Live Location</button>`
+          : "",
+        `<button class="emp-action-item" type="button" onclick="window.__viewEmployeeCalendar('${employee.id}')">Calendar</button>`,
+        canManageEmployees
+          ? `<button class="emp-action-item" type="button" onclick="window.__editEmployee('${employee.id}')">Edit</button>`
+          : "",
+        canManageEmployees
+          ? `<button class="emp-action-item" type="button" onclick="window.__alterBankDetails('${employee.id}')">Bank</button>`
+          : "",
+        canManageEmployees
+          ? `<button class="emp-action-item" type="button" onclick="window.__alterSalaryDetails('${employee.id}')">Salary</button>`
+          : "",
+      ].filter(Boolean).join("");
       return `
         <tr>
           <td>
@@ -554,16 +637,15 @@ function renderEmployeesTable() {
           <td>${new Date(employee.dateOfJoining).toLocaleDateString("en-GB", { month: "short", year: "numeric" })}</td>
           <td>${employee.emiratesId ?? "—"}</td>
           <td><span class="badge ${statusBadge(employee.status)}">${formatLabel(employee.status)}</span></td>
+          <td>${attendanceBadge}</td>
           <td>
-            <div class="flex gap-8" style="flex-wrap:wrap;">
-              <button class="btn btn-secondary btn-sm" onclick="window.__viewEmployeeById('${employee.id}')">View</button>
-              ${canManageEmployees ? `
-              <button class="btn btn-secondary btn-sm" onclick="window.__editEmployee('${employee.id}')">Edit</button>
-              <button class="btn btn-secondary btn-sm" onclick="window.__alterBankDetails('${employee.id}')">Bank</button>
-              <button class="btn btn-secondary btn-sm" onclick="window.__alterSalaryDetails('${employee.id}')">Salary</button>
-              <button class="btn btn-accent btn-sm" onclick="window.__changeEmployeeStatus('${employee.id}')">Status</button>
-              <button class="btn btn-danger btn-sm" onclick="window.__deleteEmployee('${employee.id}','${escapeAttr(name)}')">Delete</button>
-              ` : ""}
+            <div class="emp-action-menu-wrap">
+              <button class="btn btn-secondary btn-sm emp-action-toggle" type="button" onclick="window.__toggleEmployeeActionsMenu('${employee.id}')">
+                <i class="bi bi-three-dots-vertical"></i>
+              </button>
+              <div class="emp-action-menu" id="emp-actions-${employee.id}">
+                ${actionItems}
+              </div>
             </div>
           </td>
         </tr>
@@ -571,6 +653,16 @@ function renderEmployeesTable() {
     })
     .join("");
 }
+
+window.__toggleEmployeeActionsMenu = function toggleEmployeeActionsMenu(employeeId) {
+  document.querySelectorAll(".emp-action-menu.open").forEach((menu) => {
+    if (menu.id !== `emp-actions-${employeeId}`) {
+      menu.classList.remove("open");
+    }
+  });
+  const menu = document.getElementById(`emp-actions-${employeeId}`);
+  menu?.classList.toggle("open");
+};
 
 function wireEmployeeCreation() {
   const modal = document.getElementById("emp-modal");
@@ -582,6 +674,7 @@ function wireEmployeeCreation() {
   const loginEmailInput = document.getElementById("emp-login-email");
   const loginPasswordInput = document.getElementById("emp-login-password");
   const joinDateInput = document.getElementById("emp-join-date");
+  const workModeSelect = document.getElementById("emp-work-mode");
 
   const syncAccessInputsState = () => {
     const enabled = accessEnabledSelect?.value === "true";
@@ -612,7 +705,9 @@ function wireEmployeeCreation() {
     }
   });
   joinDateInput?.addEventListener("change", updateEmploymentStatusBadge);
+  workModeSelect?.addEventListener("change", syncWorkModeOfficeState);
   syncAccessInputsState();
+  syncWorkModeOfficeState();
   updateEmploymentStatusBadge();
 
   cancelBtn?.addEventListener("click", resetEmployeeModalForm);
@@ -650,6 +745,10 @@ function wireEmployeeCreation() {
       }
       if (payload.accessEnabled && !payload.userRole) {
         notify("Please select a role when login access is enabled");
+        return;
+      }
+      if (payload.workMode === "OFFICE" && !payload.officeId) {
+        notify("Please select an office for office employees");
         return;
       }
 
@@ -758,6 +857,13 @@ function wireEmployeeFilters() {
   }
 }
 
+async function loadEmployeesPresence() {
+  const list = await api("/attendance/employees-presence");
+  employeePresenceMap = new Map(
+    (Array.isArray(list) ? list : []).map((row) => [row.employeeId, row]),
+  );
+}
+
 async function loadEmployees() {
   const normalizedStatus = employeeFilters.status === "All Status"
     ? ""
@@ -785,6 +891,9 @@ async function loadEmployees() {
     return matchesDepartment && matchesStatus && matchesSearch;
   });
 
+  await loadEmployeesPresence().catch(() => {
+    employeePresenceMap = new Map();
+  });
   renderEmployeesTable();
 }
 
@@ -793,7 +902,7 @@ async function refreshEmployees() {
   if (Array.isArray(latest)) {
     allEmployees = latest;
   }
-  loadEmployees();
+  await loadEmployees();
   populateEmployeeSelectors();
   renderDashboardInsights();
 }
@@ -903,6 +1012,9 @@ window.__editEmployee = function editEmployee(employeeId) {
   document.getElementById("emp-login-password").value = "";
   document.getElementById("emp-access-enabled")?.dispatchEvent(new Event("change"));
   document.getElementById("emp-line-manager-search").value = "";
+  document.getElementById("emp-work-mode").value = employee.workMode ?? "OFFICE";
+  populateOfficeOptions(employee.officeId ?? "");
+  syncWorkModeOfficeState();
 
   setSelectByText(document.getElementById("emp-nationality"), employee.nationality);
   setSelectByText(document.getElementById("emp-department"), employee.department);
@@ -1296,17 +1408,26 @@ function populateEmployeeSelectors() {
   if (!leaveEmployeeSelect) return;
 
   const current = leaveEmployeeSelect.value;
+  const loggedInEmployeeId = me?.employee?.id ?? "";
   const sourceEmployees = elevatedRoles.has(me?.role)
     ? allEmployees
-    : allEmployees.filter((employee) => employee.id === me?.employee?.id);
+    : allEmployees.filter((employee) => employee.id === loggedInEmployeeId);
 
   leaveEmployeeSelect.innerHTML = `<option value="">Select employee…</option>` + sourceEmployees
     .map((employee) => `<option value="${employee.id}">${employee.firstName} ${employee.lastName} (${employee.employeeCode})</option>`)
     .join("");
-  leaveEmployeeSelect.value = current;
-  if (!leaveEmployeeSelect.value && sourceEmployees.length === 1) {
-    leaveEmployeeSelect.value = sourceEmployees[0].id;
+  const loggedInOptionExists = Boolean(
+    loggedInEmployeeId && sourceEmployees.some((employee) => employee.id === loggedInEmployeeId),
+  );
+  if (loggedInOptionExists) {
+    leaveEmployeeSelect.value = loggedInEmployeeId;
+  } else {
+    leaveEmployeeSelect.value = current;
+    if (!leaveEmployeeSelect.value && sourceEmployees.length === 1) {
+      leaveEmployeeSelect.value = sourceEmployees[0].id;
+    }
   }
+  leaveEmployeeSelect.dispatchEvent(new Event("change"));
 }
 
 function populateLeaveTypes() {
@@ -1319,6 +1440,15 @@ function populateLeaveTypes() {
     .join("");
 }
 
+function getRequestedLeaveDays(startDate, endDate) {
+  if (!startDate || !endDate) return 0;
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) return 0;
+  const dayMs = 24 * 60 * 60 * 1000;
+  return Math.max(1, Math.round((end.getTime() - start.getTime()) / dayMs) + 1);
+}
+
 function wireLeaveApplyForm() {
   const section = document.getElementById("leave-apply");
   if (!section) return;
@@ -1326,7 +1456,99 @@ function wireLeaveApplyForm() {
   const selects = section.querySelectorAll(".form-group select");
   const dateInputs = section.querySelectorAll("input[type='date']");
   const reason = section.querySelector("textarea");
-  const submitBtn = section.querySelector(".btn.btn-primary");
+  const submitBtn = document.getElementById("leave-submit-btn") || section.querySelector(".btn.btn-primary");
+  const earnedChip = document.getElementById("leave-earned-chip");
+  const usedChip = document.getElementById("leave-used-chip");
+  const availableChip = document.getElementById("leave-available-chip");
+  const workedChip = document.getElementById("leave-worked-chip");
+  const selectedDaysText = document.getElementById("leave-selected-days-text");
+  let maturityState = null;
+  let isOverBalance = false;
+  const todayIso = new Date().toISOString().slice(0, 10);
+
+  if (dateInputs[0]) dateInputs[0].min = todayIso;
+  if (dateInputs[1]) dateInputs[1].min = todayIso;
+
+  const syncDateBounds = () => {
+    const fromDate = dateInputs[0]?.value || todayIso;
+    if (dateInputs[1]) {
+      dateInputs[1].min = fromDate < todayIso ? todayIso : fromDate;
+      if (dateInputs[1].value && dateInputs[1].value < dateInputs[1].min) {
+        dateInputs[1].value = "";
+      }
+    }
+  };
+
+  const syncSubmitState = () => {
+    if (!submitBtn) return;
+    submitBtn.disabled = isOverBalance;
+    submitBtn.style.opacity = isOverBalance ? "0.55" : "1";
+    submitBtn.style.cursor = isOverBalance ? "not-allowed" : "pointer";
+  };
+
+  const renderMaturityInfo = () => {
+    const requestedDays = getRequestedLeaveDays(dateInputs[0]?.value, dateInputs[1]?.value);
+    const selectedLeaveType = leaveTypes.find((item) => item.id === selects[1]?.value);
+    const isPaidLeave = selectedLeaveType ? Boolean(selectedLeaveType.paidLeave) : true;
+    if (!maturityState) {
+      if (earnedChip) earnedChip.textContent = "Earned: 0.00";
+      if (usedChip) usedChip.textContent = "Used: 0.00";
+      if (availableChip) availableChip.textContent = "Available: 0.00";
+      if (workedChip) workedChip.textContent = "Days worked: 0";
+      if (selectedDaysText) {
+        selectedDaysText.textContent = "Selected days: 0.00";
+        selectedDaysText.style.color = "";
+        selectedDaysText.style.fontWeight = "";
+      }
+      isOverBalance = false;
+      syncSubmitState();
+      return;
+    }
+    const availableDays = Math.min(60, Number(maturityState.availableDays ?? 0));
+    const maturedDays = Math.min(60, Number(maturityState.maturedDays ?? 0));
+    const usedDays = Number(maturityState.usedDays ?? 0);
+    const daysWorked = Number(maturityState.daysWorked ?? 0);
+    if (earnedChip) earnedChip.textContent = `Earned: ${maturedDays.toFixed(2)}`;
+    if (usedChip) usedChip.textContent = `Used: ${usedDays.toFixed(2)}`;
+    if (availableChip) availableChip.textContent = `Available: ${availableDays.toFixed(2)}`;
+    if (workedChip) workedChip.textContent = `Days worked: ${daysWorked}`;
+
+    if (!isPaidLeave) {
+      if (selectedDaysText) {
+        selectedDaysText.textContent = `Selected days: ${requestedDays.toFixed(2)}`;
+        selectedDaysText.style.color = "";
+        selectedDaysText.style.fontWeight = "";
+      }
+      isOverBalance = false;
+      syncSubmitState();
+      return;
+    }
+    isOverBalance = requestedDays > 0 && requestedDays > availableDays;
+    const availableAfterRequest = availableDays - requestedDays;
+    if (selectedDaysText) {
+      selectedDaysText.textContent = requestedDays
+        ? `Selected days: ${requestedDays.toFixed(2)} • Remaining balance: ${Math.max(0, availableAfterRequest).toFixed(2)}`
+        : "Selected days: 0.00";
+      selectedDaysText.style.color = isOverBalance ? "#ef4444" : "";
+      selectedDaysText.style.fontWeight = isOverBalance ? "700" : "";
+    }
+    syncSubmitState();
+  };
+
+  const refreshMaturityInfo = async () => {
+    const employeeId = selects[0]?.value;
+    if (!employeeId) {
+      maturityState = null;
+      renderMaturityInfo();
+      return;
+    }
+    try {
+      maturityState = await api(`/leave/maturity/${employeeId}`);
+    } catch (_error) {
+      maturityState = null;
+    }
+    renderMaturityInfo();
+  };
 
   submitBtn.onclick = async () => {
     try {
@@ -1336,8 +1558,8 @@ function wireLeaveApplyForm() {
       const endDate = dateInputs[1].value;
       const reasonText = reason.value.trim();
 
-      if (!employeeId || !leaveTypeId || !startDate || !endDate || !reasonText) {
-        notify("Please complete all leave fields");
+      if (!employeeId || !leaveTypeId || !startDate || !endDate) {
+        notify("Please complete required leave fields");
         return;
       }
       if (!elevatedRoles.has(me?.role) && me?.employee?.id && employeeId !== me.employee.id) {
@@ -1347,8 +1569,21 @@ function wireLeaveApplyForm() {
 
       const start = new Date(startDate);
       const end = new Date(endDate);
-      const dayMs = 24 * 60 * 60 * 1000;
-      const days = Math.max(1, Math.round((end - start) / dayMs) + 1);
+      if (startDate < todayIso || endDate < todayIso) {
+        notify("Previous dates are not allowed");
+        return;
+      }
+      const days = getRequestedLeaveDays(startDate, endDate);
+      if (!days) {
+        notify("Invalid leave date range");
+        return;
+      }
+      const selectedLeaveType = leaveTypes.find((item) => item.id === leaveTypeId);
+      const isPaidLeave = selectedLeaveType ? Boolean(selectedLeaveType.paidLeave) : true;
+      if (isPaidLeave && maturityState && days > Math.min(60, Number(maturityState.availableDays ?? 0))) {
+        notify(`Insufficient matured leave. Available: ${Math.min(60, Number(maturityState.availableDays ?? 0)).toFixed(2)} day(s).`);
+        return;
+      }
 
       await api("/leave/requests", {
         method: "POST",
@@ -1358,19 +1593,40 @@ function wireLeaveApplyForm() {
           startDate: start.toISOString(),
           endDate: end.toISOString(),
           days,
-          reason: reasonText,
+          reason: reasonText || "",
         }),
       });
 
       notify("Leave request submitted successfully");
+      selects[0].value = "";
+      selects[1].value = "";
       reason.value = "";
       dateInputs[0].value = "";
       dateInputs[1].value = "";
+      if (!elevatedRoles.has(me?.role) && me?.employee?.id) {
+        selects[0].value = me.employee.id;
+      } else if (!selects[0].value && selects[0].options.length === 2) {
+        selects[0].selectedIndex = 1;
+      }
+      await refreshMaturityInfo();
       await loadLeaveRequests();
     } catch (error) {
       notify(error.message);
     }
   };
+
+  selects[0]?.addEventListener("change", () => {
+    refreshMaturityInfo().catch(() => null);
+  });
+  dateInputs.forEach((input) => {
+    input.addEventListener("change", () => {
+      syncDateBounds();
+      renderMaturityInfo();
+    });
+  });
+  selects[1]?.addEventListener("change", renderMaturityInfo);
+  syncDateBounds();
+  refreshMaturityInfo().catch(() => null);
 }
 
 async function loadDashboard() {
@@ -1631,6 +1887,1425 @@ function renderDashboardInsights() {
   }
 }
 
+async function loadOffices() {
+  const data = await api("/attendance/offices");
+  offices = Array.isArray(data) ? data : [];
+  populateOfficeOptions();
+  renderOfficesTable();
+  renderAttendanceMap([]);
+  renderSelectedOfficeDetailsMap();
+}
+
+function getCurrentLocation() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error("Geolocation is not supported in this browser"));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        resolve({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy: position.coords.accuracy,
+        });
+      },
+      (error) => {
+        reject(new Error(error.message || "Unable to retrieve location"));
+      },
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 5000 },
+    );
+  });
+}
+
+function startAttendanceTracking() {
+  if (attendanceTrackingTimer) {
+    clearInterval(attendanceTrackingTimer);
+  }
+  attendanceTrackingTimer = setInterval(async () => {
+    try {
+      const location = await getCurrentLocation();
+      await api("/attendance/ping", {
+        method: "POST",
+        body: JSON.stringify(location),
+      });
+      await Promise.all([loadAttendanceStatus(), loadOnlineAttendance()]);
+    } catch (_error) {
+      // Silent: location permissions can be denied intermittently.
+    }
+  }, 30000);
+}
+
+async function loadAttendanceStatus() {
+  const data = await api("/attendance/status");
+  attendanceCache = data ?? null;
+  const badge = document.getElementById("att-status-badge");
+  const workMode = document.getElementById("att-work-mode");
+  const officeName = document.getElementById("att-office-name");
+  const lastLocation = document.getElementById("att-last-location");
+  const geofenceState = document.getElementById("att-geofence-state");
+  const policyNote = document.getElementById("att-policy-note");
+  const checkInBtn = document.getElementById("att-check-in-btn");
+  const checkedInPill = document.getElementById("att-checked-in-pill");
+  const checkOutBtn = document.getElementById("att-check-out-btn");
+  if (!badge || !workMode || !officeName || !lastLocation || !geofenceState || !policyNote) return;
+
+  const active = Boolean(data?.activeSession?.isActive);
+  badge.textContent = active ? "Online" : "Offline";
+  badge.className = `badge ${active ? "badge-green" : "badge-amber"}`;
+  if (checkInBtn) {
+    checkInBtn.style.display = active ? "none" : "";
+  }
+  if (checkedInPill) {
+    checkedInPill.style.display = active ? "inline-flex" : "none";
+  }
+  if (checkOutBtn) {
+    checkOutBtn.style.display = active ? "" : "none";
+  }
+
+  const mode = data?.employee?.workMode ?? "OFFICE";
+  const office = data?.employee?.office;
+  const ping = data?.latestPing;
+  workMode.textContent = formatLabel(mode);
+  officeName.textContent = office?.name ?? "Not assigned";
+  lastLocation.textContent = ping
+    ? `${Number(ping.latitude).toFixed(5)}, ${Number(ping.longitude).toFixed(5)}`
+    : "No live ping";
+  geofenceState.textContent = ping?.insideGeofence === true
+    ? "Inside office geofence"
+    : ping?.insideGeofence === false
+      ? "Outside office geofence"
+      : "Not applicable";
+
+  policyNote.textContent = mode === "OFFICE"
+    ? `Auto check-in/out active within ${office?.radiusMeters ?? 500}m geofence of assigned office.`
+    : "Check-in allowed from anywhere. Live location is tracked while online.";
+}
+
+function ensureAttendanceMap() {
+  if (attendanceMap || !window.L) return;
+  const mapEl = document.getElementById("att-map");
+  if (!mapEl) return;
+  attendanceMap = window.L.map(mapEl).setView([25.2048, 55.2708], 10);
+  window.L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: "&copy; OpenStreetMap contributors",
+  }).addTo(attendanceMap);
+}
+
+function renderAttendanceMap(rows) {
+  ensureAttendanceMap();
+  if (!attendanceMap) return;
+
+  attendanceMapMarkers.forEach((marker) => marker.remove());
+  attendanceMapMarkers = [];
+  attendanceOfficePins.forEach((marker) => marker.remove());
+  attendanceOfficePins = [];
+  attendanceOfficeCircles.forEach((circle) => circle.remove());
+  attendanceOfficeCircles = [];
+  if (attendancePathLine) {
+    attendancePathLine.remove();
+    attendancePathLine = null;
+  }
+  if (attendanceDistanceLabel) {
+    attendanceDistanceLabel.remove();
+    attendanceDistanceLabel = null;
+  }
+
+  const office = attendanceCache?.employee?.office;
+  const ping = attendanceCache?.latestPing;
+  const bounds = [];
+
+  if (office && Number.isFinite(Number(office.latitude)) && Number.isFinite(Number(office.longitude))) {
+    const officePin = window.L.marker([office.latitude, office.longitude], {
+      icon: window.L.divIcon({
+        className: "",
+        html: `<div class="office-pulse-marker"></div>`,
+        iconSize: [18, 18],
+        iconAnchor: [9, 9],
+      }),
+    }).addTo(attendanceMap);
+    officePin.bindPopup(`${escapeAttr(office.name)} center`);
+    attendanceOfficePins.push(officePin);
+
+    const circle = window.L.circle([office.latitude, office.longitude], {
+      radius: office.radiusMeters ?? 500,
+      color: "#ef4444",
+      fillColor: "#ef4444",
+      fillOpacity: 0.12,
+      weight: 2,
+      className: "office-geofence-circle",
+    }).addTo(attendanceMap);
+    circle.bindPopup(`${escapeAttr(office.name)} geofence (${office.radiusMeters ?? 500}m)`);
+    attendanceOfficeCircles.push(circle);
+    bounds.push([office.latitude, office.longitude]);
+  }
+
+  if (ping && Number.isFinite(Number(ping.latitude)) && Number.isFinite(Number(ping.longitude))) {
+    const marker = window.L.marker([ping.latitude, ping.longitude], {
+      icon: window.L.divIcon({
+        className: "",
+        html: `<div class="emp-human-marker"><i class="bi bi-person-fill"></i></div>`,
+        iconSize: [26, 26],
+        iconAnchor: [13, 26],
+      }),
+    }).addTo(attendanceMap);
+    const employeeName = `${me?.employee?.firstName ?? ""} ${me?.employee?.lastName ?? ""}`.trim() || "Employee";
+    marker.bindTooltip(`
+      <div class="emp-tooltip-title">${escapeAttr(employeeName)}</div>
+      <ol class="emp-tooltip-list"><li>1) ${escapeAttr(employeeName)} (${escapeAttr(me?.employee?.employeeCode ?? "—")})</li></ol>
+    `, {
+      direction: "top",
+      offset: [0, -18],
+      sticky: true,
+      opacity: 1,
+      className: "emp-map-tooltip",
+    });
+    marker.bindPopup(`
+      <div style="min-width:190px">
+        <div><b>${escapeAttr(employeeName)}</b></div>
+        <div>${escapeAttr(me?.employee?.employeeCode ?? "—")} • ${escapeAttr(formatLabel(attendanceCache?.employee?.workMode ?? "OFFICE"))}</div>
+        <div>Coords: ${Number(ping.latitude).toFixed(5)}, ${Number(ping.longitude).toFixed(5)}</div>
+      </div>
+    `);
+    attendanceMapMarkers.push(marker);
+    bounds.push([ping.latitude, ping.longitude]);
+  }
+
+  const otherOnlineRows = (Array.isArray(rows) ? rows : []).filter((row) => {
+    const rowEmployeeId = row?.employee?.id;
+    const rowPing = row?.latestPing;
+    if (!rowPing) return false;
+    if (!Number.isFinite(Number(rowPing.latitude)) || !Number.isFinite(Number(rowPing.longitude))) return false;
+    return rowEmployeeId && rowEmployeeId !== me?.employee?.id;
+  });
+  const groupedOthers = groupByCoordinates(otherOnlineRows, (row) => ({
+    latitude: row.latestPing.latitude,
+    longitude: row.latestPing.longitude,
+  }));
+  groupedOthers.forEach((group) => {
+    const count = group.items.length;
+    const marker = window.L.marker([group.latitude, group.longitude], {
+      icon: window.L.divIcon({
+        className: "",
+        html: `<div class="emp-human-marker green"><i class="bi bi-person-fill"></i>${count > 1 ? `<span class="emp-human-count">${count}</span>` : ""}</div>`,
+        iconSize: [26, 26],
+        iconAnchor: [13, 26],
+      }),
+    }).addTo(attendanceMap);
+    marker.bindTooltip(employeeTooltipHtml(group.items), {
+      direction: "top",
+      offset: [0, -18],
+      sticky: true,
+      opacity: 1,
+      className: "emp-map-tooltip",
+    });
+    marker.bindPopup(employeeTooltipHtml(group.items));
+    attendanceMapMarkers.push(marker);
+    bounds.push([group.latitude, group.longitude]);
+  });
+
+  if (office && ping && Number.isFinite(Number(office.latitude)) && Number.isFinite(Number(office.longitude))
+    && Number.isFinite(Number(ping.latitude)) && Number.isFinite(Number(ping.longitude))) {
+    attendancePathLine = window.L.polyline(
+      [[office.latitude, office.longitude], [ping.latitude, ping.longitude]],
+      { color: "#ef4444", weight: 2.5, opacity: 0.95, dashArray: "8 8" },
+    ).addTo(attendanceMap);
+    const distance = Math.round(haversineDistanceMeters(office.latitude, office.longitude, ping.latitude, ping.longitude));
+    const midLat = (office.latitude + ping.latitude) / 2;
+    const midLng = (office.longitude + ping.longitude) / 2;
+    attendanceDistanceLabel = window.L.marker([midLat, midLng], {
+      icon: window.L.divIcon({
+        className: "",
+        html: `<div class="distance-line-label">${distance}m</div>`,
+        iconSize: [56, 18],
+        iconAnchor: [28, 9],
+      }),
+      interactive: false,
+    }).addTo(attendanceMap);
+  }
+
+  setTimeout(() => attendanceMap?.invalidateSize(), 120);
+
+  if (bounds.length) {
+    attendanceMap.fitBounds(bounds, { padding: [30, 30], maxZoom: 16 });
+  } else {
+    attendanceMap.setView([25.2048, 55.2708], 10);
+  }
+}
+
+async function loadOnlineAttendance() {
+  const rows = await api("/attendance/online");
+  const tbody = document.getElementById("att-online-body");
+  if (!tbody) return;
+  const list = Array.isArray(rows) ? rows : [];
+  latestOnlineAttendanceRows = list;
+  if (!list.length) {
+    tbody.innerHTML = `<tr><td colspan="5" class="text-muted">No employees currently online.</td></tr>`;
+    renderAttendanceMap([]);
+    renderSelectedOfficeDetailsMap();
+    return;
+  }
+  tbody.innerHTML = list.map((row) => {
+    const fullName = `${row.employee?.firstName ?? ""} ${row.employee?.lastName ?? ""}`.trim();
+    const latestPing = row.latestPing;
+    const coords = latestPing ? `${Number(latestPing.latitude).toFixed(5)}, ${Number(latestPing.longitude).toFixed(5)}` : "—";
+    const pingTime = latestPing
+      ? new Date(latestPing.recordedAt).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })
+      : "—";
+    return `
+      <tr>
+        <td>${escapeAttr(fullName)} (${escapeAttr(row.employee?.employeeCode ?? "—")})</td>
+        <td>${escapeAttr(formatLabel(row.employee?.workMode ?? "OFFICE"))}</td>
+        <td>${escapeAttr(row.office?.name ?? "Remote")}</td>
+        <td>${coords}</td>
+        <td>${pingTime}</td>
+      </tr>
+    `;
+  }).join("");
+  renderAttendanceMap(list);
+  renderSelectedOfficeDetailsMap();
+}
+
+function monthKeyFromDate(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  return `${year}-${month}`;
+}
+
+function formatCalendarMonthLabel(date) {
+  return date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+}
+
+function toDateKey(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function ensureCalendarMap() {
+  if (calendarMap || !window.L) return;
+  const mapEl = document.getElementById("cal-day-map");
+  if (!mapEl) return;
+  calendarMap = window.L.map(mapEl).setView([25.2048, 55.2708], 10);
+  window.L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: "&copy; OpenStreetMap contributors",
+  }).addTo(calendarMap);
+}
+
+function renderCalendarGrid(monthDate, totalsMap) {
+  const monthLabel = document.getElementById("cal-month-label");
+  const grid = document.getElementById("cal-grid");
+  if (!monthLabel || !grid) return;
+
+  monthLabel.textContent = formatCalendarMonthLabel(monthDate);
+  const year = monthDate.getFullYear();
+  const month = monthDate.getMonth();
+  const firstDay = new Date(year, month, 1);
+  const startOffset = firstDay.getDay();
+  const gridStart = new Date(year, month, 1 - startOffset);
+  const cells = [];
+
+  for (let index = 0; index < 42; index += 1) {
+    const current = new Date(gridStart);
+    current.setDate(gridStart.getDate() + index);
+    const dateKey = toDateKey(current);
+    const inCurrentMonth = current.getMonth() === month;
+    const totalMinutes = Number(totalsMap.get(dateKey) ?? 0);
+    const selected = calendarSelectedDate === dateKey;
+    const today = dateKey === toDateKey(new Date());
+    cells.push(`
+      <button
+        type="button"
+        class="calendar-day ${inCurrentMonth ? "" : "other-month"} ${selected ? "selected" : ""} ${today ? "today" : ""}"
+        onclick="window.__calendarSelectDate('${dateKey}')"
+      >
+        <div class="calendar-day-num">${current.getDate()}</div>
+        <div class="calendar-day-minutes">${totalMinutes} min</div>
+      </button>
+    `);
+  }
+  grid.innerHTML = cells.join("");
+}
+
+async function loadCalendarDayRoute(dateKey) {
+  const title = document.getElementById("cal-selected-date");
+  const summary = document.getElementById("cal-day-summary");
+  const timeline = document.getElementById("cal-day-timeline");
+  if (title) {
+    title.textContent = new Date(`${dateKey}T00:00:00`).toLocaleDateString("en-US", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+  }
+  if (summary) {
+    summary.textContent = "Loading route...";
+    summary.className = "badge badge-amber";
+  }
+
+  const employeeIdQuery = calendarEmployeeId ? `&employeeId=${encodeURIComponent(calendarEmployeeId)}` : "";
+  const dayData = await api(`/attendance/calendar/day-route?date=${encodeURIComponent(dateKey)}${employeeIdQuery}`);
+  const pings = Array.isArray(dayData?.pings) ? dayData.pings : [];
+  const sessions = Array.isArray(dayData?.sessions) ? dayData.sessions : [];
+  if (timeline) {
+    const events = [];
+    sessions.forEach((session) => {
+      events.push({
+        at: session.checkInAt,
+        tone: "green",
+        text: `Checked in (${formatLabel(session.checkInMethod ?? "MANUAL")})`,
+      });
+      if (session.checkOutAt) {
+        events.push({
+          at: session.checkOutAt,
+          tone: "amber",
+          text: `Checked out (${formatLabel(session.checkOutMethod ?? "MANUAL")})`,
+        });
+      } else {
+        events.push({
+          at: new Date().toISOString(),
+          tone: "",
+          text: "Session still active (not checked out yet)",
+        });
+      }
+    });
+    pings
+      .filter((ping) => ["CHECK_IN_BLOCKED_OUTSIDE_GEOFENCE", "MANUAL_LOGOUT_LOCK"].includes(String(ping.eventType)))
+      .forEach((ping) => {
+        events.push({
+          at: ping.recordedAt,
+          tone: "amber",
+          text: formatLabel(String(ping.eventType ?? "PING")),
+        });
+      });
+
+    events.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+    if (!events.length) {
+      timeline.innerHTML = `<div class="text-muted">No check-in/check-out events for this date.</div>`;
+    } else {
+      timeline.innerHTML = events.map((event, index) => {
+        const prev = index > 0 ? events[index - 1] : null;
+        const prevGapMinutes = prev
+          ? Math.max(0, Math.round((new Date(event.at).getTime() - new Date(prev.at).getTime()) / 60000))
+          : null;
+        const gapLine = prevGapMinutes === null
+          ? ""
+          : `<div class="tl-date">+${prevGapMinutes} min since previous</div>`;
+        return `
+        <div class="tl-item">
+          <div class="tl-dot ${event.tone}"></div>
+          <div class="tl-date">${escapeAttr(new Date(event.at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))}</div>
+          <div class="tl-text">${escapeAttr(event.text)}</div>
+          ${gapLine}
+        </div>
+      `;
+      }).join("");
+    }
+  }
+
+  ensureCalendarMap();
+  if (!calendarMap) return;
+  if (calendarRouteLayer) {
+    calendarRouteLayer.remove();
+    calendarRouteLayer = null;
+  }
+
+  const points = pings
+    .filter((ping) => Number.isFinite(Number(ping.latitude)) && Number.isFinite(Number(ping.longitude)))
+    .map((ping) => [Number(ping.latitude), Number(ping.longitude)]);
+
+  if (!points.length) {
+    if (summary) {
+      summary.textContent = sessions.length ? "Attendance found, no route points" : "No attendance data";
+      summary.className = sessions.length ? "badge badge-blue" : "badge badge-amber";
+    }
+    calendarMap.setView([25.2048, 55.2708], 10);
+    setTimeout(() => calendarMap?.invalidateSize(), 100);
+    return;
+  }
+
+  const polyline = window.L.polyline(points, {
+    color: "#3b82f6",
+    weight: 4,
+    opacity: 0.85,
+  }).addTo(calendarMap);
+  const startMarker = window.L.circleMarker(points[0], {
+    radius: 6,
+    color: "#10b981",
+    fillColor: "#10b981",
+    fillOpacity: 0.9,
+  }).addTo(calendarMap).bindTooltip("Start");
+  const endMarker = window.L.circleMarker(points[points.length - 1], {
+    radius: 6,
+    color: "#ef4444",
+    fillColor: "#ef4444",
+    fillOpacity: 0.9,
+  }).addTo(calendarMap).bindTooltip("End");
+  calendarRouteLayer = window.L.featureGroup([polyline, startMarker, endMarker]).addTo(calendarMap);
+  calendarMap.fitBounds(polyline.getBounds(), { padding: [24, 24], maxZoom: 17 });
+  setTimeout(() => calendarMap?.invalidateSize(), 100);
+  if (summary) {
+    summary.textContent = `${pings.length} route points`;
+    summary.className = "badge badge-green";
+  }
+}
+
+async function loadCalendarMonth() {
+  const month = monthKeyFromDate(calendarCurrentMonth);
+  const employeeIdQuery = calendarEmployeeId ? `&employeeId=${encodeURIComponent(calendarEmployeeId)}` : "";
+  const monthData = await api(`/attendance/calendar/month?month=${encodeURIComponent(month)}${employeeIdQuery}`);
+  const totals = Array.isArray(monthData?.totals) ? monthData.totals : [];
+  const totalsMap = new Map(
+    totals.map((item) => [String(item.date), Number(item.totalMinutes ?? 0)]),
+  );
+
+  if (!calendarSelectedDate || !calendarSelectedDate.startsWith(month)) {
+    calendarSelectedDate = `${month}-01`;
+  }
+
+  renderCalendarGrid(calendarCurrentMonth, totalsMap);
+  await loadCalendarDayRoute(calendarSelectedDate);
+  renderCalendarGrid(calendarCurrentMonth, totalsMap);
+  const employeeTitle = document.getElementById("cal-employee-title");
+  const employeeLabel = document.getElementById("cal-employee-label");
+  if (employeeTitle) {
+    employeeTitle.textContent = calendarEmployeeName || "My attendance";
+  }
+  if (employeeLabel) {
+    employeeLabel.textContent = `Showing: ${calendarEmployeeName || "My attendance"}`;
+  }
+}
+
+window.__calendarSelectDate = async function calendarSelectDate(dateKey) {
+  calendarSelectedDate = dateKey;
+  const [yearText, monthText] = dateKey.split("-");
+  const year = Number(yearText);
+  const month = Number(monthText);
+  if (Number.isFinite(year) && Number.isFinite(month)) {
+    calendarCurrentMonth = new Date(year, month - 1, 1);
+  }
+  await loadCalendarMonth();
+};
+
+window.__calendarPrevMonth = async function calendarPrevMonth() {
+  calendarCurrentMonth = new Date(calendarCurrentMonth.getFullYear(), calendarCurrentMonth.getMonth() - 1, 1);
+  calendarSelectedDate = null;
+  await loadCalendarMonth();
+};
+
+window.__calendarNextMonth = async function calendarNextMonth() {
+  calendarCurrentMonth = new Date(calendarCurrentMonth.getFullYear(), calendarCurrentMonth.getMonth() + 1, 1);
+  calendarSelectedDate = null;
+  await loadCalendarMonth();
+};
+
+function ensureEmployeeLiveMap() {
+  if (employeeLiveMap || !window.L) return;
+  const mapEl = document.getElementById("emp-live-map");
+  if (!mapEl) return;
+  employeeLiveMap = window.L.map(mapEl).setView([25.2048, 55.2708], 10);
+  window.L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: "&copy; OpenStreetMap contributors",
+  }).addTo(employeeLiveMap);
+}
+
+window.__viewEmployeeLiveLocation = async function viewEmployeeLiveLocation(employeeId) {
+  const employee = allEmployees.find((item) => item.id === employeeId);
+  const presence = employeePresenceMap.get(employeeId);
+  const meta = document.getElementById("emp-live-map-meta");
+  openModal("emp-live-map-modal");
+  ensureEmployeeLiveMap();
+  if (!employeeLiveMap) return;
+  if (employeeLiveMarker) {
+    employeeLiveMarker.remove();
+    employeeLiveMarker = null;
+  }
+  const latestPing = presence?.latestPing;
+  const name = employee ? `${employee.firstName} ${employee.lastName}`.trim() : "Employee";
+  if (!latestPing || !Number.isFinite(Number(latestPing.latitude)) || !Number.isFinite(Number(latestPing.longitude))) {
+    if (meta) meta.textContent = `${name}: no live location available right now.`;
+    employeeLiveMap.setView([25.2048, 55.2708], 10);
+    setTimeout(() => employeeLiveMap?.invalidateSize(), 100);
+    return;
+  }
+  const lat = Number(latestPing.latitude);
+  const lng = Number(latestPing.longitude);
+  employeeLiveMarker = window.L.marker([lat, lng], {
+    icon: window.L.divIcon({
+      className: "",
+      html: `<div class="emp-human-marker"><i class="bi bi-person-fill"></i></div>`,
+      iconSize: [26, 26],
+      iconAnchor: [13, 26],
+    }),
+  }).addTo(employeeLiveMap);
+  employeeLiveMarker.bindPopup(`${escapeAttr(name)} • ${presence?.isOnline ? "Checked In" : "Offline"}`).openPopup();
+  employeeLiveMap.setView([lat, lng], 16);
+  setTimeout(() => employeeLiveMap?.invalidateSize(), 100);
+  if (meta) {
+    const pingAt = latestPing.recordedAt
+      ? new Date(latestPing.recordedAt).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })
+      : "Unknown";
+    meta.textContent = `${name} • ${presence?.isOnline ? "Checked In" : "Offline"} • Last ping: ${pingAt}`;
+  }
+};
+
+window.__viewEmployeeCalendar = async function viewEmployeeCalendar(employeeId) {
+  const employee = allEmployees.find((item) => item.id === employeeId);
+  calendarEmployeeId = employeeId;
+  calendarEmployeeName = employee ? `${employee.firstName} ${employee.lastName}`.trim() : "Employee";
+  calendarCurrentMonth = new Date();
+  calendarSelectedDate = toDateKey(new Date());
+  const navItem = document.querySelector(".nav-item[onclick*=\"navigate('calendar'\"]");
+  if (typeof window.navigate === "function") {
+    window.navigate("calendar", navItem);
+  }
+  await loadCalendarMonth();
+  setTimeout(() => calendarMap?.invalidateSize(), 120);
+};
+
+async function loadFaceModels() {
+  if (!window.faceapi) {
+    throw new Error("Face detection library is unavailable");
+  }
+  if (!faceModelPromise) {
+    const modelBase = "https://justadudewhohacks.github.io/face-api.js/models";
+    faceModelPromise = Promise.all([
+      window.faceapi.nets.tinyFaceDetector.loadFromUri(modelBase),
+      window.faceapi.nets.faceLandmark68TinyNet.loadFromUri(modelBase),
+      window.faceapi.nets.faceRecognitionNet.loadFromUri(modelBase),
+    ]);
+  }
+  await faceModelPromise;
+}
+
+async function loadFaceStatus() {
+  const status = await api("/attendance/face/status");
+  const backendEnabled = Boolean(status?.enabled);
+  faceConfigCache = {
+    enabled: true,
+    enrolled: Boolean(status?.enrolled),
+    faceEnrolledAt: status?.faceEnrolledAt ?? null,
+  };
+  const enrollStatus = document.getElementById("face-enroll-status");
+  const enrollButton = document.getElementById("face-enroll-btn");
+  const updateButton = document.getElementById("face-update-btn");
+  if (enrollStatus) {
+    enrollStatus.textContent = faceConfigCache.enrolled ? "Enrolled" : "Not enrolled";
+    enrollStatus.className = `badge ${faceConfigCache.enrolled ? "badge-green" : "badge-amber"}`;
+  }
+  if (enrollButton) {
+    enrollButton.style.display = faceConfigCache.enrolled ? "none" : "";
+  }
+  if (updateButton) {
+    updateButton.style.display = faceConfigCache.enrolled ? "" : "none";
+  }
+  if (!backendEnabled) {
+    api("/attendance/face/config", {
+      method: "PUT",
+      body: JSON.stringify({ enabled: true }),
+    }).catch(() => {});
+  }
+}
+
+function setFaceModalStatus(message, tone = "amber") {
+  const icon = document.getElementById("face-scan-icon");
+  const label = document.getElementById("face-scan-label");
+  if (!icon || !label) return;
+  const normalizedTone = tone === "green" ? "ready" : tone === "coral" ? "error" : "scanning";
+  icon.className = `face-scan-icon ${normalizedTone}`;
+  label.textContent = message;
+}
+
+function setFaceModalGuide(message) {
+  const guide = document.getElementById("face-modal-guide");
+  if (guide) guide.textContent = message;
+}
+
+function updateFaceAngleProgress(targets, currentIndex, visible) {
+  const progress = document.getElementById("face-angle-progress");
+  if (!progress) return;
+  progress.style.display = visible ? "" : "none";
+  if (!visible) {
+    progress.innerHTML = "";
+    return;
+  }
+  progress.innerHTML = targets.map((target, index) => {
+    const stateClass = index < currentIndex ? "done" : index === currentIndex ? "active" : "";
+    return `<span class="face-angle-chip ${stateClass}">${index < currentIndex ? "✓ " : ""}${escapeAttr(target)}</span>`;
+  }).join("");
+}
+
+function stopFaceModalStream() {
+  if (faceDetectionTimer) {
+    clearInterval(faceDetectionTimer);
+    faceDetectionTimer = null;
+  }
+  if (faceDetectionFrameId) {
+    cancelAnimationFrame(faceDetectionFrameId);
+    faceDetectionFrameId = null;
+  }
+  const video = document.getElementById("face-video");
+  const overlay = document.getElementById("face-overlay");
+  if (activeFaceStream) {
+    activeFaceStream.getTracks().forEach((track) => track.stop());
+    activeFaceStream = null;
+  }
+  if (video) {
+    video.pause();
+    video.srcObject = null;
+  }
+  if (overlay) {
+    const ctx = overlay.getContext("2d");
+    if (ctx) ctx.clearRect(0, 0, overlay.width || 0, overlay.height || 0);
+  }
+}
+
+function averageDescriptor(descriptors) {
+  if (!descriptors.length) return [];
+  const length = descriptors[0].length;
+  const sums = new Array(length).fill(0);
+  descriptors.forEach((descriptor) => {
+    for (let index = 0; index < length; index += 1) {
+      sums[index] += Number(descriptor[index] ?? 0);
+    }
+  });
+  return sums.map((value) => value / descriptors.length);
+}
+
+function detectPose(detection) {
+  if (!detection?.landmarks) return "UNKNOWN";
+  const leftEye = detection.landmarks.getLeftEye?.();
+  const rightEye = detection.landmarks.getRightEye?.();
+  const nose = detection.landmarks.getNose?.();
+  if (!leftEye?.length || !rightEye?.length || !nose?.length) return "UNKNOWN";
+  const leftEyeCenterX = leftEye.reduce((sum, p) => sum + p.x, 0) / leftEye.length;
+  const rightEyeCenterX = rightEye.reduce((sum, p) => sum + p.x, 0) / rightEye.length;
+  const eyesCenterX = (leftEyeCenterX + rightEyeCenterX) / 2;
+  const eyeDistance = Math.max(1, Math.abs(rightEyeCenterX - leftEyeCenterX));
+  const noseX = nose[3]?.x ?? nose[0]?.x ?? eyesCenterX;
+  const normalizedOffset = (noseX - eyesCenterX) / eyeDistance;
+  if (normalizedOffset > 0.08) return "LEFT";
+  if (normalizedOffset < -0.08) return "RIGHT";
+  return "FRONT";
+}
+
+async function openFaceModal(mode = "verify") {
+  const modal = document.getElementById("face-modal");
+  const video = document.getElementById("face-video");
+  const overlay = document.getElementById("face-overlay");
+  const title = document.getElementById("face-modal-title");
+  if (!modal || !video || !overlay || !title) {
+    throw new Error("Face modal is unavailable");
+  }
+
+  title.textContent = mode === "enroll" ? "Enroll Face" : "Verify Face";
+  setFaceModalGuide(mode === "enroll"
+    ? "Automatic multi-angle capture: Front, Left, Right."
+    : "Look straight into camera for auto scan.");
+  updateFaceAngleProgress(["FRONT", "LEFT", "RIGHT"], 0, mode === "enroll");
+  setFaceModalStatus("Scanning", "blue");
+  modal.classList.add("open");
+
+  await loadFaceModels();
+  activeFaceStream = await navigator.mediaDevices.getUserMedia({
+    video: {
+      facingMode: "user",
+      width: { ideal: 1280 },
+      height: { ideal: 720 },
+    },
+    audio: false,
+  });
+  video.srcObject = activeFaceStream;
+  await new Promise((resolve, reject) => {
+    let resolved = false;
+    const done = () => {
+      if (resolved) return;
+      resolved = true;
+      resolve(null);
+    };
+    const fail = () => {
+      if (resolved) return;
+      resolved = true;
+      reject(new Error("Unable to initialize camera stream"));
+    };
+    video.onloadedmetadata = () => done();
+    setTimeout(() => {
+      if (!video.videoWidth || !video.videoHeight) {
+        fail();
+      } else {
+        done();
+      }
+    }, 2500);
+  });
+  await video.play();
+
+  const context = overlay.getContext("2d");
+  const syncOverlaySize = () => {
+    overlay.width = video.videoWidth || video.clientWidth || 640;
+    overlay.height = video.videoHeight || video.clientHeight || 480;
+  };
+  syncOverlaySize();
+  return new Promise((resolve, reject) => {
+    faceCaptureReject = reject;
+    const enrollmentTargets = mode === "enroll" ? ["FRONT", "LEFT", "RIGHT"] : ["FRONT"];
+    const capturedDescriptors = [];
+    let currentTargetIdx = 0;
+    let stableFrames = 0;
+    let detectionBusy = false;
+    let isResolved = false;
+
+    const finalize = (descriptor) => {
+      if (isResolved) return;
+      isResolved = true;
+      faceCaptureReject = null;
+      stopFaceModalStream();
+      resolve(descriptor);
+    };
+
+    const runDetectionFrame = async () => {
+      if (!modal.classList.contains("open") || isResolved) return;
+      if (!video.videoWidth || !video.videoHeight || !context) {
+        setFaceModalStatus("Camera", "amber");
+        setFaceModalGuide("Initializing camera stream…");
+        faceDetectionFrameId = requestAnimationFrame(runDetectionFrame);
+        return;
+      }
+      if (detectionBusy) {
+        faceDetectionFrameId = requestAnimationFrame(runDetectionFrame);
+        return;
+      }
+      detectionBusy = true;
+      try {
+        syncOverlaySize();
+        const detection = await window.faceapi
+          .detectSingleFace(video, new window.faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.25 }))
+          .withFaceLandmarks(true)
+          .withFaceDescriptor();
+
+        context.clearRect(0, 0, overlay.width, overlay.height);
+
+        if (!detection?.descriptor) {
+          stableFrames = 0;
+          setFaceModalStatus("Scanning", "blue");
+          setFaceModalGuide("No face detected. Keep face centered and bright.");
+          faceDetectionFrameId = requestAnimationFrame(runDetectionFrame);
+          return;
+        }
+
+        const { x, y, width, height } = detection.detection.box;
+        context.strokeStyle = "#22c55e";
+        context.lineWidth = 3;
+        context.setLineDash([8, 6]);
+        context.strokeRect(x, y, width, height);
+        context.setLineDash([]);
+
+        const pose = detectPose(detection);
+        const target = enrollmentTargets[currentTargetIdx];
+        const poseMatched = pose === target || (mode === "verify" && pose === "FRONT");
+        if (!poseMatched) {
+          stableFrames = 0;
+          setFaceModalStatus("Adjust", "amber");
+          setFaceModalGuide(mode === "enroll"
+            ? `Turn ${target} and hold steady.`
+            : "Look straight into camera.");
+          faceDetectionFrameId = requestAnimationFrame(runDetectionFrame);
+          return;
+        }
+
+        stableFrames += 1;
+        if (stableFrames < 8) {
+          setFaceModalStatus("Scanning", "blue");
+          setFaceModalGuide(mode === "enroll"
+            ? `Hold ${target}...`
+            : "Hold still for auto-capture...");
+          faceDetectionFrameId = requestAnimationFrame(runDetectionFrame);
+          return;
+        }
+
+        const descriptor = Array.from(detection.descriptor);
+        if (mode === "enroll") {
+          capturedDescriptors.push(descriptor);
+          currentTargetIdx += 1;
+          stableFrames = 0;
+          updateFaceAngleProgress(enrollmentTargets, currentTargetIdx, true);
+          setFaceModalStatus("Captured", "green");
+          if (currentTargetIdx < enrollmentTargets.length) {
+            setFaceModalGuide(`Captured ${target}. Now turn ${enrollmentTargets[currentTargetIdx]}.`);
+            faceDetectionFrameId = requestAnimationFrame(runDetectionFrame);
+            return;
+          }
+          setFaceModalGuide("All angles captured.");
+          await new Promise((done) => setTimeout(done, 300));
+          finalize(averageDescriptor(capturedDescriptors));
+          return;
+        }
+
+        setFaceModalStatus("Matched", "green");
+        setFaceModalGuide("Face scanned successfully.");
+        await new Promise((done) => setTimeout(done, 220));
+        finalize(descriptor);
+      } catch (_error) {
+        stableFrames = 0;
+        setFaceModalStatus("Error", "coral");
+        setFaceModalGuide("Face engine error. Please retry.");
+      } finally {
+        detectionBusy = false;
+        if (!isResolved) {
+          faceDetectionFrameId = requestAnimationFrame(runDetectionFrame);
+        }
+      }
+    };
+    faceDetectionFrameId = requestAnimationFrame(runDetectionFrame);
+  });
+}
+
+window.__closeFaceModal = function closeFaceModal() {
+  const modal = document.getElementById("face-modal");
+  const reject = faceCaptureReject;
+  faceCaptureReject = null;
+  stopFaceModalStream();
+  if (reject) {
+    reject(new Error("Face capture cancelled"));
+  }
+  modal?.classList.remove("open");
+};
+
+async function enrollFaceFlow() {
+  const descriptor = await openFaceModal("enroll");
+  await api("/attendance/face/enroll", {
+    method: "POST",
+    body: JSON.stringify({ descriptor }),
+  });
+  setFaceModalStatus("Enrollment successful", "green");
+  await new Promise((resolve) => setTimeout(resolve, 700));
+  window.__closeFaceModal();
+  await loadFaceStatus();
+  notify("Face enrollment completed");
+}
+
+async function verifyFaceFlow() {
+  const descriptor = await openFaceModal("verify");
+  try {
+    const result = await api("/attendance/face/verify", {
+      method: "POST",
+      body: JSON.stringify({ descriptor }),
+    });
+    setFaceModalStatus("Face matched", "green");
+    await new Promise((resolve) => setTimeout(resolve, 650));
+    window.__closeFaceModal();
+    return result?.faceVerificationToken;
+  } catch (error) {
+    setFaceModalStatus("Face not matched", "coral");
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    window.__closeFaceModal();
+    throw error;
+  }
+}
+
+window.__attendanceCheckIn = async function attendanceCheckIn() {
+  try {
+    await loadFaceStatus();
+    let faceVerificationToken;
+    if (faceConfigCache.enabled) {
+      if (!faceConfigCache.enrolled) {
+        notify("Face enrollment required before first check-in");
+        await enrollFaceFlow();
+      }
+      faceVerificationToken = await verifyFaceFlow();
+    }
+    const location = await getCurrentLocation();
+    await api("/attendance/check-in", {
+      method: "POST",
+      body: JSON.stringify({
+        ...location,
+        faceVerificationToken,
+      }),
+    });
+    await Promise.all([loadAttendanceStatus(), loadOnlineAttendance()]);
+    notify("Checked in successfully");
+  } catch (error) {
+    await Promise.all([loadAttendanceStatus(), loadOnlineAttendance()]).catch(() => null);
+    notify(error.message);
+  }
+};
+
+window.__attendanceCheckOut = async function attendanceCheckOut() {
+  try {
+    await loadFaceStatus();
+    let faceVerificationToken;
+    if (faceConfigCache.enabled) {
+      if (!faceConfigCache.enrolled) {
+        notify("Face enrollment required before check-out");
+        await enrollFaceFlow();
+      }
+      faceVerificationToken = await verifyFaceFlow();
+    }
+    const location = await getCurrentLocation().catch(() => null);
+    await api("/attendance/check-out", {
+      method: "POST",
+      body: JSON.stringify({
+        ...(location ?? {}),
+        faceVerificationToken,
+      }),
+    });
+    await Promise.all([loadAttendanceStatus(), loadOnlineAttendance()]);
+    notify("Checked out successfully");
+  } catch (error) {
+    await Promise.all([loadAttendanceStatus(), loadOnlineAttendance()]).catch(() => null);
+    notify(error.message);
+  }
+};
+
+window.__attendanceRefresh = async function attendanceRefresh() {
+  try {
+    await Promise.all([loadAttendanceStatus(), loadOnlineAttendance(), loadFaceStatus()]);
+    notify("Attendance refreshed");
+  } catch (error) {
+    notify(error.message);
+  }
+};
+
+function haversineDistanceMeters(fromLat, fromLng, toLat, toLng) {
+  const toRadians = (deg) => (deg * Math.PI) / 180;
+  const earthRadius = 6371000;
+  const latDiff = toRadians(toLat - fromLat);
+  const lngDiff = toRadians(toLng - fromLng);
+  const a = Math.sin(latDiff / 2) ** 2
+    + Math.cos(toRadians(fromLat)) * Math.cos(toRadians(toLat)) * Math.sin(lngDiff / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return earthRadius * c;
+}
+
+function groupByCoordinates(items, getCoords) {
+  const grouped = new Map();
+  items.forEach((item) => {
+    const coords = getCoords(item);
+    if (!coords) return;
+    const lat = Number(coords.latitude);
+    const lng = Number(coords.longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    const key = `${lat.toFixed(5)}|${lng.toFixed(5)}`;
+    if (!grouped.has(key)) {
+      grouped.set(key, { latitude: lat, longitude: lng, items: [] });
+    }
+    grouped.get(key).items.push(item);
+  });
+  return Array.from(grouped.values());
+}
+
+function employeeTooltipHtml(entries) {
+  const title = entries.length > 1 ? `Employees at same location (${entries.length})` : "Employee location";
+  const list = entries.map((entry, index) => {
+    const name = `${entry.employee?.firstName ?? ""} ${entry.employee?.lastName ?? ""}`.trim() || entry.name || "Employee";
+    const code = entry.employee?.employeeCode ?? entry.employeeCode ?? "—";
+    return `<li>${index + 1}) ${escapeAttr(name)} (${escapeAttr(code)})</li>`;
+  }).join("");
+  return `
+    <div class="emp-tooltip-title">${escapeAttr(title)}</div>
+    <ol class="emp-tooltip-list">${list}</ol>
+  `;
+}
+
+function resetOfficesForm() {
+  officeFormEditingId = null;
+  const name = document.getElementById("off-name");
+  const radius = document.getElementById("off-radius");
+  const lat = document.getElementById("off-lat");
+  const lng = document.getElementById("off-lng");
+  const note = document.getElementById("off-picker-note");
+  if (name) name.value = "";
+  if (radius) radius.value = "500";
+  if (lat) lat.value = "";
+  if (lng) lng.value = "";
+  if (note) {
+    note.textContent = officesPickerEnabled
+      ? "Pick mode enabled. Click map to set coordinates."
+      : "Pick mode off. Enable and click map to select coordinates.";
+  }
+}
+
+function renderOfficesTable() {
+  const tbody = document.getElementById("offices-table-body");
+  if (!tbody) return;
+  if (!offices.length) {
+    tbody.innerHTML = `<tr><td colspan="4" class="text-muted">No offices configured yet.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = offices.map((office) => `
+    <tr>
+      <td><b>${escapeAttr(office.name)}</b></td>
+      <td>${Number(office.radiusMeters ?? 500)}m</td>
+      <td>${Number(office.latitude).toFixed(5)}, ${Number(office.longitude).toFixed(5)}</td>
+      <td>
+        <div class="flex gap-8" style="flex-wrap:wrap">
+          <button class="btn btn-secondary btn-sm" onclick="window.__officesSelect('${office.id}')">View</button>
+          <button class="btn btn-secondary btn-sm" onclick="window.__officesEdit('${office.id}')">Edit</button>
+          <button class="btn btn-danger btn-sm" onclick="window.__officesDelete('${office.id}','${escapeAttr(office.name)}')">Delete</button>
+        </div>
+      </td>
+    </tr>
+  `).join("");
+}
+
+function ensureOfficesMap() {
+  if (officesMap || !window.L) return;
+  const mapEl = document.getElementById("offices-map");
+  if (!mapEl) return;
+  officesMap = window.L.map(mapEl).setView([25.2048, 55.2708], 10);
+  window.L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: "&copy; OpenStreetMap contributors",
+  }).addTo(officesMap);
+  officesMap.on("click", (event) => {
+    if (!officesPickerEnabled) return;
+    const { lat, lng } = event.latlng;
+    const latInput = document.getElementById("off-lat");
+    const lngInput = document.getElementById("off-lng");
+    if (latInput) latInput.value = lat.toFixed(6);
+    if (lngInput) lngInput.value = lng.toFixed(6);
+    if (officesMapPickerMarker) {
+      officesMapPickerMarker.setLatLng([lat, lng]);
+    } else {
+      officesMapPickerMarker = window.L.marker([lat, lng], { draggable: true }).addTo(officesMap);
+      officesMapPickerMarker.on("dragend", () => {
+        const pos = officesMapPickerMarker.getLatLng();
+        if (latInput) latInput.value = Number(pos.lat).toFixed(6);
+        if (lngInput) lngInput.value = Number(pos.lng).toFixed(6);
+      });
+    }
+    notify("Office location selected");
+  });
+}
+
+function renderSelectedOfficeDetailsMap() {
+  ensureOfficesMap();
+  if (!officesMap) return;
+  officesMapMarkers.forEach((item) => item.remove());
+  officesMapMarkers = [];
+  if (officesMapOfficeCircle) {
+    officesMapOfficeCircle.remove();
+    officesMapOfficeCircle = null;
+  }
+  if (officesMapOfficePin) {
+    officesMapOfficePin.remove();
+    officesMapOfficePin = null;
+  }
+
+  const tagContainer = document.getElementById("off-nearby-tags");
+  const office = offices.find((item) => item.id === selectedOfficeId) ?? offices[0];
+  if (!office) {
+    if (tagContainer) {
+      tagContainer.innerHTML = `<span class="badge badge-blue">No office selected</span>`;
+    }
+    officesMap.setView([25.2048, 55.2708], 10);
+    return;
+  }
+  selectedOfficeId = office.id;
+
+  officesMapOfficePin = window.L.marker([office.latitude, office.longitude], {
+    icon: window.L.divIcon({
+      className: "",
+      html: `<div class="office-pulse-marker"></div>`,
+      iconSize: [18, 18],
+      iconAnchor: [9, 9],
+    }),
+  }).addTo(officesMap);
+  officesMapOfficePin.bindPopup(`${escapeAttr(office.name)} center`);
+
+  officesMapOfficeCircle = window.L.circle([office.latitude, office.longitude], {
+    radius: office.radiusMeters ?? 500,
+    color: "#ef4444",
+    fillColor: "#ef4444",
+    fillOpacity: 0.14,
+    weight: 2,
+    className: "office-geofence-circle",
+  }).addTo(officesMap);
+  officesMapOfficeCircle.bindPopup(`${escapeAttr(office.name)} (${office.radiusMeters ?? 500}m geofence)`);
+
+  const nearby = [];
+  const highlightNearbyGreen = ["SUPER_ADMIN", "HR", "HR_OFFICER", "MANAGER"].includes(me?.role ?? "");
+  latestOnlineAttendanceRows.forEach((row) => {
+    const ping = row.latestPing;
+    if (!ping) return;
+    const distance = haversineDistanceMeters(office.latitude, office.longitude, ping.latitude, ping.longitude);
+    if (distance > Math.max((office.radiusMeters ?? 500) * 3, 800)) return;
+    const employeeName = `${row.employee?.firstName ?? ""} ${row.employee?.lastName ?? ""}`.trim() || "Employee";
+    nearby.push({
+      name: employeeName,
+      mode: row.employee?.workMode ?? "OFFICE",
+      distanceMeters: Math.round(distance),
+      latitude: ping.latitude,
+      longitude: ping.longitude,
+      employeeCode: row.employee?.employeeCode ?? "—",
+    });
+  });
+
+  nearby.sort((a, b) => a.distanceMeters - b.distanceMeters);
+  const groupedNearby = groupByCoordinates(nearby, (item) => ({ latitude: item.latitude, longitude: item.longitude }));
+  groupedNearby.forEach((group) => {
+    const count = group.items.length;
+    const marker = window.L.marker([group.latitude, group.longitude], {
+      icon: window.L.divIcon({
+        className: "",
+        html: `<div class="emp-human-marker ${highlightNearbyGreen ? "green" : ""}"><i class="bi bi-person-fill"></i>${count > 1 ? `<span class="emp-human-count">${count}</span>` : ""}</div>`,
+        iconSize: [26, 26],
+        iconAnchor: [13, 26],
+      }),
+    }).addTo(officesMap);
+    marker.bindTooltip(employeeTooltipHtml(group.items), {
+      direction: "top",
+      offset: [0, -18],
+      sticky: true,
+      opacity: 1,
+      className: "emp-map-tooltip",
+    });
+    marker.bindPopup(employeeTooltipHtml(group.items));
+    officesMapMarkers.push(marker);
+  });
+
+  if (tagContainer) {
+    tagContainer.innerHTML = nearby.length
+      ? nearby.slice(0, 20).map((item) => `<span class="badge ${highlightNearbyGreen || item.distanceMeters <= (office.radiusMeters ?? 500) ? "badge-green" : "badge-blue"}">${escapeAttr(item.name)} • ${item.distanceMeters}m</span>`).join("")
+      : `<span class="badge badge-blue">No nearby online employees</span>`;
+  }
+
+  const bounds = [[office.latitude, office.longitude], ...nearby.map((item) => [item.latitude, item.longitude])];
+  officesMap.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
+  setTimeout(() => officesMap?.invalidateSize(), 120);
+}
+
+window.__officesSelect = function officesSelect(officeId) {
+  selectedOfficeId = officeId;
+  renderSelectedOfficeDetailsMap();
+};
+
+window.__officesEdit = function officesEdit(officeId) {
+  const office = offices.find((item) => item.id === officeId);
+  if (!office) return;
+  officeFormEditingId = office.id;
+  const name = document.getElementById("off-name");
+  const radius = document.getElementById("off-radius");
+  const lat = document.getElementById("off-lat");
+  const lng = document.getElementById("off-lng");
+  if (name) name.value = office.name ?? "";
+  if (radius) radius.value = String(office.radiusMeters ?? 500);
+  if (lat) lat.value = Number(office.latitude).toFixed(6);
+  if (lng) lng.value = Number(office.longitude).toFixed(6);
+  selectedOfficeId = office.id;
+  renderSelectedOfficeDetailsMap();
+  notify(`Editing office: ${office.name}`);
+};
+
+window.__officesDelete = async function officesDelete(officeId, officeName) {
+  if (!confirm(`Delete office "${officeName}"?`)) return;
+  try {
+    await api(`/attendance/offices/${officeId}`, { method: "DELETE" });
+    if (selectedOfficeId === officeId) selectedOfficeId = null;
+    if (officeFormEditingId === officeId) resetOfficesForm();
+    await Promise.all([loadOffices(), refreshEmployees()]);
+    notify("Office deleted");
+  } catch (error) {
+    notify(error.message);
+  }
+};
+
+window.__officesTogglePicker = function officesTogglePicker() {
+  officesPickerEnabled = !officesPickerEnabled;
+  const note = document.getElementById("off-picker-note");
+  if (note) {
+    note.textContent = officesPickerEnabled
+      ? "Pick mode enabled. Click map to set coordinates."
+      : "Pick mode off. Enable and click map to select coordinates.";
+  }
+  notify(officesPickerEnabled ? "Map picker enabled" : "Map picker disabled");
+};
+
+window.__officesSearchLocation = async function officesSearchLocation() {
+  try {
+    ensureOfficesMap();
+    if (!officesMap) {
+      notify("Map is not ready yet");
+      return;
+    }
+    const query = document.getElementById("off-map-search")?.value?.trim();
+    if (!query) {
+      notify("Enter a location to search");
+      return;
+    }
+    const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(query)}`;
+    const response = await fetch(url, {
+      headers: {
+        Accept: "application/json",
+      },
+    });
+    if (!response.ok) {
+      throw new Error("Location search failed");
+    }
+    const results = await response.json();
+    if (!Array.isArray(results) || !results.length) {
+      notify("No matching location found");
+      return;
+    }
+    const top = results[0];
+    const lat = Number(top.lat);
+    const lng = Number(top.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      notify("Invalid coordinates returned from search");
+      return;
+    }
+    const latInput = document.getElementById("off-lat");
+    const lngInput = document.getElementById("off-lng");
+    if (latInput) latInput.value = lat.toFixed(6);
+    if (lngInput) lngInput.value = lng.toFixed(6);
+    if (officesMapPickerMarker) {
+      officesMapPickerMarker.setLatLng([lat, lng]);
+    } else {
+      officesMapPickerMarker = window.L.marker([lat, lng], { draggable: true }).addTo(officesMap);
+      officesMapPickerMarker.on("dragend", () => {
+        const pos = officesMapPickerMarker.getLatLng();
+        if (latInput) latInput.value = Number(pos.lat).toFixed(6);
+        if (lngInput) lngInput.value = Number(pos.lng).toFixed(6);
+      });
+    }
+    officesMap.setView([lat, lng], 15);
+    officesMapPickerMarker.openPopup();
+    notify("Location found. Adjust marker if needed, then save office.");
+  } catch (error) {
+    notify(error.message || "Unable to search location");
+  }
+};
+
+window.__officesSave = async function officesSave() {
+  try {
+    const isEdit = Boolean(officeFormEditingId);
+    const name = document.getElementById("off-name")?.value?.trim();
+    const radiusMeters = Number(document.getElementById("off-radius")?.value || 500);
+    const latitude = Number(document.getElementById("off-lat")?.value);
+    const longitude = Number(document.getElementById("off-lng")?.value);
+    if (!name) {
+      notify("Please enter office name");
+      return;
+    }
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      notify("Please pick valid coordinates from map");
+      return;
+    }
+    const payload = {
+      name,
+      latitude,
+      longitude,
+      radiusMeters: Number.isFinite(radiusMeters) ? radiusMeters : 500,
+      active: true,
+    };
+    if (officeFormEditingId) {
+      await api(`/attendance/offices/${officeFormEditingId}`, {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      });
+    } else {
+      await api("/attendance/offices", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+    }
+    if (officesMapPickerMarker) {
+      officesMapPickerMarker.remove();
+      officesMapPickerMarker = null;
+    }
+    officesPickerEnabled = false;
+    resetOfficesForm();
+    await Promise.all([loadOffices(), refreshEmployees()]);
+    notify(isEdit ? "Office updated" : "Office created");
+    officeFormEditingId = null;
+  } catch (error) {
+    notify(error.message);
+  }
+};
+
+window.__officesResetForm = function officesResetForm() {
+  resetOfficesForm();
+  if (officesMapPickerMarker) {
+    officesMapPickerMarker.remove();
+    officesMapPickerMarker = null;
+  }
+  officesPickerEnabled = false;
+};
+
+window.__changeMyPassword = async function changeMyPassword() {
+  try {
+    const currentPasswordInput = document.getElementById("set-current-password");
+    const newPasswordInput = document.getElementById("set-new-password");
+    const confirmPasswordInput = document.getElementById("set-confirm-password");
+    const currentPassword = currentPasswordInput?.value ?? "";
+    const newPassword = newPasswordInput?.value ?? "";
+    const confirmPassword = confirmPasswordInput?.value ?? "";
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      notify("Please fill current, new, and confirm password");
+      return;
+    }
+    if (newPassword.length < 8) {
+      notify("New password must be at least 8 characters");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      notify("New password and confirm password do not match");
+      return;
+    }
+
+    await api("/auth/change-password", {
+      method: "POST",
+      body: JSON.stringify({
+        currentPassword,
+        newPassword,
+      }),
+    });
+
+    if (currentPasswordInput) currentPasswordInput.value = "";
+    if (newPasswordInput) newPasswordInput.value = "";
+    if (confirmPasswordInput) confirmPasswordInput.value = "";
+    notify("Password updated successfully");
+  } catch (error) {
+    notify(error.message);
+  }
+};
+
+window.__faceSaveConfig = async function faceSaveConfig() {
+  notify("Face verification is mandatory for check-in.");
+};
+
+window.__faceEnrollFromSettings = async function faceEnrollFromSettings() {
+  try {
+    await enrollFaceFlow();
+  } catch (error) {
+    notify(error.message);
+  }
+};
+
+window.__faceUpdateFromSettings = async function faceUpdateFromSettings() {
+  try {
+    await enrollFaceFlow();
+    notify("Face data updated");
+  } catch (error) {
+    notify(error.message);
+  }
+};
+
+window.__faceResetFromSettings = async function faceResetFromSettings() {
+  try {
+    await api("/attendance/face/enroll", { method: "DELETE" });
+    await loadFaceStatus();
+    notify("Face data reset");
+  } catch (error) {
+    notify(error.message);
+  }
+};
+
 async function loadEss() {
   if (!me?.employee?.id) return;
 
@@ -1702,6 +3377,26 @@ function loadProfile() {
   }
 }
 
+window.addEventListener("resize", () => {
+  if (attendanceMap) {
+    setTimeout(() => attendanceMap.invalidateSize(), 100);
+  }
+  if (officesMap) {
+    setTimeout(() => officesMap.invalidateSize(), 100);
+  }
+  if (calendarMap) {
+    setTimeout(() => calendarMap.invalidateSize(), 100);
+  }
+  if (employeeLiveMap) {
+    setTimeout(() => employeeLiveMap.invalidateSize(), 100);
+  }
+});
+
+document.addEventListener("click", (event) => {
+  if (event.target?.closest(".emp-action-menu-wrap")) return;
+  document.querySelectorAll(".emp-action-menu.open").forEach((menu) => menu.classList.remove("open"));
+});
+
 window.__approveLeave = approveLeaveRequest;
 window.viewEmployee = function viewEmployeeCompatibility(name) {
   const employee = allEmployees.find((item) => `${item.firstName} ${item.lastName}` === name);
@@ -1720,12 +3415,44 @@ async function start() {
     if (addButton && !elevatedRoles.has(me?.role)) {
       addButton.style.display = "none";
     }
+    await loadOffices();
     leaveTypes = await api("/leave/types");
     populateLeaveTypes();
     wireLeaveApplyForm();
     wireEmployeeCreation();
     wireEmployeeFilters();
-    await Promise.all([loadDashboard(), refreshEmployees(), loadLeaveRequests(), loadEss()]);
+    document.getElementById("face-modal")?.addEventListener("click", (event) => {
+      if (event.target?.id === "face-modal") {
+        window.__closeFaceModal();
+      }
+    });
+    await Promise.all([loadDashboard(), refreshEmployees(), loadLeaveRequests(), loadEss(), loadAttendanceStatus(), loadOnlineAttendance(), loadFaceStatus()]);
+    const attendanceNav = document.querySelector(".nav-item[onclick*=\"navigate('attendance'\"]");
+    attendanceNav?.addEventListener("click", () => {
+      Promise.all([loadAttendanceStatus(), loadOnlineAttendance()])
+        .catch((error) => notify(error.message))
+        .finally(() => {
+          setTimeout(() => attendanceMap?.invalidateSize(), 150);
+        });
+    });
+    const calendarNav = document.querySelector(".nav-item[onclick*=\"navigate('calendar'\"]");
+    calendarNav?.addEventListener("click", () => {
+      calendarEmployeeId = null;
+      calendarEmployeeName = null;
+      calendarCurrentMonth = new Date();
+      calendarSelectedDate = toDateKey(new Date());
+      loadCalendarMonth().catch((error) => notify(error.message));
+      setTimeout(() => calendarMap?.invalidateSize(), 120);
+    });
+    if (document.getElementById("view-calendar")?.classList.contains("active")) {
+      await loadCalendarMonth();
+      setTimeout(() => calendarMap?.invalidateSize(), 120);
+    }
+    if (document.getElementById("view-attendance")?.classList.contains("active")) {
+      await Promise.all([loadAttendanceStatus(), loadOnlineAttendance()]);
+      setTimeout(() => attendanceMap?.invalidateSize(), 150);
+    }
+    startAttendanceTracking();
     loadProfile();
     resetEmployeeModalForm();
     notify("Live HRMS data connected");

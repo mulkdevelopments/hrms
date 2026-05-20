@@ -10,6 +10,7 @@ import { employeesRouter } from "./modules/employees/employees.routes.js";
 import { leaveRouter } from "./modules/leave/leave.routes.js";
 import { dashboardRouter } from "./modules/dashboard/dashboard.routes.js";
 import { essRouter } from "./modules/ess/ess.routes.js";
+import { attendanceRouter } from "./modules/attendance/attendance.routes.js";
 import { errorHandler } from "./middleware/error-handler.js";
 
 const app = express();
@@ -37,6 +38,7 @@ app.use("/api/employees", employeesRouter);
 app.use("/api/leave", leaveRouter);
 app.use("/api/dashboard", dashboardRouter);
 app.use("/api/ess", essRouter);
+app.use("/api/attendance", attendanceRouter);
 
 const frontendDistPath = path.resolve(process.cwd(), "../frontend/dist");
 if (existsSync(frontendDistPath)) {

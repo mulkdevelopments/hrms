@@ -27,6 +27,11 @@ model Employee {
   passportNumber     String?
   managerId          String?
   employmentType     String
+  workMode           String         @default("OFFICE")
+  officeId           String?
+  faceAuthEnabled    Boolean        @default(true)
+  faceDescriptor     Json?
+  faceEnrolledAt     DateTime?
   basicSalary        Float          @default(0)
   housingAllowance   Float          @default(0)
   transportAllowance Float          @default(0)
@@ -40,11 +45,14 @@ model Employee {
 
   manager          Employee?      @relation("ManagerSubordinates", fields: [managerId], references: [id])
   subordinates     Employee[]     @relation("ManagerSubordinates")
+  office           Office?        @relation(fields: [officeId], references: [id])
   leaveBalances    LeaveBalance[]
   leaveRequests    LeaveRequest[] @relation("RequestedBy")
   l1Approvals      LeaveRequest[] @relation("ApprovedByL1")
   l2Approvals      LeaveRequest[] @relation("ApprovedByL2")
   payslips         Payslip[]
+  attendanceSessions AttendanceSession[]
+  locationPings      LocationPing[]
 }
 
 model LeaveType {
@@ -118,4 +126,60 @@ model Payslip {
   employee Employee @relation(fields: [employeeId], references: [id])
 
   @@unique([employeeId, month, year])
+}
+
+model Office {
+  id                 String              @id @default(cuid())
+  name               String              @unique
+  latitude           Float
+  longitude          Float
+  radiusMeters       Int                 @default(500)
+  active             Boolean             @default(true)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  employees          Employee[]
+  attendanceSessions AttendanceSession[]
+  locationPings      LocationPing[]
+}
+
+model AttendanceSession {
+  id             String       @id @default(cuid())
+  employeeId     String
+  officeId       String?
+  checkInAt      DateTime     @default(now())
+  checkOutAt     DateTime?
+  isActive       Boolean      @default(true)
+  checkInMethod  String       @default("MANUAL")
+  checkOutMethod String?
+  lastSeenAt     DateTime     @default(now())
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  employee     Employee      @relation(fields: [employeeId], references: [id])
+  office       Office?       @relation(fields: [officeId], references: [id])
+  locationPings LocationPing[]
+
+  @@index([employeeId, isActive])
+  @@index([isActive, checkInAt])
+}
+
+model LocationPing {
+  id             String             @id @default(cuid())
+  employeeId     String
+  sessionId      String?
+  officeId       String?
+  latitude       Float
+  longitude      Float
+  accuracy       Float?
+  insideGeofence Boolean?
+  eventType      String             @default("PING")
+  recordedAt     DateTime           @default(now())
+
+  employee Employee           @relation(fields: [employeeId], references: [id])
+  session  AttendanceSession? @relation(fields: [sessionId], references: [id])
+  office    Office?           @relation(fields: [officeId], references: [id])
+
+  @@index([employeeId, recordedAt])
+  @@index([sessionId, recordedAt])
 }

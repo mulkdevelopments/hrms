@@ -4,11 +4,24 @@ import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 
 async function main() {
+  await prisma.locationPing.deleteMany();
+  await prisma.attendanceSession.deleteMany();
   await prisma.leaveRequest.deleteMany();
   await prisma.leaveBalance.deleteMany();
   await prisma.payslip.deleteMany();
   await prisma.employee.deleteMany();
+  await prisma.office.deleteMany();
   await prisma.leaveType.deleteMany();
+
+  const hqOffice = await prisma.office.create({
+    data: {
+      name: "Dubai HQ",
+      latitude: 25.2048,
+      longitude: 55.2708,
+      radiusMeters: 500,
+      active: true,
+    },
+  });
 
   const annual = await prisma.leaveType.create({
     data: {
@@ -45,6 +58,8 @@ async function main() {
       designation: "HR Director",
       department: "HR",
       employmentType: "Full-Time",
+      workMode: "OFFICE",
+      officeId: hqOffice.id,
       status: "ACTIVE",
       basicSalary: 25000,
       housingAllowance: 9000,
@@ -69,6 +84,8 @@ async function main() {
       designation: "Engineering Manager",
       department: "Engineering",
       employmentType: "Full-Time",
+      workMode: "HYBRID",
+      officeId: hqOffice.id,
       managerId: superAdminEmployee.id,
       status: "ACTIVE",
       basicSalary: 22000,
@@ -92,6 +109,7 @@ async function main() {
       designation: "Software Engineer",
       department: "Engineering",
       employmentType: "Full-Time",
+      workMode: "ONSITE",
       managerId: managerEmployee.id,
       status: "ACTIVE",
       basicSalary: 12000,

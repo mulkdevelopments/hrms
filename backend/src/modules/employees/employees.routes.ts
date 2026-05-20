@@ -23,6 +23,8 @@ const createEmployeeSchema = z.object({
   passportNumber: z.string().optional(),
   managerId: z.string().optional(),
   employmentType: z.string().min(1),
+  workMode: z.enum(["OFFICE", "ONSITE", "HYBRID"]).optional(),
+  officeId: z.string().optional(),
   iban: z.string().optional(),
   bankName: z.string().optional(),
   wpsEnabled: z.boolean().optional(),
@@ -131,6 +133,13 @@ employeesRouter.get("/", async (req: AuthRequest, res) => {
           lastName: true,
         },
       },
+      office: {
+        select: {
+          id: true,
+          name: true,
+          radiusMeters: true,
+        },
+      },
     },
   });
 
@@ -140,9 +149,13 @@ employeesRouter.get("/", async (req: AuthRequest, res) => {
 employeesRouter.post("/", requireRoles(...privilegedRoles), async (req, res) => {
   const payload = createEmployeeSchema.parse(req.body);
   const shouldProvisionAccess = payload.accessEnabled === true;
+  const workMode = payload.workMode ?? "OFFICE";
 
   if (shouldProvisionAccess && !payload.userRole) {
     return res.status(400).json({ message: "Role is required when login access is enabled" });
+  }
+  if (workMode === "OFFICE" && !payload.officeId) {
+    return res.status(400).json({ message: "Office is required for office employees" });
   }
 
   const employeeCode = await generateEmployeeCode();
@@ -166,6 +179,8 @@ employeesRouter.post("/", requireRoles(...privilegedRoles), async (req, res) => 
       passportNumber: payload.passportNumber,
       managerId: payload.managerId,
       employmentType: payload.employmentType,
+      workMode,
+      officeId: payload.officeId,
       iban: payload.iban,
       bankName: payload.bankName,
       wpsEnabled: payload.wpsEnabled,
@@ -183,6 +198,13 @@ employeesRouter.post("/", requireRoles(...privilegedRoles), async (req, res) => 
           lastName: true,
         },
       },
+      office: {
+        select: {
+          id: true,
+          name: true,
+          radiusMeters: true,
+        },
+      },
     },
   });
 
@@ -193,9 +215,21 @@ employeesRouter.put("/:id", requireRoles(...privilegedRoles), async (req, res) =
   const payload = updateEmployeeSchema.parse(req.body);
   const employeeId = String(req.params.id);
   const shouldProvisionAccess = payload.accessEnabled === true;
+  const existing = await prisma.employee.findUnique({
+    where: { id: employeeId },
+    select: { workMode: true, officeId: true },
+  });
+  if (!existing) {
+    return res.status(404).json({ message: "Employee not found" });
+  }
 
   if (shouldProvisionAccess && !payload.userRole) {
     return res.status(400).json({ message: "Role is required when login access is enabled" });
+  }
+  const resolvedWorkMode = payload.workMode ?? existing.workMode;
+  const resolvedOfficeId = payload.officeId ?? existing.officeId;
+  if (resolvedWorkMode === "OFFICE" && !resolvedOfficeId) {
+    return res.status(400).json({ message: "Office is required for office employees" });
   }
 
   const employee = await prisma.employee.update({
@@ -228,6 +262,8 @@ employeesRouter.put("/:id", requireRoles(...privilegedRoles), async (req, res) =
       passportNumber: payload.passportNumber,
       managerId: payload.managerId,
       employmentType: payload.employmentType,
+      workMode: payload.workMode,
+      officeId: payload.officeId,
       iban: payload.iban,
       bankName: payload.bankName,
       wpsEnabled: payload.wpsEnabled,
@@ -243,6 +279,13 @@ employeesRouter.put("/:id", requireRoles(...privilegedRoles), async (req, res) =
           employeeCode: true,
           firstName: true,
           lastName: true,
+        },
+      },
+      office: {
+        select: {
+          id: true,
+          name: true,
+          radiusMeters: true,
         },
       },
     },
