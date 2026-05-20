@@ -537,6 +537,26 @@ body::before {
 .header-title span { color: var(--text-muted); font-weight: 400; font-size: 14px; font-family: 'Inter', sans-serif; }
 
 .header-actions { display: flex; gap: 10px; align-items: center; }
+.header-location {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.55);
+  max-width: 260px;
+}
+.header-location i {
+  color: #10b981;
+}
+#header-location-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .header-att-actions { display: flex; gap: 6px; align-items: center; }
 .mobile-menu-btn { display: none; }
 .icon-btn {
@@ -1113,6 +1133,7 @@ textarea { resize: vertical; min-height: 80px; }
 @media (max-width: 640px) {
   #header { gap: 10px; }
   .header-actions { gap: 6px; }
+  .header-location { max-width: 170px; }
   .header-att-actions .btn-sm { padding: 5px 9px; font-size: 11px; }
   .icon-btn {
     width: 34px;
@@ -1222,6 +1243,10 @@ textarea { resize: vertical; min-height: 80px; }
   </button>
   <div class="header-title" id="header-title">Dashboard <span>/ Overview</span></div>
   <div class="header-actions">
+    <div class="header-location" title="Current location">
+      <i class="bi bi-geo-alt-fill"></i>
+      <span id="header-location-name">Location unavailable</span>
+    </div>
     <div class="header-att-actions">
       <button id="header-check-in-btn" class="btn btn-primary btn-sm" onclick="window.__attendanceCheckIn()">Check In</button>
       <button id="header-check-out-btn" class="btn btn-secondary btn-sm" style="display:none" onclick="window.__attendanceCheckOut()">Check Out</button>

@@ -47,6 +47,8 @@ let officesPickerEnabled = false;
 let notificationsUnread = true;
 const liveNotifications = [];
 const leaveStatusSnapshot = new Map();
+const headerLocationCache = new Map();
+let headerLocationLookupSeq = 0;
 let faceModelPromise = null;
 let activeFaceStream = null;
 let faceConfigCache = { enabled: true, enrolled: false, faceEnrolledAt: null };
@@ -83,6 +85,66 @@ function notify(message) {
   if (typeof window.showToast === "function") {
     window.showToast(message);
   }
+}
+
+function setHeaderLocationLabel(text) {
+  const label = document.getElementById("header-location-name");
+  if (label) {
+    label.textContent = text;
+  }
+}
+
+async function reverseGeocodeLocationName(latitude, longitude) {
+  const key = `${Number(latitude).toFixed(4)},${Number(longitude).toFixed(4)}`;
+  if (headerLocationCache.has(key)) {
+    return headerLocationCache.get(key);
+  }
+
+  const response = await fetch(
+    `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(latitude)}&lon=${encodeURIComponent(longitude)}&zoom=14&addressdetails=1`,
+    { headers: { Accept: "application/json" } },
+  );
+  if (!response.ok) {
+    throw new Error("Unable to resolve current location");
+  }
+  const payload = await response.json();
+  const address = payload?.address ?? {};
+  const resolvedName = address.city
+    || address.town
+    || address.village
+    || address.suburb
+    || address.state
+    || payload?.name
+    || (typeof payload?.display_name === "string" ? payload.display_name.split(",")[0] : "")
+    || `${Number(latitude).toFixed(4)}, ${Number(longitude).toFixed(4)}`;
+  headerLocationCache.set(key, resolvedName);
+  return resolvedName;
+}
+
+function updateHeaderLocationFromPing(ping) {
+  if (!ping || !Number.isFinite(Number(ping.latitude)) || !Number.isFinite(Number(ping.longitude))) {
+    setHeaderLocationLabel("Location unavailable");
+    return;
+  }
+  const lat = Number(ping.latitude);
+  const lng = Number(ping.longitude);
+  const cacheKey = `${lat.toFixed(4)},${lng.toFixed(4)}`;
+  if (headerLocationCache.has(cacheKey)) {
+    setHeaderLocationLabel(headerLocationCache.get(cacheKey));
+    return;
+  }
+
+  const seq = ++headerLocationLookupSeq;
+  setHeaderLocationLabel("Locating...");
+  reverseGeocodeLocationName(lat, lng)
+    .then((name) => {
+      if (seq !== headerLocationLookupSeq) return;
+      setHeaderLocationLabel(name);
+    })
+    .catch(() => {
+      if (seq !== headerLocationLookupSeq) return;
+      setHeaderLocationLabel(`${lat.toFixed(4)}, ${lng.toFixed(4)}`);
+    });
 }
 
 function getNotificationEntries() {
@@ -1974,6 +2036,7 @@ async function loadAttendanceStatus() {
   const mode = data?.employee?.workMode ?? "OFFICE";
   const office = data?.employee?.office;
   const ping = data?.latestPing;
+  updateHeaderLocationFromPing(ping);
   workMode.textContent = formatLabel(mode);
   officeName.textContent = office?.name ?? "Not assigned";
   lastLocation.textContent = ping
