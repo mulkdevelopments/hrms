@@ -173,6 +173,40 @@ leaveRouter.post("/requests", async (req: AuthRequest, res) => {
     return res.status(404).json({ message: "Leave type not found" });
   }
 
+  const requestedStart = new Date(payload.startDate);
+  const requestedEnd = new Date(payload.endDate);
+  if (requestedEnd < requestedStart) {
+    return res.status(400).json({ message: "End date cannot be before start date" });
+  }
+
+  const overlappingLeave = await prisma.leaveRequest.findFirst({
+    where: {
+      employeeId: applicant.id,
+      status: {
+        in: [LeaveStatus.PENDING_L1, LeaveStatus.PENDING_L2, LeaveStatus.APPROVED],
+      },
+      startDate: { lte: requestedEnd },
+      endDate: { gte: requestedStart },
+    },
+    select: {
+      id: true,
+      startDate: true,
+      endDate: true,
+      status: true,
+    },
+  });
+  if (overlappingLeave) {
+    return res.status(400).json({
+      message: "A leave request already exists for this time period",
+      overlap: {
+        id: overlappingLeave.id,
+        status: overlappingLeave.status,
+        startDate: overlappingLeave.startDate,
+        endDate: overlappingLeave.endDate,
+      },
+    });
+  }
+
   if (leaveType.paidLeave) {
     const now = new Date();
     const { daysWorked, maturedDays } = computeMaturedLeaveDays(applicant.dateOfJoining, now);

@@ -1640,6 +1640,18 @@ function wireLeaveApplyForm() {
         notify("Invalid leave date range");
         return;
       }
+      const hasOverlap = leaveRequestsCache.some((request) => {
+        if (request.employeeId !== employeeId) return false;
+        if (!["PENDING_L1", "PENDING_L2", "APPROVED"].includes(request.status)) return false;
+        const existingStart = new Date(request.startDate);
+        const existingEnd = new Date(request.endDate);
+        if (Number.isNaN(existingStart.getTime()) || Number.isNaN(existingEnd.getTime())) return false;
+        return existingStart <= end && existingEnd >= start;
+      });
+      if (hasOverlap) {
+        notify("Leave already exists in selected time frame");
+        return;
+      }
       const selectedLeaveType = leaveTypes.find((item) => item.id === leaveTypeId);
       const isPaidLeave = selectedLeaveType ? Boolean(selectedLeaveType.paidLeave) : true;
       if (isPaidLeave && maturityState && days > Math.min(60, Number(maturityState.availableDays ?? 0))) {
@@ -2255,6 +2267,41 @@ function toDateKey(date) {
   return `${year}-${month}-${day}`;
 }
 
+function buildCalendarLeaveStatusMap(gridStartDate, gridEndDateExclusive) {
+  const targetEmployeeId = calendarEmployeeId || me?.employee?.id;
+  const leaveStatusByDate = new Map();
+  if (!targetEmployeeId) return leaveStatusByDate;
+
+  const requests = leaveRequestsCache.filter((request) =>
+    request?.employeeId === targetEmployeeId
+    && (request?.status === "APPROVED" || request?.status === "PENDING_L1" || request?.status === "PENDING_L2")
+  );
+
+  requests.forEach((request) => {
+    const start = new Date(request.startDate);
+    const end = new Date(request.endDate);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return;
+    const rangeStart = start < gridStartDate ? new Date(gridStartDate) : new Date(start);
+    const rangeEnd = end >= gridEndDateExclusive
+      ? new Date(gridEndDateExclusive.getTime() - 24 * 60 * 60 * 1000)
+      : new Date(end);
+    if (rangeEnd < rangeStart) return;
+
+    const tone = request.status === "APPROVED" ? "approved" : "pending";
+    const cursor = new Date(rangeStart);
+    while (cursor <= rangeEnd) {
+      const key = toDateKey(cursor);
+      const existing = leaveStatusByDate.get(key);
+      if (tone === "approved" || !existing) {
+        leaveStatusByDate.set(key, tone);
+      }
+      cursor.setDate(cursor.getDate() + 1);
+    }
+  });
+
+  return leaveStatusByDate;
+}
+
 function ensureCalendarMap() {
   if (calendarMap || !window.L) return;
   const mapEl = document.getElementById("cal-day-map");
@@ -2277,6 +2324,9 @@ function renderCalendarGrid(monthDate, totalsMap) {
   const firstDay = new Date(year, month, 1);
   const startOffset = firstDay.getDay();
   const gridStart = new Date(year, month, 1 - startOffset);
+  const gridEndExclusive = new Date(gridStart);
+  gridEndExclusive.setDate(gridStart.getDate() + 42);
+  const leaveStatusByDate = buildCalendarLeaveStatusMap(gridStart, gridEndExclusive);
   const cells = [];
 
   for (let index = 0; index < 42; index += 1) {
@@ -2287,10 +2337,12 @@ function renderCalendarGrid(monthDate, totalsMap) {
     const totalMinutes = Number(totalsMap.get(dateKey) ?? 0);
     const selected = calendarSelectedDate === dateKey;
     const today = dateKey === toDateKey(new Date());
+    const leaveTone = leaveStatusByDate.get(dateKey);
+    const leaveClass = leaveTone === "approved" ? "leave-approved" : leaveTone === "pending" ? "leave-pending" : "";
     cells.push(`
       <button
         type="button"
-        class="calendar-day ${inCurrentMonth ? "" : "other-month"} ${selected ? "selected" : ""} ${today ? "today" : ""}"
+        class="calendar-day ${inCurrentMonth ? "" : "other-month"} ${selected ? "selected" : ""} ${today ? "today" : ""} ${leaveClass}"
         onclick="window.__calendarSelectDate('${dateKey}')"
       >
         <div class="calendar-day-num">${current.getDate()}</div>
