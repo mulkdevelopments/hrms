@@ -39,6 +39,7 @@ model Employee {
   bankName           String?
   wpsEnabled         Boolean        @default(true)
   labourCardNumber   String?
+  noticePeriodDays   Int            @default(30)
   status             String         @default("ACTIVE")
   createdAt          DateTime       @default(now())
   updatedAt          DateTime       @updatedAt
@@ -53,6 +54,11 @@ model Employee {
   payslips         Payslip[]
   attendanceSessions AttendanceSession[]
   locationPings      LocationPing[]
+  exitRecords        ExitRecord[]   @relation("ExitEmployee")
+  payrollAdjustments PayrollAdjustment[] @relation("AdjustmentEmployee")
+  advanceLoans       SalaryAdvanceLoan[] @relation("LoanEmployee")
+  documents          EmployeeDocument[]  @relation("DocumentEmployee")
+  proTasks           ProTask[]           @relation("ProTaskEmployee")
 }
 
 model LeaveType {
@@ -182,4 +188,200 @@ model LocationPing {
 
   @@index([employeeId, recordedAt])
   @@index([sessionId, recordedAt])
+}
+
+model ExitRecord {
+  id                  String   @id @default(cuid())
+  employeeId          String
+  type                String // RESIGNATION | TERMINATION
+  status              String   @default("PENDING")
+  reasonCategory      String?
+  reason              String?
+  resignationDate     DateTime?
+  requestedLastWorkingDay DateTime?
+  lastWorkingDate     DateTime?
+  noticePeriodDays    Int      @default(30)
+  noticeAccepted      Boolean  @default(true)
+  noticeShortfallDays Int      @default(0)
+  supportingDocUrl    String?
+  incidentNotes       String?
+  employeeConfirmed   Boolean  @default(false)
+  employeeConfirmedAt DateTime?
+  lmApprovedById      String?
+  lmApprovedAt        DateTime?
+  hrApprovedById      String?
+  hrApprovedAt        DateTime?
+  ceoApprovedById     String?
+  ceoApprovedAt       DateTime?
+  rejectedById        String?
+  rejectedAt          DateTime?
+  rejectReason        String?
+  exitInterviewNotes  String?
+  experienceLetterIssuedAt DateTime?
+  completedAt         DateTime?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  employee        Employee         @relation("ExitEmployee", fields: [employeeId], references: [id])
+  clearanceTasks  ClearanceTask[]
+  finalSettlement FinalSettlement?
+
+  @@index([employeeId])
+  @@index([status])
+}
+
+model ClearanceTask {
+  id            String   @id @default(cuid())
+  exitRecordId  String
+  department    String // IT | FINANCE | ADMIN | PRO
+  status        String   @default("PENDING") // PENDING | COMPLETED
+  urgent        Boolean  @default(false)
+  remarks       String?
+  completedById String?
+  completedAt   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  exitRecord ExitRecord @relation(fields: [exitRecordId], references: [id], onDelete: Cascade)
+
+  @@index([exitRecordId])
+}
+
+model PayrollAdjustment {
+  id              String   @id @default(cuid())
+  referenceNumber String   @unique
+  employeeId      String
+  type            String // ADDITION | DEDUCTION
+  category        String
+  glCode          String?
+  amount          Float
+  effectiveMonth  Int
+  effectiveYear   Int
+  reason          String
+  supportingDocUrl String?
+  recurring       Boolean  @default(false)
+  frequency       String? // MONTHLY
+  recurrenceEndMonth Int?
+  recurrenceEndYear  Int?
+  status          String   @default("DRAFT") // DRAFT | APPROVED | REJECTED | PROCESSED
+  loanId          String?
+  installmentNo   Int?
+  createdById     String?
+  approvedById    String?
+  approvedAt      DateTime?
+  rejectedById    String?
+  rejectedAt      DateTime?
+  rejectReason    String?
+  processedAt     DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  employee Employee           @relation("AdjustmentEmployee", fields: [employeeId], references: [id])
+  loan     SalaryAdvanceLoan? @relation(fields: [loanId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId, status])
+  @@index([effectiveYear, effectiveMonth])
+}
+
+model SalaryAdvanceLoan {
+  id               String   @id @default(cuid())
+  employeeId       String
+  type             String // ADVANCE | LOAN
+  totalAmount      Float
+  installmentAmount Float
+  startMonth       Int
+  startYear        Int
+  recoveredAmount  Float    @default(0)
+  reason           String
+  status           String   @default("PENDING_APPROVAL") // PENDING_APPROVAL | ACTIVE | CLOSED | REJECTED
+  requiresDualApproval Boolean @default(false)
+  createdById      String?
+  approver1Id      String?
+  approver1At      DateTime?
+  approver2Id      String?
+  approver2At      DateTime?
+  rejectedById     String?
+  rejectedAt       DateTime?
+  rejectReason     String?
+  closedAt         DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  employee     Employee            @relation("LoanEmployee", fields: [employeeId], references: [id])
+  installments PayrollAdjustment[]
+
+  @@index([employeeId, status])
+}
+
+model EmployeeDocument {
+  id               String   @id @default(cuid())
+  employeeId       String
+  docType          String // RESIDENCE_VISA | EMIRATES_ID | PASSPORT | LABOUR_PERMIT | HEALTH_CARD | MEDICAL_FITNESS | LABOUR_CONTRACT | ESTABLISHMENT_CARD | TRADE_LICENSE
+  documentNumber   String?
+  issuingAuthority String?
+  issueDate        DateTime?
+  expiryDate       DateTime?
+  fileUrl          String?
+  notes            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  employee Employee @relation("DocumentEmployee", fields: [employeeId], references: [id])
+
+  @@index([employeeId])
+  @@index([expiryDate])
+}
+
+model ProTask {
+  id              String   @id @default(cuid())
+  referenceNumber String   @unique
+  employeeId      String
+  taskType        String // NEW_VISA | RENEWAL | CANCELLATION
+  documentType    String?
+  status          String
+  governmentRef   String?
+  feeAmount       Float?
+  notes           String?
+  exitRecordId    String?
+  documentId      String?
+  autoCreated     Boolean  @default(false)
+  submittedAt     DateTime?
+  completedAt     DateTime?
+  createdById     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  employee Employee @relation("ProTaskEmployee", fields: [employeeId], references: [id])
+
+  @@index([employeeId, status])
+  @@index([taskType, status])
+}
+
+model Attachment {
+  id           String   @id @default(cuid())
+  fileName     String
+  mimeType     String
+  sizeBytes    Int
+  data         String   @db.Text
+  category     String   @default("GENERAL")
+  uploadedById String?
+  createdAt    DateTime @default(now())
+}
+
+model FinalSettlement {
+  id              String   @id @default(cuid())
+  exitRecordId    String   @unique
+  yearsOfService  Float    @default(0)
+  unpaidSalary    Float    @default(0)
+  leaveEncashment Float    @default(0)
+  gratuity        Float    @default(0)
+  otherAdditions  Float    @default(0)
+  deductions      Float    @default(0)
+  netSettlement   Float    @default(0)
+  breakdown       Json?
+  status          String   @default("DRAFT") // DRAFT | FINALIZED
+  computedAt      DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  exitRecord ExitRecord @relation(fields: [exitRecordId], references: [id], onDelete: Cascade)
 }

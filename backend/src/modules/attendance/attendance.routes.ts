@@ -86,6 +86,48 @@ function startOfDay(date = new Date()) {
   return value;
 }
 
+const CHECK_IN_START_MINUTES = 7 * 60; // 07:00
+const CHECK_IN_END_MINUTES = 8 * 60 + 30; // 08:30
+const AUTO_CHECK_OUT_MINUTES = 18 * 60; // 18:00
+
+function getMinutesOfDayInTz(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: env.ATTENDANCE_TIMEZONE,
+    hourCycle: "h23",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).formatToParts(date);
+  const hour = Number(parts.find((part) => part.type === "hour")?.value ?? "0");
+  const minute = Number(parts.find((part) => part.type === "minute")?.value ?? "0");
+  return hour * 60 + minute;
+}
+
+function isWithinCheckInWindow(date = new Date()) {
+  const minutes = getMinutesOfDayInTz(date);
+  return minutes >= CHECK_IN_START_MINUTES && minutes <= CHECK_IN_END_MINUTES;
+}
+
+function isPastAutoCheckOut(date = new Date()) {
+  return getMinutesOfDayInTz(date) >= AUTO_CHECK_OUT_MINUTES;
+}
+
+export async function autoCheckOutOverdueSessions() {
+  if (!isPastAutoCheckOut()) {
+    return 0;
+  }
+  const now = new Date();
+  const result = await prisma.attendanceSession.updateMany({
+    where: { isActive: true },
+    data: {
+      isActive: false,
+      checkOutAt: now,
+      checkOutMethod: "AUTO_TIME_LIMIT",
+      lastSeenAt: now,
+    },
+  });
+  return result.count;
+}
+
 function parseMonthRange(month: string) {
   const [yearText, monthText] = month.split("-");
   const year = Number(yearText);
@@ -368,6 +410,10 @@ attendanceRouter.post("/check-in", async (req: AuthRequest, res) => {
     return res.json({ message: "Already checked in", session: activeSession });
   }
 
+  if (!isWithinCheckInWindow()) {
+    return res.status(403).json({ message: "Check-in is allowed only between 07:00 AM and 08:30 AM" });
+  }
+
   if (employee.workMode === "OFFICE") {
     if (!employee.office) {
       return res.status(400).json({ message: "Office is required for office employees" });
@@ -537,6 +583,20 @@ attendanceRouter.post("/ping", async (req: AuthRequest, res) => {
   let insideGeofence: boolean | null = null;
   let distanceMeters: number | null = null;
 
+  if (activeSession && isPastAutoCheckOut(now)) {
+    await prisma.attendanceSession.update({
+      where: { id: activeSession.id },
+      data: {
+        isActive: false,
+        checkOutAt: now,
+        checkOutMethod: "AUTO_TIME_LIMIT",
+        lastSeenAt: now,
+      },
+    });
+    activeSession = null;
+    eventType = "AUTO_CHECK_OUT_TIME";
+  }
+
   if (employee.workMode === "OFFICE") {
     if (!employee.office) {
       return res.status(400).json({ message: "Office is required for office employees" });
@@ -545,16 +605,21 @@ attendanceRouter.post("/ping", async (req: AuthRequest, res) => {
     insideGeofence = state.inside;
     distanceMeters = state.distanceMeters;
 
-    if (state.inside && !activeSession) {
+    if (state.inside && !activeSession && eventType !== "AUTO_CHECK_OUT_TIME") {
       const manualLogoutToday = await prisma.attendanceSession.findFirst({
         where: {
           employeeId: employee.id,
-          checkOutMethod: "MANUAL",
+          OR: [
+            { checkOutMethod: "MANUAL" },
+            { checkOutMethod: "AUTO_TIME_LIMIT" },
+          ],
           checkOutAt: { gte: startOfDay(now) },
         },
         orderBy: { checkOutAt: "desc" },
       });
-      if (manualLogoutToday) {
+      if (!isWithinCheckInWindow(now)) {
+        eventType = "CHECK_IN_WINDOW_CLOSED";
+      } else if (manualLogoutToday) {
         eventType = "MANUAL_LOGOUT_LOCK";
       } else {
       activeSession = await prisma.attendanceSession.create({

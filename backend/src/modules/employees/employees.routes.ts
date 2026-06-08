@@ -7,11 +7,11 @@ import { applyEmploymentStatusToEmployee, getProbationCutoffDate } from "../../l
 import { authMiddleware, requireRoles, type AuthRequest } from "../../middleware/auth.js";
 
 const privilegedRoles = ["SUPER_ADMIN", "HR", "HR_OFFICER"] as const;
-const assignableUserRoles = ["SUPER_ADMIN", "HR", "HR_OFFICER", "MANAGER", "EMPLOYEE"] as const;
+const assignableUserRoles = ["SUPER_ADMIN", "CEO", "HR", "HR_OFFICER", "PRO", "MANAGER", "EMPLOYEE"] as const;
 
 const createEmployeeSchema = z.object({
   firstName: z.string().min(1),
-  lastName: z.string().min(1),
+  lastName: z.string().trim().optional().default(""),
   email: z.string().email(),
   phone: z.string().optional(),
   dateOfBirth: z.string().datetime().optional(),
@@ -29,6 +29,7 @@ const createEmployeeSchema = z.object({
   bankName: z.string().optional(),
   wpsEnabled: z.boolean().optional(),
   labourCardNumber: z.string().optional(),
+  noticePeriodDays: z.number().int().min(0).max(365).optional(),
   basicSalary: z.number().nonnegative().default(0),
   housingAllowance: z.number().nonnegative().default(0),
   transportAllowance: z.number().nonnegative().default(0),
@@ -185,6 +186,7 @@ employeesRouter.post("/", requireRoles(...privilegedRoles), async (req, res) => 
       bankName: payload.bankName,
       wpsEnabled: payload.wpsEnabled,
       labourCardNumber: payload.labourCardNumber,
+      noticePeriodDays: payload.noticePeriodDays,
       basicSalary: payload.basicSalary,
       housingAllowance: payload.housingAllowance,
       transportAllowance: payload.transportAllowance,
@@ -268,6 +270,7 @@ employeesRouter.put("/:id", requireRoles(...privilegedRoles), async (req, res) =
       bankName: payload.bankName,
       wpsEnabled: payload.wpsEnabled,
       labourCardNumber: payload.labourCardNumber,
+      noticePeriodDays: payload.noticePeriodDays,
       basicSalary: payload.basicSalary,
       housingAllowance: payload.housingAllowance,
       transportAllowance: payload.transportAllowance,

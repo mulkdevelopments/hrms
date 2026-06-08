@@ -2,7 +2,7 @@ import type { NextFunction, Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import { env } from "../config/env.js";
 
-export type UserRole = "SUPER_ADMIN" | "HR" | "HR_OFFICER" | "MANAGER" | "EMPLOYEE";
+export type UserRole = "SUPER_ADMIN" | "CEO" | "HR" | "HR_OFFICER" | "PRO" | "MANAGER" | "EMPLOYEE";
 
 export type AuthPayload = {
   userId: string;

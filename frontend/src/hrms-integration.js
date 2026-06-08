@@ -205,6 +205,57 @@ function getNotificationEntries() {
     });
   }
 
+  const myEmployeeId = me.employee.id;
+  const myExitActions = (exitRecordsCache ?? []).filter((record) => {
+    switch (record.status) {
+      case "PENDING":
+        return record.employee?.managerId === myEmployeeId || elevatedRoles.has(me.role);
+      case "LM_APPROVED":
+      case "INITIATED":
+      case "CLEARANCE_IN_PROGRESS":
+      case "SETTLEMENT_READY":
+        return elevatedRoles.has(me.role);
+      case "DOCUMENTED":
+        return me.role === "SUPER_ADMIN" || me.role === "CEO";
+      default:
+        return false;
+    }
+  });
+  if (myExitActions.length) {
+    entries.push({
+      icon: "bi-box-arrow-right",
+      tone: "warn",
+      title: `${myExitActions.length} Exit Request(s) Need Action`,
+      desc: "Resignation/termination steps are awaiting your review.",
+      time: "Live",
+    });
+  }
+
+  const myOwnExit = (exitRecordsCache ?? []).find(
+    (record) => record.employeeId === myEmployeeId
+      && !["COMPLETED", "REJECTED", "CANCELLED"].includes(record.status),
+  );
+  if (myOwnExit) {
+    entries.push({
+      icon: "bi-box-arrow-right",
+      tone: "info",
+      title: "Your exit request is in progress",
+      desc: `Current stage: ${EXIT_STATUS_LABELS[myOwnExit.status] ?? myOwnExit.status}.`,
+      time: "Live",
+    });
+  }
+
+  const expiringDocs = (proDocsCache ?? []).filter((doc) => doc.computedStatus === "EXPIRING" || doc.computedStatus === "EXPIRED");
+  if (expiringDocs.length) {
+    entries.push({
+      icon: "bi-passport",
+      tone: "warn",
+      title: `${expiringDocs.length} Document(s) Expiring / Expired`,
+      desc: "Visa, Emirates ID or permit documents need renewal attention.",
+      time: "Live",
+    });
+  }
+
   return entries.slice(0, 8);
 }
 
@@ -254,13 +305,15 @@ function setViewVisibility(view, visible) {
 function applyRoleBasedUi() {
   const role = me?.role ?? "EMPLOYEE";
   const roleViews = {
-    SUPER_ADMIN: ["dashboard", "employees", "leave", "payroll", "ess", "attendance", "calendar", "offices", "profile", "performance", "recruitment", "documents", "compliance", "reports", "settings"],
-    HR: ["dashboard", "employees", "leave", "payroll", "ess", "attendance", "calendar", "offices", "profile", "performance", "recruitment", "documents", "compliance", "reports", "settings"],
-    HR_OFFICER: ["dashboard", "employees", "leave", "payroll", "ess", "attendance", "calendar", "offices", "profile", "performance", "recruitment", "documents", "compliance", "reports", "settings"],
-    MANAGER: ["dashboard", "employees", "leave", "ess", "attendance", "calendar", "profile"],
-    EMPLOYEE: ["leave", "ess", "attendance", "calendar", "profile", "settings"],
+    SUPER_ADMIN: ["dashboard", "employees", "leave", "exits", "payadjust", "pro", "payroll", "ess", "attendance", "calendar", "offices", "profile", "performance", "recruitment", "documents", "compliance", "reports", "settings"],
+    CEO: ["dashboard", "employees", "leave", "exits", "payadjust", "pro", "payroll", "ess", "attendance", "calendar", "offices", "profile", "performance", "recruitment", "documents", "compliance", "reports", "settings"],
+    HR: ["dashboard", "employees", "leave", "exits", "payadjust", "pro", "payroll", "ess", "attendance", "calendar", "offices", "profile", "performance", "recruitment", "documents", "compliance", "reports", "settings"],
+    HR_OFFICER: ["dashboard", "employees", "leave", "exits", "payadjust", "pro", "payroll", "ess", "attendance", "calendar", "offices", "profile", "performance", "recruitment", "documents", "compliance", "reports", "settings"],
+    PRO: ["dashboard", "employees", "pro", "ess", "attendance", "calendar", "profile", "settings"],
+    MANAGER: ["dashboard", "employees", "leave", "exits", "payadjust", "pro", "ess", "attendance", "calendar", "profile"],
+    EMPLOYEE: ["leave", "exits", "payadjust", "pro", "ess", "attendance", "calendar", "profile", "settings"],
   };
-  const allViews = ["dashboard", "employees", "leave", "payroll", "ess", "attendance", "calendar", "offices", "profile", "performance", "recruitment", "documents", "compliance", "reports", "settings"];
+  const allViews = ["dashboard", "employees", "leave", "exits", "payadjust", "pro", "payroll", "ess", "attendance", "calendar", "offices", "profile", "performance", "recruitment", "documents", "compliance", "reports", "settings"];
   const allowed = new Set(roleViews[role] ?? roleViews.EMPLOYEE);
   allViews.forEach((view) => setViewVisibility(view, allowed.has(view)));
 
@@ -277,6 +330,31 @@ function applyRoleBasedUi() {
   if (pendingApprovalsTab) {
     pendingApprovalsTab.style.display = role === "EMPLOYEE" ? "none" : "";
   }
+  const leaveBalanceTabBtn = document.getElementById("leave-balance-tab-btn");
+  if (leaveBalanceTabBtn) {
+    leaveBalanceTabBtn.style.display = elevatedRoles.has(role) ? "" : "none";
+  }
+  const terminateTabBtn = document.getElementById("exit-terminate-tab-btn");
+  if (terminateTabBtn) {
+    terminateTabBtn.style.display = (elevatedRoles.has(role) || role === "MANAGER") ? "" : "none";
+  }
+  const adjNewTabBtn = document.getElementById("adj-new-tab-btn");
+  if (adjNewTabBtn) {
+    adjNewTabBtn.style.display = (elevatedRoles.has(role) || role === "MANAGER") ? "" : "none";
+  }
+  const adjProcessWrap = document.getElementById("adj-process-wrap");
+  if (adjProcessWrap) {
+    adjProcessWrap.style.display = (role === "SUPER_ADMIN" || role === "HR") ? "flex" : "none";
+  }
+  const loanFormCard = document.getElementById("adj-loan-form-card");
+  if (loanFormCard) {
+    loanFormCard.style.display = elevatedRoles.has(role) ? "" : "none";
+  }
+  const canManagePro = elevatedRoles.has(role) || role === "PRO";
+  ["pro-doc-new-tab-btn", "pro-task-new-tab-btn"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = canManagePro ? "" : "none";
+  });
   const liveWorkforceCard = document.getElementById("att-live-workforce-card");
   if (liveWorkforceCard) {
     liveWorkforceCard.style.display = role === "EMPLOYEE" ? "none" : "";
@@ -599,6 +677,13 @@ function resetEmployeeModalForm() {
   editingEmployeeId = null;
 }
 
+window.__attemptCloseEmployeeModal = function attemptCloseEmployeeModal() {
+  const shouldClose = window.confirm("Are you sure you want to close this dialog?");
+  if (!shouldClose) return;
+  resetEmployeeModalForm();
+  window.closeModal("emp-modal");
+};
+
 function updateEmploymentStatusBadge() {
   const joinDateInput = document.getElementById("emp-join-date");
   const badge = document.getElementById("emp-auto-status-badge");
@@ -615,8 +700,8 @@ function updateEmploymentStatusBadge() {
 
 function readEmployeePayloadFromModal() {
   const fullName = document.getElementById("emp-full-name").value.trim();
-  const [firstName, ...rest] = fullName.split(/\s+/);
-  const lastName = rest.join(" ") || "Employee";
+  const firstName = fullName;
+  const lastName = "";
   const basicSalary = Number(document.getElementById("emp-basic-salary").value || 0);
   const accessEnabled = document.getElementById("emp-access-enabled").value === "true";
   const loginEmail = document.getElementById("emp-login-email").value.trim();
@@ -642,6 +727,7 @@ function readEmployeePayloadFromModal() {
     bankName: document.getElementById("emp-bank-name").value.trim() || undefined,
     wpsEnabled: document.getElementById("emp-wps").value === "true",
     labourCardNumber: document.getElementById("emp-labour-card").value.trim() || undefined,
+    noticePeriodDays: Number.parseInt(document.getElementById("emp-notice")?.value ?? "30", 10) || 30,
     basicSalary,
     housingAllowance: Math.round(basicSalary * 0.3),
     transportAllowance: Math.round(basicSalary * 0.1),
@@ -659,8 +745,14 @@ function renderEmployeesTable() {
 
   tableBody.innerHTML = employees
     .map((employee) => {
-      const initials = `${employee.firstName[0] ?? ""}${employee.lastName[0] ?? ""}`.toUpperCase();
-      const name = `${employee.firstName} ${employee.lastName}`;
+      const name = `${employee.firstName ?? ""} ${employee.lastName ?? ""}`.trim();
+      const initials = name
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((part) => part[0])
+        .join("")
+        .toUpperCase() || "--";
       const presence = employeePresenceMap.get(employee.id);
       const attendanceBadge = presence?.isOnline
         ? `<span class="badge badge-green">Checked In</span>`
@@ -702,10 +794,10 @@ function renderEmployeesTable() {
           <td>${attendanceBadge}</td>
           <td>
             <div class="emp-action-menu-wrap">
-              <button class="btn btn-secondary btn-sm emp-action-toggle" type="button" onclick="window.__toggleEmployeeActionsMenu('${employee.id}')">
+              <button class="btn btn-secondary btn-sm emp-action-toggle" type="button" onclick="window.__toggleEmployeeActionsMenu('${employee.id}', this)">
                 <i class="bi bi-three-dots-vertical"></i>
               </button>
-              <div class="emp-action-menu" id="emp-actions-${employee.id}">
+              <div class="emp-action-source" id="emp-actions-${employee.id}" style="display:none">
                 ${actionItems}
               </div>
             </div>
@@ -716,20 +808,56 @@ function renderEmployeesTable() {
     .join("");
 }
 
-window.__toggleEmployeeActionsMenu = function toggleEmployeeActionsMenu(employeeId) {
-  document.querySelectorAll(".emp-action-menu.open").forEach((menu) => {
-    if (menu.id !== `emp-actions-${employeeId}`) {
-      menu.classList.remove("open");
-    }
-  });
-  const menu = document.getElementById(`emp-actions-${employeeId}`);
-  menu?.classList.toggle("open");
+function getEmployeeActionPortal() {
+  let portal = document.getElementById("emp-action-portal");
+  if (!portal) {
+    portal = document.createElement("div");
+    portal.id = "emp-action-portal";
+    portal.className = "emp-action-menu";
+    document.body.appendChild(portal);
+  }
+  return portal;
+}
+
+window.__closeEmployeeActionsMenu = function closeEmployeeActionsMenu() {
+  const portal = document.getElementById("emp-action-portal");
+  if (portal) {
+    portal.classList.remove("open");
+    portal.dataset.employeeId = "";
+  }
+};
+
+window.__toggleEmployeeActionsMenu = function toggleEmployeeActionsMenu(employeeId, triggerEl) {
+  const source = document.getElementById(`emp-actions-${employeeId}`);
+  const trigger = triggerEl || source?.parentElement?.querySelector(".emp-action-toggle");
+  if (!source || !trigger) return;
+
+  const portal = getEmployeeActionPortal();
+  const isOpenForThis = portal.classList.contains("open") && portal.dataset.employeeId === employeeId;
+  if (isOpenForThis) {
+    window.__closeEmployeeActionsMenu();
+    return;
+  }
+
+  portal.innerHTML = source.innerHTML;
+  portal.dataset.employeeId = employeeId;
+  portal.classList.add("open");
+
+  const rect = trigger.getBoundingClientRect();
+  const menuWidth = portal.offsetWidth || 160;
+  const menuHeight = portal.offsetHeight || 0;
+  let left = rect.right - menuWidth;
+  if (left < 8) left = 8;
+  let top = rect.bottom + 6;
+  if (menuHeight && top + menuHeight > window.innerHeight - 8) {
+    top = Math.max(8, rect.top - menuHeight - 6);
+  }
+  portal.style.left = `${left}px`;
+  portal.style.top = `${top}px`;
 };
 
 function wireEmployeeCreation() {
   const modal = document.getElementById("emp-modal");
-  const cancelBtn = modal?.querySelector(".modal-footer .btn.btn-secondary");
-  const closeBtn = modal?.querySelector(".modal-close");
   const managerSearchInput = document.getElementById("emp-line-manager-search");
   const accessEnabledSelect = document.getElementById("emp-access-enabled");
   const userRoleSelect = document.getElementById("emp-user-role");
@@ -772,11 +900,6 @@ function wireEmployeeCreation() {
   syncWorkModeOfficeState();
   updateEmploymentStatusBadge();
 
-  cancelBtn?.addEventListener("click", resetEmployeeModalForm);
-  closeBtn?.addEventListener("click", resetEmployeeModalForm);
-  modal?.addEventListener("click", (event) => {
-    if (event.target === modal) resetEmployeeModalForm();
-  });
   managerSearchInput?.addEventListener("input", () => {
     managerSearchTerm = managerSearchInput.value.trim();
     const selectedManagerId = document.getElementById("emp-line-manager")?.value ?? "";
@@ -1081,6 +1204,7 @@ window.__editEmployee = function editEmployee(employeeId) {
   setSelectByText(document.getElementById("emp-nationality"), employee.nationality);
   setSelectByText(document.getElementById("emp-department"), employee.department);
   setSelectByText(document.getElementById("emp-employment-type"), employee.employmentType ?? "Full-Time");
+  setSelectByText(document.getElementById("emp-notice"), `${employee.noticePeriodDays ?? 30} days`);
   populateManagerOptions(employee.managerId ?? "", employee.id);
 
   if (title) title.textContent = "Edit Employee";
@@ -1701,6 +1825,1075 @@ function wireLeaveApplyForm() {
   selects[1]?.addEventListener("change", renderMaturityInfo);
   syncDateBounds();
   refreshMaturityInfo().catch(() => null);
+}
+
+function wireLeaveBalanceLookup() {
+  const searchInput = document.getElementById("leave-balance-search");
+  const resultsBox = document.getElementById("leave-balance-results");
+  if (!searchInput || !resultsBox) return;
+
+  const closeResults = () => {
+    resultsBox.style.display = "none";
+    resultsBox.innerHTML = "";
+  };
+
+  const renderResults = (term) => {
+    const query = term.trim().toLowerCase();
+    if (!query) {
+      closeResults();
+      return;
+    }
+    const matches = allEmployees.filter((employee) => {
+      const haystack = [
+        employee.firstName,
+        employee.lastName,
+        employee.employeeCode,
+        employee.email,
+        employee.department,
+        employee.designation,
+      ].filter(Boolean).join(" ").toLowerCase();
+      return haystack.includes(query);
+    }).slice(0, 8);
+
+    if (!matches.length) {
+      resultsBox.innerHTML = `<div class="text-muted" style="padding:10px">No matching employees.</div>`;
+      resultsBox.style.display = "block";
+      return;
+    }
+
+    resultsBox.innerHTML = matches.map((employee) => {
+      const name = `${employee.firstName ?? ""} ${employee.lastName ?? ""}`.trim();
+      return `<button type="button" class="emp-action-item" style="display:block;width:100%;text-align:left;padding:9px 10px" onclick="window.__selectLeaveBalanceEmployee('${employee.id}')">${escapeAttr(name)} (${escapeAttr(employee.employeeCode ?? "—")}) • ${escapeAttr(employee.department ?? "")}</button>`;
+    }).join("");
+    resultsBox.style.display = "block";
+  };
+
+  searchInput.addEventListener("input", () => renderResults(searchInput.value));
+  searchInput.addEventListener("focus", () => renderResults(searchInput.value));
+  document.addEventListener("click", (event) => {
+    if (event.target === searchInput) return;
+    if (resultsBox.contains(event.target)) return;
+    closeResults();
+  });
+}
+
+window.__selectLeaveBalanceEmployee = async function selectLeaveBalanceEmployee(employeeId) {
+  const employee = allEmployees.find((item) => item.id === employeeId);
+  const resultsBox = document.getElementById("leave-balance-results");
+  const searchInput = document.getElementById("leave-balance-search");
+  const detail = document.getElementById("leave-balance-detail");
+  const empty = document.getElementById("leave-balance-empty");
+  if (!employee) {
+    notify("Employee not found");
+    return;
+  }
+  if (resultsBox) {
+    resultsBox.style.display = "none";
+    resultsBox.innerHTML = "";
+  }
+  const name = `${employee.firstName ?? ""} ${employee.lastName ?? ""}`.trim();
+  if (searchInput) searchInput.value = name;
+
+  try {
+    const data = await api(`/leave/maturity/${employeeId}`);
+    const earned = Math.min(60, Number(data.maturedDays ?? 0));
+    const used = Number(data.usedDays ?? 0);
+    const available = Math.min(60, Number(data.availableDays ?? 0));
+    const worked = Number(data.daysWorked ?? 0);
+
+    const avatar = document.getElementById("leave-balance-avatar");
+    const nameEl = document.getElementById("leave-balance-name");
+    const metaEl = document.getElementById("leave-balance-meta");
+    const workedEl = document.getElementById("leave-balance-worked");
+    const earnedEl = document.getElementById("leave-balance-earned");
+    const usedEl = document.getElementById("leave-balance-used");
+    const availableEl = document.getElementById("leave-balance-available");
+    const noteEl = document.getElementById("leave-balance-note");
+
+    if (avatar) {
+      avatar.textContent = name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "--";
+    }
+    if (nameEl) nameEl.textContent = name;
+    if (metaEl) metaEl.textContent = `${employee.employeeCode ?? "—"} • ${employee.department ?? ""} • ${employee.designation ?? ""}`;
+    if (workedEl) workedEl.textContent = String(worked);
+    if (earnedEl) earnedEl.textContent = earned.toFixed(2);
+    if (usedEl) usedEl.textContent = used.toFixed(2);
+    if (availableEl) availableEl.textContent = available.toFixed(2);
+    if (noteEl) {
+      noteEl.textContent = `Daily maturity ${Number(data.dailyRate ?? 0).toFixed(4)} • Max cap ${data.yearlyCap ?? 60} days • As on ${new Date(data.asOf ?? Date.now()).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}.`;
+    }
+
+    if (detail) detail.style.display = "";
+    if (empty) empty.style.display = "none";
+  } catch (error) {
+    notify(error.message);
+  }
+};
+
+let exitRecordsCache = [];
+
+const EXIT_STATUS_LABELS = {
+  PENDING: "Pending L1",
+  LM_APPROVED: "Line Manager Approved",
+  HR_APPROVED: "HR Approved",
+  INITIATED: "Initiated",
+  DOCUMENTED: "Documented",
+  APPROVED: "Approved",
+  CLEARANCE_IN_PROGRESS: "Clearance In Progress",
+  SETTLEMENT_READY: "Settlement Ready",
+  COMPLETED: "Completed",
+  REJECTED: "Rejected",
+  CANCELLED: "Cancelled",
+};
+
+function exitStatusBadge(status) {
+  if (status === "COMPLETED") return "badge-green";
+  if (status === "REJECTED" || status === "CANCELLED") return "badge-coral";
+  if (status === "SETTLEMENT_READY" || status === "CLEARANCE_IN_PROGRESS") return "badge-blue";
+  return "badge-amber";
+}
+
+function fmtDate(value) {
+  if (!value) return "—";
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function populateExitEmployeeSelects() {
+  const resignSelect = document.getElementById("exit-emp-select");
+  const termSelect = document.getElementById("term-emp-select");
+  if (resignSelect) {
+    const source = elevatedRoles.has(me?.role)
+      ? allEmployees
+      : allEmployees.filter((emp) => emp.id === me?.employee?.id);
+    resignSelect.innerHTML = `<option value="">Select employee…</option>` + source
+      .map((emp) => `<option value="${emp.id}">${escapeAttr(`${emp.firstName ?? ""} ${emp.lastName ?? ""}`.trim())} (${escapeAttr(emp.employeeCode ?? "—")})</option>`)
+      .join("");
+    if (me?.employee?.id && source.some((emp) => emp.id === me.employee.id)) {
+      resignSelect.value = me.employee.id;
+    }
+    resignSelect.dispatchEvent(new Event("change"));
+  }
+  if (termSelect) {
+    termSelect.innerHTML = `<option value="">Select employee…</option>` + allEmployees
+      .filter((emp) => emp.id !== me?.employee?.id)
+      .map((emp) => `<option value="${emp.id}">${escapeAttr(`${emp.firstName ?? ""} ${emp.lastName ?? ""}`.trim())} (${escapeAttr(emp.employeeCode ?? "—")})</option>`)
+      .join("");
+  }
+  const todayIso = new Date().toISOString().slice(0, 10);
+  ["exit-resignation-date", "exit-lwd", "term-lwd"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.min = todayIso;
+  });
+}
+
+function renderExitsTable() {
+  const tbody = document.getElementById("exit-records-body");
+  if (!tbody) return;
+  if (!exitRecordsCache.length) {
+    tbody.innerHTML = `<tr><td colspan="6" class="text-muted">No exit records yet.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = exitRecordsCache.map((record) => {
+    const emp = record.employee;
+    const name = `${emp?.firstName ?? ""} ${emp?.lastName ?? ""}`.trim();
+    const typeBadge = record.type === "TERMINATION" ? "badge-coral" : "badge-blue";
+    return `
+      <tr>
+        <td>${escapeAttr(name)} (${escapeAttr(emp?.employeeCode ?? "—")})</td>
+        <td><span class="badge ${typeBadge}">${formatLabel(record.type)}</span></td>
+        <td><span class="badge ${exitStatusBadge(record.status)}">${escapeAttr(EXIT_STATUS_LABELS[record.status] ?? record.status)}</span></td>
+        <td>${fmtDate(record.lastWorkingDate ?? record.requestedLastWorkingDay)}</td>
+        <td>${fmtDate(record.createdAt)}</td>
+        <td><button class="btn btn-secondary btn-sm" onclick="window.__viewExit('${record.id}')">View</button></td>
+      </tr>`;
+  }).join("");
+}
+
+async function loadExits() {
+  try {
+    const records = await api("/exits");
+    exitRecordsCache = Array.isArray(records) ? records : [];
+    renderExitsTable();
+    renderNotifications();
+  } catch (error) {
+    exitRecordsCache = [];
+    renderExitsTable();
+    notify(error.message);
+  }
+}
+
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error("Unable to read file"));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function uploadAttachment(inputId, category) {
+  const input = document.getElementById(inputId);
+  const file = input?.files?.[0];
+  if (!file) return undefined;
+  if (file.size > 5 * 1024 * 1024) {
+    throw new Error("File exceeds the 5 MB limit");
+  }
+  const dataBase64 = await readFileAsBase64(file);
+  const result = await api("/uploads", {
+    method: "POST",
+    body: JSON.stringify({ fileName: file.name, mimeType: file.type, dataBase64, category }),
+  });
+  return result?.url;
+}
+
+window.__viewAttachment = async function viewAttachment(url) {
+  try {
+    const response = await fetch(`${API_BASE}${url.replace(/^\/api/, "")}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      cache: "no-store",
+    });
+    if (!response.ok) throw new Error("Unable to open document");
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    window.open(objectUrl, "_blank");
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+  } catch (error) {
+    notify(error.message);
+  }
+};
+
+window.__submitResignation = async function submitResignation() {
+  try {
+    const employeeId = document.getElementById("exit-emp-select")?.value;
+    const resignationDate = document.getElementById("exit-resignation-date")?.value;
+    const lwd = document.getElementById("exit-lwd")?.value;
+    const reasonCategory = document.getElementById("exit-reason-category")?.value;
+    const reason = document.getElementById("exit-reason")?.value.trim() ?? "";
+    const noticeAccepted = document.getElementById("exit-notice-accepted")?.value === "true";
+    const confirmed = document.getElementById("exit-confirm")?.checked;
+
+    if (!employeeId || !resignationDate || !lwd) {
+      notify("Please fill employee, resignation date and last working day");
+      return;
+    }
+    if (!confirmed) {
+      notify("Please confirm the resignation declaration");
+      return;
+    }
+    const supportingDocUrl = await uploadAttachment("exit-doc-file", "RESIGNATION");
+    await api("/exits/resignation", {
+      method: "POST",
+      body: JSON.stringify({
+        employeeId,
+        resignationDate: new Date(resignationDate).toISOString(),
+        requestedLastWorkingDay: new Date(lwd).toISOString(),
+        reasonCategory,
+        reason,
+        noticeAccepted,
+        supportingDocUrl,
+        employeeConfirmed: true,
+      }),
+    });
+    notify("Resignation submitted successfully");
+    document.getElementById("exit-reason").value = "";
+    document.getElementById("exit-confirm").checked = false;
+    const exitFile = document.getElementById("exit-doc-file");
+    if (exitFile) exitFile.value = "";
+    await loadExits();
+    const recordsTabBtn = document.querySelector("#view-exits .tab-btn[onclick*=\"exit-records\"]");
+    if (recordsTabBtn) switchTab(recordsTabBtn, "exit-records");
+  } catch (error) {
+    notify(error.message);
+  }
+};
+
+window.__initiateTermination = async function initiateTermination() {
+  try {
+    const employeeId = document.getElementById("term-emp-select")?.value;
+    const reasonCategory = document.getElementById("term-reason-category")?.value;
+    const lwd = document.getElementById("term-lwd")?.value;
+    const notes = document.getElementById("term-notes")?.value.trim() ?? "";
+    if (!employeeId || !lwd) {
+      notify("Please select employee and last working date");
+      return;
+    }
+    const supportingDocUrl = await uploadAttachment("term-doc-file", "TERMINATION");
+    await api("/exits/termination", {
+      method: "POST",
+      body: JSON.stringify({
+        employeeId,
+        reasonCategory,
+        lastWorkingDate: new Date(lwd).toISOString(),
+        incidentNotes: notes,
+        supportingDocUrl,
+      }),
+    });
+    notify("Termination initiated");
+    document.getElementById("term-notes").value = "";
+    const termFile = document.getElementById("term-doc-file");
+    if (termFile) termFile.value = "";
+    await loadExits();
+    const recordsTabBtn = document.querySelector("#view-exits .tab-btn[onclick*=\"exit-records\"]");
+    if (recordsTabBtn) switchTab(recordsTabBtn, "exit-records");
+  } catch (error) {
+    notify(error.message);
+  }
+};
+
+function renderExitDetailHtml(record) {
+  const emp = record.employee;
+  const name = `${emp?.firstName ?? ""} ${emp?.lastName ?? ""}`.trim();
+  const role = me?.role;
+  const isElevated = elevatedRoles.has(role);
+  const isManager = role === "MANAGER";
+  const isCeo = role === "SUPER_ADMIN" || role === "CEO";
+
+  const timeline = [
+    record.employeeConfirmedAt ? `Submitted ${fmtDate(record.employeeConfirmedAt)}` : "",
+    record.lmApprovedAt ? `Line Manager approved ${fmtDate(record.lmApprovedAt)}` : "",
+    record.hrApprovedAt ? `HR approved ${fmtDate(record.hrApprovedAt)}` : "",
+    record.ceoApprovedAt ? `Director approved ${fmtDate(record.ceoApprovedAt)}` : "",
+    record.completedAt ? `Completed ${fmtDate(record.completedAt)}` : "",
+    record.rejectedAt ? `Rejected/Cancelled ${fmtDate(record.rejectedAt)}` : "",
+  ].filter(Boolean).map((t) => `<li>${escapeAttr(t)}</li>`).join("");
+
+  const clearance = (record.clearanceTasks ?? []).map((task) => {
+    const done = task.status === "COMPLETED";
+    const action = (!done && (isElevated || isManager))
+      ? `<button class="btn btn-accent btn-sm" onclick="window.__exitClearance('${task.id}','COMPLETED')">Mark Done</button>`
+      : `<span class="badge ${done ? "badge-green" : "badge-amber"}">${done ? "Cleared" : "Pending"}</span>`;
+    return `<div class="flex-between" style="padding:8px 0;border-bottom:1px solid var(--border)"><span>${escapeAttr(task.department)}${task.urgent ? ' <span class="badge badge-coral">Urgent</span>' : ""}</span>${action}</div>`;
+  }).join("");
+
+  const s = record.finalSettlement;
+  const settlementHtml = s ? `
+    <div class="stats-grid" style="margin-top:8px">
+      <div class="stat-card"><div class="stat-label">Gratuity (EOSB)</div><div class="stat-value" style="color:#4DB6AC">${Number(s.gratuity).toLocaleString("en-US")}</div></div>
+      <div class="stat-card"><div class="stat-label">Leave Encashment</div><div class="stat-value" style="color:#64B5F6">${Number(s.leaveEncashment).toLocaleString("en-US")}</div></div>
+      <div class="stat-card"><div class="stat-label">Deductions</div><div class="stat-value" style="color:#FF8A65">${Number(s.deductions).toLocaleString("en-US")}</div></div>
+      <div class="stat-card"><div class="stat-label">Net Settlement (AED)</div><div class="stat-value" style="color:#FFD54F">${Number(s.netSettlement).toLocaleString("en-US")}</div></div>
+    </div>
+    <div class="text-muted" style="font-size:12px;margin-top:6px">Years of service: ${Number(s.yearsOfService).toFixed(2)} • Unpaid salary: AED ${Number(s.unpaidSalary).toLocaleString("en-US")} • Other additions: AED ${Number(s.otherAdditions).toLocaleString("en-US")}</div>
+  ` : "";
+
+  // Stage-specific actions
+  let actions = "";
+  if (record.status === "PENDING" && (isManager || isElevated)) {
+    actions = `<button class="btn btn-accent btn-sm" onclick="window.__exitAction('${record.id}','lm-approve')">Approve (L1)</button>`;
+  } else if (record.status === "LM_APPROVED" && isElevated) {
+    actions = `
+      <div class="form-grid" style="margin-bottom:10px">
+        <div class="form-group"><label>Confirm Last Working Day</label><input id="exit-hr-lwd" type="date" value="${record.requestedLastWorkingDay ? new Date(record.requestedLastWorkingDay).toISOString().slice(0,10) : ""}"></div>
+        <div class="form-group"><label>Notice Shortfall (days)</label><input id="exit-hr-shortfall" type="number" min="0" value="${record.noticeShortfallDays ?? 0}"></div>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="window.__exitHrApprove('${record.id}')">HR Approve & Start Clearance</button>`;
+  } else if (record.status === "INITIATED" && isElevated) {
+    actions = `
+      <div class="form-group full" style="margin-bottom:10px"><label>Incident / Documentation Notes</label><textarea id="exit-doc-notes">${escapeAttr(record.incidentNotes ?? "")}</textarea></div>
+      <button class="btn btn-primary btn-sm" onclick="window.__exitDocument('${record.id}')">Save Documentation</button>`;
+  } else if (record.status === "DOCUMENTED" && isCeo) {
+    actions = `<button class="btn btn-primary btn-sm" onclick="window.__exitAction('${record.id}','ceo-approve')">Final Approve (CEO/Director)</button>`;
+  } else if (record.status === "CLEARANCE_IN_PROGRESS" && isElevated) {
+    const allCleared = (record.clearanceTasks ?? []).every((t) => t.status === "COMPLETED");
+    actions = allCleared ? `
+      <div class="form-grid" style="margin-bottom:10px">
+        <div class="form-group"><label>Unpaid Salary Days</label><input id="exit-set-unpaid" type="number" min="0" value="0"></div>
+        <div class="form-group"><label>Extra Deductions (AED)</label><input id="exit-set-deduction" type="number" min="0" value="0"></div>
+        <div class="form-group"><label>Other Additions (AED)</label><input id="exit-set-addition" type="number" min="0" value="0"></div>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="window.__exitSettlement('${record.id}')">Compute Final Settlement</button>` : `<div class="text-muted" style="font-size:12px">Complete all clearance items to compute settlement.</div>`;
+  } else if (record.status === "SETTLEMENT_READY" && isElevated) {
+    actions = `<button class="btn btn-primary btn-sm" onclick="window.__exitComplete('${record.id}')">Complete & Issue Experience Letter</button>`;
+  } else if (record.status === "COMPLETED") {
+    actions = `<button class="btn btn-secondary btn-sm" onclick="window.__exitLetter('${record.id}')">View Experience Letter</button>`;
+  }
+
+  const canReject = !["COMPLETED", "REJECTED", "CANCELLED"].includes(record.status) && (isManager || isElevated || isCeo);
+  const rejectBtn = canReject ? `<button class="btn btn-danger btn-sm" onclick="window.__exitReject('${record.id}')">${record.type === "TERMINATION" ? "Cancel" : "Reject"}</button>` : "";
+
+  let rejectionHtml = "";
+  if ((record.status === "REJECTED" || record.status === "CANCELLED") && record.rejectReason) {
+    const rejecter = allEmployees.find((emp) => emp.id === record.rejectedById);
+    const rejecterName = rejecter ? `${rejecter.firstName ?? ""} ${rejecter.lastName ?? ""}`.trim() : "";
+    rejectionHtml = `
+      <div class="alert alert-coral" style="background:rgba(244,81,30,0.1);border:1px solid rgba(244,81,30,0.3);color:#FF8A65;padding:10px 12px;border-radius:10px;font-size:13px">
+        <b>${record.type === "TERMINATION" ? "Cancelled" : "Rejected"}${rejecterName ? ` by ${escapeAttr(rejecterName)}` : ""}${record.rejectedAt ? ` on ${fmtDate(record.rejectedAt)}` : ""}</b>
+        <div style="margin-top:4px">Reason: ${escapeAttr(record.rejectReason)}</div>
+      </div>`;
+  }
+
+  return `
+    <div style="display:grid;gap:12px">
+      <div class="flex-between">
+        <div><b>${escapeAttr(name)}</b> <span class="text-muted">(${escapeAttr(emp?.employeeCode ?? "—")})</span></div>
+        <span class="badge ${exitStatusBadge(record.status)}">${escapeAttr(EXIT_STATUS_LABELS[record.status] ?? record.status)}</span>
+      </div>
+      <div class="text-muted" style="font-size:13px">
+        ${escapeAttr(formatLabel(record.type))} • ${escapeAttr(emp?.designation ?? "")} • ${escapeAttr(emp?.department ?? "")}<br>
+        Reason: ${escapeAttr(formatLabel(record.reasonCategory ?? "—"))}${record.reason ? ` — ${escapeAttr(record.reason)}` : ""}<br>
+        Notice period: ${record.noticePeriodDays ?? 30} days • Shortfall: ${record.noticeShortfallDays ?? 0} days • LWD: ${fmtDate(record.lastWorkingDate ?? record.requestedLastWorkingDay)}
+      </div>
+      ${record.supportingDocUrl ? `<div><button class="btn btn-secondary btn-sm" onclick="window.__viewAttachment('${escapeAttr(record.supportingDocUrl)}')"><i class="bi bi-paperclip"></i> View Supporting Document</button></div>` : ""}
+      ${rejectionHtml}
+      ${timeline ? `<div><div class="section-title" style="font-size:13px">Progress</div><ul class="emp-tooltip-list" style="padding-left:16px;list-style:disc">${timeline}</ul></div>` : ""}
+      ${clearance ? `<div><div class="section-title" style="font-size:13px">Clearance Checklist</div>${clearance}</div>` : ""}
+      ${settlementHtml ? `<div><div class="section-title" style="font-size:13px">Final Settlement</div>${settlementHtml}</div>` : ""}
+      ${(actions || rejectBtn) ? `<div><div class="section-title" style="font-size:13px">Actions</div><div class="flex gap-8" style="flex-wrap:wrap">${actions}${rejectBtn}</div></div>` : ""}
+    </div>`;
+}
+
+window.__viewExit = async function viewExit(exitId) {
+  try {
+    const record = await api(`/exits/${exitId}`);
+    openActionModal({
+      title: "Exit Record",
+      hideSave: true,
+      bodyHtml: renderExitDetailHtml(record),
+    });
+  } catch (error) {
+    notify(error.message);
+  }
+};
+
+async function refreshExitModal(exitId) {
+  closeActionModal();
+  await loadExits();
+  await window.__viewExit(exitId);
+}
+
+window.__exitAction = async function exitAction(exitId, action) {
+  try {
+    await api(`/exits/${exitId}/${action}`, { method: "POST", body: JSON.stringify({}) });
+    notify("Exit record updated");
+    await refreshExitModal(exitId);
+  } catch (error) {
+    notify(error.message);
+  }
+};
+
+window.__exitHrApprove = async function exitHrApprove(exitId) {
+  try {
+    const lwd = document.getElementById("exit-hr-lwd")?.value;
+    const shortfall = Number(document.getElementById("exit-hr-shortfall")?.value ?? 0);
+    if (!lwd) {
+      notify("Please confirm last working day");
+      return;
+    }
+    await api(`/exits/${exitId}/hr-approve`, {
+      method: "POST",
+      body: JSON.stringify({ lastWorkingDate: new Date(lwd).toISOString(), noticeShortfallDays: shortfall }),
+    });
+    notify("HR approved; clearance started");
+    await refreshExitModal(exitId);
+  } catch (error) {
+    notify(error.message);
+  }
+};
+
+window.__exitDocument = async function exitDocument(exitId) {
+  try {
+    const notes = document.getElementById("exit-doc-notes")?.value ?? "";
+    await api(`/exits/${exitId}/document`, { method: "POST", body: JSON.stringify({ incidentNotes: notes }) });
+    notify("Documentation saved");
+    await refreshExitModal(exitId);
+  } catch (error) {
+    notify(error.message);
+  }
+};
+
+window.__exitClearance = async function exitClearance(taskId, status) {
+  try {
+    const result = await api(`/exits/clearance/${taskId}`, { method: "PATCH", body: JSON.stringify({ status }) });
+    notify("Clearance updated");
+    await refreshExitModal(result?.exit?.id);
+  } catch (error) {
+    notify(error.message);
+  }
+};
+
+window.__exitSettlement = async function exitSettlement(exitId) {
+  try {
+    const unpaidSalaryDays = Number(document.getElementById("exit-set-unpaid")?.value ?? 0);
+    const extraDeductions = Number(document.getElementById("exit-set-deduction")?.value ?? 0);
+    const otherAdditions = Number(document.getElementById("exit-set-addition")?.value ?? 0);
+    await api(`/exits/${exitId}/settlement`, {
+      method: "POST",
+      body: JSON.stringify({ unpaidSalaryDays, extraDeductions, otherAdditions }),
+    });
+    notify("Final settlement computed");
+    await refreshExitModal(exitId);
+  } catch (error) {
+    notify(error.message);
+  }
+};
+
+window.__exitComplete = async function exitComplete(exitId) {
+  try {
+    await api(`/exits/${exitId}/complete`, { method: "POST", body: JSON.stringify({}) });
+    notify("Exit completed; experience letter issued");
+    await refreshExitModal(exitId);
+  } catch (error) {
+    notify(error.message);
+  }
+};
+
+window.__exitReject = async function exitReject(exitId) {
+  try {
+    const reason = window.prompt("Enter reason for rejection/cancellation:");
+    if (!reason || reason.trim().length < 3) {
+      notify("A reason of at least 3 characters is required");
+      return;
+    }
+    await api(`/exits/${exitId}/reject`, { method: "POST", body: JSON.stringify({ reason: reason.trim() }) });
+    notify("Exit record rejected/cancelled");
+    await refreshExitModal(exitId);
+  } catch (error) {
+    notify(error.message);
+  }
+};
+
+window.__exitLetter = async function exitLetter(exitId) {
+  try {
+    const data = await api(`/exits/${exitId}/experience-letter`);
+    openActionModal({
+      title: "Experience / Service Letter",
+      hideSave: true,
+      bodyHtml: `<pre style="white-space:pre-wrap;font-family:inherit;font-size:13px;line-height:1.6">${escapeAttr(data.letter)}</pre>`,
+    });
+  } catch (error) {
+    notify(error.message);
+  }
+};
+
+let adjustmentCategories = [];
+let adjustmentDualThreshold = 5000;
+let adjustmentsCache = [];
+let loansCache = [];
+
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function adjStatusBadge(status) {
+  if (status === "PROCESSED" || status === "APPROVED") return "badge-green";
+  if (status === "REJECTED") return "badge-coral";
+  return "badge-amber";
+}
+
+function populateAdjustmentEmployeeSelects() {
+  const source = elevatedRoles.has(me?.role)
+    ? allEmployees
+    : me?.role === "MANAGER"
+      ? allEmployees.filter((emp) => emp.managerId === me?.employee?.id)
+      : [];
+  const optionsHtml = `<option value="">Select employee…</option>` + source
+    .map((emp) => `<option value="${emp.id}">${escapeAttr(`${emp.firstName ?? ""} ${emp.lastName ?? ""}`.trim())} (${escapeAttr(emp.employeeCode ?? "—")})</option>`)
+    .join("");
+  ["adj-emp-select", "loan-emp-select"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = optionsHtml;
+  });
+}
+
+function populateAdjustmentCategoryOptions() {
+  const typeSelect = document.getElementById("adj-type");
+  const catSelect = document.getElementById("adj-category");
+  if (!typeSelect || !catSelect) return;
+  const type = typeSelect.value || "DEDUCTION";
+  const options = adjustmentCategories.filter((c) => c.type === type);
+  catSelect.innerHTML = options.map((c) => `<option value="${c.code}">${escapeAttr(c.label)}</option>`).join("");
+}
+
+async function loadAdjustmentMeta() {
+  try {
+    const meta = await api("/adjustments/categories");
+    adjustmentCategories = Array.isArray(meta?.categories) ? meta.categories : [];
+    adjustmentDualThreshold = Number(meta?.dualApprovalThreshold ?? 5000);
+    populateAdjustmentCategoryOptions();
+    const note = document.getElementById("loan-threshold-note");
+    if (note) note.textContent = `Loans/advances above AED ${adjustmentDualThreshold.toLocaleString("en-US")} require dual approval.`;
+  } catch (_error) {
+    adjustmentCategories = [];
+  }
+}
+
+function renderAdjustmentsTable() {
+  const tbody = document.getElementById("adj-list-body");
+  if (!tbody) return;
+  if (!adjustmentsCache.length) {
+    tbody.innerHTML = `<tr><td colspan="8" class="text-muted">No adjustments found.</td></tr>`;
+    return;
+  }
+  const canApprove = elevatedRoles.has(me?.role);
+  const catLabel = (code) => adjustmentCategories.find((c) => c.code === code)?.label ?? formatLabel(code);
+  tbody.innerHTML = adjustmentsCache.map((adj) => {
+    const emp = adj.employee;
+    const name = `${emp?.firstName ?? ""} ${emp?.lastName ?? ""}`.trim();
+    const typeBadge = adj.type === "ADDITION" ? "badge-green" : "badge-coral";
+    let action = `<span class="text-muted">—</span>`;
+    if (canApprove && adj.status === "DRAFT") {
+      action = `<div class="flex gap-8"><button class="btn btn-accent btn-sm" onclick="window.__approveAdjustment('${adj.id}')">Approve</button><button class="btn btn-danger btn-sm" onclick="window.__rejectAdjustment('${adj.id}')">Reject</button></div>`;
+    } else if (canApprove && adj.status === "APPROVED") {
+      action = `<button class="btn btn-danger btn-sm" onclick="window.__rejectAdjustment('${adj.id}')">Reject</button>`;
+    }
+    return `
+      <tr>
+        <td>${escapeAttr(adj.referenceNumber)}</td>
+        <td>${escapeAttr(name)}</td>
+        <td><span class="badge ${typeBadge}">${formatLabel(adj.type)}</span></td>
+        <td>${escapeAttr(catLabel(adj.category))}</td>
+        <td>AED ${Number(adj.amount).toLocaleString("en-US")}</td>
+        <td>${MONTH_NAMES[(adj.effectiveMonth ?? 1) - 1]} ${adj.effectiveYear}</td>
+        <td><span class="badge ${adjStatusBadge(adj.status)}">${formatLabel(adj.status)}</span></td>
+        <td>${action}</td>
+      </tr>`;
+  }).join("");
+}
+
+function renderLoansTable() {
+  const tbody = document.getElementById("adj-loans-body");
+  if (!tbody) return;
+  if (!loansCache.length) {
+    tbody.innerHTML = `<tr><td colspan="7" class="text-muted">No loans or advances.</td></tr>`;
+    return;
+  }
+  const canApprove = elevatedRoles.has(me?.role);
+  tbody.innerHTML = loansCache.map((loan) => {
+    const emp = loan.employee;
+    const name = `${emp?.firstName ?? ""} ${emp?.lastName ?? ""}`.trim();
+    const outstanding = Number(loan.outstandingAmount ?? Math.max(0, loan.totalAmount - loan.recoveredAmount));
+    let action = `<span class="text-muted">—</span>`;
+    if (canApprove && loan.status === "PENDING_APPROVAL") {
+      const dualHint = loan.requiresDualApproval && loan.approver1Id ? " (2nd)" : loan.requiresDualApproval ? " (1st)" : "";
+      action = `<div class="flex gap-8"><button class="btn btn-accent btn-sm" onclick="window.__approveLoan('${loan.id}')">Approve${dualHint}</button><button class="btn btn-danger btn-sm" onclick="window.__rejectLoan('${loan.id}')">Reject</button></div>`;
+    }
+    return `
+      <tr>
+        <td>${escapeAttr(name)}</td>
+        <td><span class="badge badge-blue">${formatLabel(loan.type)}</span></td>
+        <td>AED ${Number(loan.totalAmount).toLocaleString("en-US")}</td>
+        <td>AED ${Number(loan.recoveredAmount).toLocaleString("en-US")}</td>
+        <td>AED ${outstanding.toLocaleString("en-US")}</td>
+        <td><span class="badge ${loan.status === "CLOSED" ? "badge-green" : loan.status === "REJECTED" ? "badge-coral" : loan.status === "ACTIVE" ? "badge-blue" : "badge-amber"}">${formatLabel(loan.status)}</span></td>
+        <td>${action}</td>
+      </tr>`;
+  }).join("");
+}
+
+async function loadAdjustments() {
+  try {
+    const [adjustments, loans] = await Promise.all([api("/adjustments"), api("/adjustments/loans")]);
+    adjustmentsCache = Array.isArray(adjustments) ? adjustments : [];
+    loansCache = Array.isArray(loans) ? loans : [];
+    renderAdjustmentsTable();
+    renderLoansTable();
+  } catch (error) {
+    notify(error.message);
+  }
+}
+
+function monthInputToParts(value) {
+  if (!value) return null;
+  const [year, month] = value.split("-").map((v) => Number(v));
+  if (!Number.isFinite(year) || !Number.isFinite(month)) return null;
+  return { year, month };
+}
+
+window.__submitAdjustment = async function submitAdjustment() {
+  try {
+    const employeeId = document.getElementById("adj-emp-select")?.value;
+    const type = document.getElementById("adj-type")?.value;
+    const category = document.getElementById("adj-category")?.value;
+    const amount = Number(document.getElementById("adj-amount")?.value ?? 0);
+    const monthParts = monthInputToParts(document.getElementById("adj-month")?.value);
+    const reason = document.getElementById("adj-reason")?.value.trim() ?? "";
+    const recurring = document.getElementById("adj-recurring")?.value === "true";
+    const recurEndParts = monthInputToParts(document.getElementById("adj-recur-end")?.value);
+
+    if (!employeeId || !category || !amount || !monthParts) {
+      notify("Please complete employee, category, amount and month");
+      return;
+    }
+    if (reason.length < 20) {
+      notify("Reason must be at least 20 characters");
+      return;
+    }
+    const supportingDocUrl = await uploadAttachment("adj-doc-file", "ADJUSTMENT");
+    await api("/adjustments", {
+      method: "POST",
+      body: JSON.stringify({
+        employeeId,
+        type,
+        category,
+        amount,
+        effectiveMonth: monthParts.month,
+        effectiveYear: monthParts.year,
+        reason,
+        supportingDocUrl,
+        recurring,
+        recurrenceEndMonth: recurring ? recurEndParts?.month : undefined,
+        recurrenceEndYear: recurring ? recurEndParts?.year : undefined,
+      }),
+    });
+    notify("Adjustment created (pending approval)");
+    document.getElementById("adj-amount").value = "";
+    document.getElementById("adj-reason").value = "";
+    const adjFile = document.getElementById("adj-doc-file");
+    if (adjFile) adjFile.value = "";
+    await loadAdjustments();
+    const listTabBtn = document.querySelector("#view-payadjust .tab-btn[onclick*=\"adj-list\"]");
+    if (listTabBtn) switchTab(listTabBtn, "adj-list");
+  } catch (error) {
+    notify(error.message);
+  }
+};
+
+window.__approveAdjustment = async function approveAdjustment(id) {
+  try {
+    await api(`/adjustments/${id}/approve`, { method: "POST", body: JSON.stringify({}) });
+    notify("Adjustment approved");
+    await loadAdjustments();
+  } catch (error) {
+    notify(error.message);
+  }
+};
+
+window.__rejectAdjustment = async function rejectAdjustment(id) {
+  try {
+    const reason = window.prompt("Enter rejection reason:");
+    if (!reason || reason.trim().length < 3) {
+      notify("A reason of at least 3 characters is required");
+      return;
+    }
+    await api(`/adjustments/${id}/reject`, { method: "POST", body: JSON.stringify({ reason: reason.trim() }) });
+    notify("Adjustment rejected");
+    await loadAdjustments();
+  } catch (error) {
+    notify(error.message);
+  }
+};
+
+window.__processAdjustmentMonth = async function processAdjustmentMonth() {
+  try {
+    const parts = monthInputToParts(document.getElementById("adj-process-month")?.value);
+    if (!parts) {
+      notify("Select a month to process");
+      return;
+    }
+    const result = await api("/adjustments/process-month", {
+      method: "POST",
+      body: JSON.stringify({ month: parts.month, year: parts.year }),
+    });
+    notify(`${result.processed ?? 0} adjustment(s) processed`);
+    await loadAdjustments();
+  } catch (error) {
+    notify(error.message);
+  }
+};
+
+window.__submitLoan = async function submitLoan() {
+  try {
+    const employeeId = document.getElementById("loan-emp-select")?.value;
+    const type = document.getElementById("loan-type")?.value;
+    const totalAmount = Number(document.getElementById("loan-total")?.value ?? 0);
+    const installmentAmount = Number(document.getElementById("loan-installment")?.value ?? 0);
+    const startParts = monthInputToParts(document.getElementById("loan-start")?.value);
+    const reason = document.getElementById("loan-reason")?.value.trim() ?? "";
+    if (!employeeId || !totalAmount || !installmentAmount || !startParts) {
+      notify("Please complete all loan fields");
+      return;
+    }
+    if (reason.length < 10) {
+      notify("Reason must be at least 10 characters");
+      return;
+    }
+    await api("/adjustments/loans", {
+      method: "POST",
+      body: JSON.stringify({
+        employeeId,
+        type,
+        totalAmount,
+        installmentAmount,
+        startMonth: startParts.month,
+        startYear: startParts.year,
+        reason,
+      }),
+    });
+    notify("Loan/advance created (pending approval)");
+    document.getElementById("loan-total").value = "";
+    document.getElementById("loan-installment").value = "";
+    document.getElementById("loan-reason").value = "";
+    await loadAdjustments();
+  } catch (error) {
+    notify(error.message);
+  }
+};
+
+window.__approveLoan = async function approveLoan(id) {
+  try {
+    await api(`/adjustments/loans/${id}/approve`, { method: "POST", body: JSON.stringify({}) });
+    notify("Loan/advance approval recorded");
+    await loadAdjustments();
+  } catch (error) {
+    notify(error.message);
+  }
+};
+
+window.__rejectLoan = async function rejectLoan(id) {
+  try {
+    const reason = window.prompt("Enter rejection reason:");
+    if (!reason || reason.trim().length < 3) {
+      notify("A reason of at least 3 characters is required");
+      return;
+    }
+    await api(`/adjustments/loans/${id}/reject`, { method: "POST", body: JSON.stringify({ reason: reason.trim() }) });
+    notify("Loan/advance rejected");
+    await loadAdjustments();
+  } catch (error) {
+    notify(error.message);
+  }
+};
+
+function wireAdjustmentForms() {
+  const typeSelect = document.getElementById("adj-type");
+  typeSelect?.addEventListener("change", populateAdjustmentCategoryOptions);
+  const recurringSelect = document.getElementById("adj-recurring");
+  recurringSelect?.addEventListener("change", () => {
+    const wrap = document.getElementById("adj-recur-end-wrap");
+    if (wrap) wrap.style.display = recurringSelect.value === "true" ? "" : "none";
+  });
+  const todayMonth = new Date().toISOString().slice(0, 7);
+  ["adj-month", "adj-recur-end", "loan-start"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.min = todayMonth;
+  });
+}
+
+let proDocsCache = [];
+let proTasksCache = [];
+let proDocTypes = [];
+
+function proDocStatusBadge(status) {
+  if (status === "EXPIRED") return "badge-coral";
+  if (status === "EXPIRING") return "badge-amber";
+  return "badge-green";
+}
+
+function canManageProUi() {
+  return elevatedRoles.has(me?.role) || me?.role === "PRO";
+}
+
+function populateProEmployeeSelects() {
+  const source = canManageProUi()
+    ? allEmployees
+    : me?.role === "MANAGER"
+      ? allEmployees.filter((emp) => emp.managerId === me?.employee?.id)
+      : [];
+  const optionsHtml = `<option value="">Select employee…</option>` + source
+    .map((emp) => `<option value="${emp.id}">${escapeAttr(`${emp.firstName ?? ""} ${emp.lastName ?? ""}`.trim())} (${escapeAttr(emp.employeeCode ?? "—")})</option>`)
+    .join("");
+  ["pro-doc-emp", "pro-task-emp"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = optionsHtml;
+  });
+}
+
+function populateProDocTypeSelects() {
+  const optionsHtml = proDocTypes.map((t) => `<option value="${t}">${escapeAttr(formatLabel(t))}</option>`).join("");
+  const docSel = document.getElementById("pro-doc-type");
+  const taskSel = document.getElementById("pro-task-doctype");
+  if (docSel) docSel.innerHTML = optionsHtml;
+  if (taskSel) taskSel.innerHTML = `<option value="">— none —</option>` + optionsHtml;
+}
+
+async function loadProMeta() {
+  try {
+    const meta = await api("/pro/doc-types");
+    proDocTypes = Array.isArray(meta?.docTypes) ? meta.docTypes : [];
+    populateProDocTypeSelects();
+  } catch (_error) {
+    proDocTypes = [];
+  }
+}
+
+function renderProDocsTable() {
+  const tbody = document.getElementById("pro-docs-body");
+  if (!tbody) return;
+  if (!proDocsCache.length) {
+    tbody.innerHTML = `<tr><td colspan="7" class="text-muted">No documents registered.</td></tr>`;
+    return;
+  }
+  const canManage = canManageProUi();
+  tbody.innerHTML = proDocsCache.map((doc) => {
+    const emp = doc.employee;
+    const name = `${emp?.firstName ?? ""} ${emp?.lastName ?? ""}`.trim();
+    const action = doc.fileUrl
+      ? `<button class="btn btn-secondary btn-sm" onclick="window.__viewAttachment('${escapeAttr(doc.fileUrl)}')">File</button>`
+      : (canManage ? `<button class="btn btn-secondary btn-sm" onclick="window.__renewProDocument('${doc.id}')">Update</button>` : `<span class="text-muted">—</span>`);
+    return `
+      <tr>
+        <td>${escapeAttr(name)}</td>
+        <td>${escapeAttr(formatLabel(doc.docType))}</td>
+        <td>${escapeAttr(doc.documentNumber ?? "—")}</td>
+        <td>${escapeAttr(doc.issuingAuthority ?? "—")}</td>
+        <td>${fmtDate(doc.expiryDate)}</td>
+        <td><span class="badge ${proDocStatusBadge(doc.computedStatus)}">${formatLabel(doc.computedStatus)}</span></td>
+        <td>${action}</td>
+      </tr>`;
+  }).join("");
+}
+
+function renderProTasksTable() {
+  const tbody = document.getElementById("pro-tasks-body");
+  if (!tbody) return;
+  if (!proTasksCache.length) {
+    tbody.innerHTML = `<tr><td colspan="7" class="text-muted">No PRO tasks.</td></tr>`;
+    return;
+  }
+  const canManage = canManageProUi();
+  tbody.innerHTML = proTasksCache.map((task) => {
+    const emp = task.employee;
+    const name = `${emp?.firstName ?? ""} ${emp?.lastName ?? ""}`.trim();
+    const flow = Array.isArray(task.flow) ? task.flow : [];
+    const isFinal = flow.indexOf(task.status) >= flow.length - 1;
+    const terminal = ["COMPLETED", "CANCELLED", "PASSPORT_RETURNED", "ABORTED"].includes(task.status);
+    let action = `<span class="text-muted">—</span>`;
+    if (canManage && !terminal && !isFinal) {
+      action = `<button class="btn btn-accent btn-sm" onclick="window.__advanceProTask('${task.id}')">Advance Stage</button>`;
+    }
+    const govFee = [task.governmentRef, task.feeAmount ? `AED ${Number(task.feeAmount).toLocaleString("en-US")}` : null].filter(Boolean).join(" · ") || "—";
+    return `
+      <tr>
+        <td>${escapeAttr(task.referenceNumber)}${task.autoCreated ? ' <span class="badge badge-amber">Auto</span>' : ""}</td>
+        <td>${escapeAttr(name)}</td>
+        <td>${escapeAttr(formatLabel(task.taskType))}</td>
+        <td>${escapeAttr(task.documentType ? formatLabel(task.documentType) : "—")}</td>
+        <td><span class="badge badge-blue">${escapeAttr(formatLabel(task.status))}</span></td>
+        <td>${escapeAttr(govFee)}</td>
+        <td>${action}</td>
+      </tr>`;
+  }).join("");
+}
+
+async function loadPro() {
+  try {
+    const [docs, tasks] = await Promise.all([api("/pro/documents"), api("/pro/tasks")]);
+    proDocsCache = Array.isArray(docs) ? docs : [];
+    proTasksCache = Array.isArray(tasks) ? tasks : [];
+    renderProDocsTable();
+    renderProTasksTable();
+    renderNotifications();
+  } catch (error) {
+    notify(error.message);
+  }
+}
+
+window.__submitProDocument = async function submitProDocument() {
+  try {
+    const employeeId = document.getElementById("pro-doc-emp")?.value;
+    const docType = document.getElementById("pro-doc-type")?.value;
+    if (!employeeId || !docType) {
+      notify("Please select employee and document type");
+      return;
+    }
+    const issueDate = document.getElementById("pro-doc-issue")?.value;
+    const expiryDate = document.getElementById("pro-doc-expiry")?.value;
+    const fileUrl = await uploadAttachment("pro-doc-file", "DOCUMENT");
+    await api("/pro/documents", {
+      method: "POST",
+      body: JSON.stringify({
+        employeeId,
+        docType,
+        documentNumber: document.getElementById("pro-doc-number")?.value.trim() || undefined,
+        issuingAuthority: document.getElementById("pro-doc-authority")?.value.trim() || undefined,
+        issueDate: issueDate ? new Date(issueDate).toISOString() : undefined,
+        expiryDate: expiryDate ? new Date(expiryDate).toISOString() : undefined,
+        fileUrl,
+        notes: document.getElementById("pro-doc-notes")?.value.trim() || undefined,
+      }),
+    });
+    notify("Document saved");
+    ["pro-doc-number", "pro-doc-authority", "pro-doc-issue", "pro-doc-expiry", "pro-doc-notes"].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.value = "";
+    });
+    const f = document.getElementById("pro-doc-file");
+    if (f) f.value = "";
+    await loadPro();
+    const tabBtn = document.querySelector("#view-pro .tab-btn[onclick*=\"pro-documents\"]");
+    if (tabBtn) switchTab(tabBtn, "pro-documents");
+  } catch (error) {
+    notify(error.message);
+  }
+};
+
+window.__renewProDocument = async function renewProDocument(id) {
+  try {
+    const newExpiry = window.prompt("Enter new expiry date (YYYY-MM-DD):");
+    if (!newExpiry || !/^\d{4}-\d{2}-\d{2}$/.test(newExpiry)) {
+      notify("Please enter a valid date (YYYY-MM-DD)");
+      return;
+    }
+    await api(`/pro/documents/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({ expiryDate: new Date(`${newExpiry}T00:00:00`).toISOString() }),
+    });
+    notify("Document expiry updated");
+    await loadPro();
+  } catch (error) {
+    notify(error.message);
+  }
+};
+
+window.__submitProTask = async function submitProTask() {
+  try {
+    const employeeId = document.getElementById("pro-task-emp")?.value;
+    const taskType = document.getElementById("pro-task-type")?.value;
+    const documentType = document.getElementById("pro-task-doctype")?.value || undefined;
+    if (!employeeId || !taskType) {
+      notify("Please select employee and task type");
+      return;
+    }
+    await api("/pro/tasks", {
+      method: "POST",
+      body: JSON.stringify({
+        employeeId,
+        taskType,
+        documentType,
+        notes: document.getElementById("pro-task-notes")?.value.trim() || undefined,
+      }),
+    });
+    notify("PRO task created");
+    document.getElementById("pro-task-notes").value = "";
+    await loadPro();
+    const tabBtn = document.querySelector("#view-pro .tab-btn[onclick*=\"pro-tasks\"]");
+    if (tabBtn) switchTab(tabBtn, "pro-tasks");
+  } catch (error) {
+    notify(error.message);
+  }
+};
+
+window.__advanceProTask = async function advanceProTask(id) {
+  try {
+    const governmentRef = window.prompt("Government reference number (optional):") || undefined;
+    const feeInput = governmentRef !== undefined ? window.prompt("Fee amount for this step (optional, AED):") : undefined;
+    const feeAmount = feeInput && !Number.isNaN(Number(feeInput)) ? Number(feeInput) : undefined;
+    await api(`/pro/tasks/${id}/advance`, {
+      method: "POST",
+      body: JSON.stringify({ governmentRef, feeAmount }),
+    });
+    notify("Task advanced to next stage");
+    await loadPro();
+  } catch (error) {
+    notify(error.message);
+  }
+};
+
+function wireProForms() {
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const issue = document.getElementById("pro-doc-issue");
+  const expiry = document.getElementById("pro-doc-expiry");
+  if (expiry) expiry.min = todayIso;
+  if (issue) issue.max = todayIso;
 }
 
 async function loadDashboard() {
@@ -3517,8 +4710,18 @@ window.addEventListener("resize", () => {
 
 document.addEventListener("click", (event) => {
   if (event.target?.closest(".emp-action-menu-wrap")) return;
-  document.querySelectorAll(".emp-action-menu.open").forEach((menu) => menu.classList.remove("open"));
+  const portalClick = event.target?.closest("#emp-action-portal");
+  if (portalClick) {
+    if (event.target.closest(".emp-action-item")) {
+      window.__closeEmployeeActionsMenu?.();
+    }
+    return;
+  }
+  window.__closeEmployeeActionsMenu?.();
 });
+
+window.addEventListener("scroll", () => window.__closeEmployeeActionsMenu?.(), true);
+window.addEventListener("resize", () => window.__closeEmployeeActionsMenu?.());
 
 window.__approveLeave = approveLeaveRequest;
 window.viewEmployee = function viewEmployeeCompatibility(name) {
@@ -3542,6 +4745,26 @@ async function start() {
     leaveTypes = await api("/leave/types");
     populateLeaveTypes();
     wireLeaveApplyForm();
+    wireLeaveBalanceLookup();
+    const exitNav = document.querySelector(".nav-item[onclick*=\"navigate('exits'\"]");
+    exitNav?.addEventListener("click", () => {
+      populateExitEmployeeSelects();
+      loadExits().catch((error) => notify(error.message));
+    });
+    wireAdjustmentForms();
+    const payadjustNav = document.querySelector(".nav-item[onclick*=\"navigate('payadjust'\"]");
+    payadjustNav?.addEventListener("click", () => {
+      populateAdjustmentEmployeeSelects();
+      populateAdjustmentCategoryOptions();
+      loadAdjustments().catch((error) => notify(error.message));
+    });
+    wireProForms();
+    const proNav = document.querySelector(".nav-item[onclick*=\"navigate('pro'\"]");
+    proNav?.addEventListener("click", () => {
+      populateProEmployeeSelects();
+      populateProDocTypeSelects();
+      loadPro().catch((error) => notify(error.message));
+    });
     wireEmployeeCreation();
     wireEmployeeFilters();
     document.getElementById("face-modal")?.addEventListener("click", (event) => {
@@ -3550,6 +4773,14 @@ async function start() {
       }
     });
     await Promise.all([loadDashboard(), refreshEmployees(), loadLeaveRequests(), loadEss(), loadAttendanceStatus(), loadOnlineAttendance(), loadFaceStatus()]);
+    populateExitEmployeeSelects();
+    loadExits().catch(() => null);
+    populateAdjustmentEmployeeSelects();
+    loadAdjustmentMeta().catch(() => null);
+    loadAdjustments().catch(() => null);
+    populateProEmployeeSelects();
+    loadProMeta().catch(() => null);
+    loadPro().catch(() => null);
     const attendanceNav = document.querySelector(".nav-item[onclick*=\"navigate('attendance'\"]");
     attendanceNav?.addEventListener("click", () => {
       Promise.all([loadAttendanceStatus(), loadOnlineAttendance()])

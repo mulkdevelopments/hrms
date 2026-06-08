@@ -390,16 +390,14 @@ body {
 }
 
 .emp-action-menu {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 6px);
+  position: fixed;
   display: none;
   min-width: 160px;
   border: 1px solid var(--border-bright);
   border-radius: 10px;
   background: rgba(15, 23, 42, 0.98);
   box-shadow: 0 12px 28px rgba(2, 6, 23, 0.45);
-  z-index: 30;
+  z-index: 2000;
   padding: 6px;
 }
 
@@ -1185,6 +1183,12 @@ textarea { resize: vertical; min-height: 80px; }
       <div class="nav-item" onclick="navigate('leave', this)">
         <i class="bi bi-calendar2-week nav-icon"></i> Leave Management
       </div>
+      <div class="nav-item" onclick="navigate('exits', this)">
+        <i class="bi bi-box-arrow-right nav-icon"></i> Resignation &amp; Exit
+      </div>
+      <div class="nav-item" onclick="navigate('payadjust', this)">
+        <i class="bi bi-sliders nav-icon"></i> Pay Adjustments
+      </div>
       <div class="nav-item" onclick="navigate('payroll', this)">
         <i class="bi bi-cash-stack nav-icon"></i> Payroll & OT
       </div>
@@ -1215,6 +1219,9 @@ textarea { resize: vertical; min-height: 80px; }
       <div class="nav-label">Administration</div>
       <div class="nav-item" onclick="navigate('offices', this)">
         <i class="bi bi-buildings nav-icon"></i> Offices
+      </div>
+      <div class="nav-item" onclick="navigate('pro', this)">
+        <i class="bi bi-passport nav-icon"></i> PRO &amp; Visas
       </div>
       <div class="nav-item" onclick="navigate('documents', this)">
         <i class="bi bi-folder2-open nav-icon"></i> Documents
@@ -1477,8 +1484,7 @@ textarea { resize: vertical; min-height: 80px; }
     <button class="tab-btn active" onclick="switchTab(this,'leave-pending')">Pending Approvals (5)</button>
     <button class="tab-btn" onclick="switchTab(this,'leave-my-history')">My Leaves</button>
     <button class="tab-btn" onclick="switchTab(this,'leave-apply')">Apply Leave</button>
-    <button class="tab-btn" onclick="switchTab(this,'leave-policy')">Leave Policy</button>
-    <button class="tab-btn" onclick="switchTab(this,'leave-gratuity')">Gratuity Calculator</button>
+    <button class="tab-btn" id="leave-balance-tab-btn" onclick="switchTab(this,'leave-balance')" style="display:none">Leave Balance</button>
   </div>
 
   <div id="leave-pending" class="tab-pane active">
@@ -1599,50 +1605,268 @@ textarea { resize: vertical; min-height: 80px; }
     </div>
   </div>
 
-  <div id="leave-policy" class="tab-pane">
+  <div id="leave-balance" class="tab-pane">
+    <div class="card" style="max-width:760px">
+      <div class="section-title">Employee Leave Balance Lookup</div>
+      <div class="form-group full" style="position:relative">
+        <label>Search Employee (name, ID, email or department)</label>
+        <input id="leave-balance-search" type="text" autocomplete="off" placeholder="Start typing to search…">
+        <div id="leave-balance-results" class="manager-options" style="position:absolute;left:0;right:0;top:100%;z-index:20;display:none;max-height:240px;overflow:auto;background:#0b1a33;border:1px solid var(--border-bright);border-radius:8px;margin-top:4px;"></div>
+      </div>
+      <div id="leave-balance-detail" style="margin-top:14px;display:none">
+        <div class="flex-center gap-8" style="justify-content:flex-start;margin-bottom:14px">
+          <div class="user-avatar" id="leave-balance-avatar" style="width:42px;height:42px;font-size:14px">--</div>
+          <div>
+            <div style="font-weight:600" id="leave-balance-name">—</div>
+            <div class="text-muted" id="leave-balance-meta">—</div>
+          </div>
+        </div>
+        <div class="stats-grid">
+          <div class="stat-card"><div class="stat-label">Days Worked</div><div class="stat-value" id="leave-balance-worked" style="color:#64B5F6">0</div></div>
+          <div class="stat-card"><div class="stat-label">Earned (Matured)</div><div class="stat-value" id="leave-balance-earned" style="color:#4DB6AC">0</div></div>
+          <div class="stat-card"><div class="stat-label">Used Leaves</div><div class="stat-value" id="leave-balance-used" style="color:#FF8A65">0</div></div>
+          <div class="stat-card"><div class="stat-label">Available Balance</div><div class="stat-value" id="leave-balance-available" style="color:#FFD54F">0</div></div>
+        </div>
+        <div class="text-muted" style="margin-top:10px;font-size:12px" id="leave-balance-note"></div>
+      </div>
+      <div id="leave-balance-empty" class="text-muted" style="margin-top:14px">Search and select an employee to view their leave balance.</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ════════════════════════════════════════════════════
+     RESIGNATION & EXIT
+════════════════════════════════════════════════════ -->
+<div id="view-exits" class="view">
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab(this,'exit-records')">Exit Records</button>
+    <button class="tab-btn" onclick="switchTab(this,'exit-apply')">Apply Resignation</button>
+    <button class="tab-btn" id="exit-terminate-tab-btn" onclick="switchTab(this,'exit-terminate')" style="display:none">Initiate Termination</button>
+  </div>
+
+  <div id="exit-records" class="tab-pane active">
     <div class="card">
-      <div class="section-title">UAE Labour Law — Leave Policy (Federal Decree No. 33 / 2021)</div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Leave Type</th><th>Entitlement</th><th>Carryover</th><th>Pay</th><th>Law Reference</th></tr></thead>
-          <tbody>
-            <tr><td><b>Annual Leave</b></td><td>30 days/year</td><td>Yes (up to 60 days)</td><td>Full pay</td><td><span class="badge badge-blue">Art. 29</span></td></tr>
-            <tr><td><b>Sick Leave</b></td><td>15 days full + 15 days half + 15 days unpaid</td><td>No</td><td>Graduated</td><td><span class="badge badge-blue">Art. 31</span></td></tr>
-            <tr><td><b>Maternity Leave</b></td><td>45 days full + 15 days half pay</td><td>No</td><td>Full + half</td><td><span class="badge badge-blue">Art. 30</span></td></tr>
-            <tr><td><b>Paternity Leave</b></td><td>5 working days</td><td>No</td><td>Full pay</td><td><span class="badge badge-blue">Art. 32</span></td></tr>
-            <tr><td><b>Emergency Leave</b></td><td>15 days</td><td>No</td><td>Full pay</td><td><span class="badge badge-blue">Art. 28</span></td></tr>
-            <tr><td><b>Hajj Leave</b></td><td>Once in service</td><td>No</td><td>Full pay</td><td><span class="badge badge-blue">Art. 29</span></td></tr>
+          <thead><tr><th>Employee</th><th>Type</th><th>Status</th><th>Last Working Day</th><th>Submitted</th><th>Action</th></tr></thead>
+          <tbody id="exit-records-body">
+            <tr><td colspan="6" class="text-muted">Loading exit records…</td></tr>
           </tbody>
         </table>
       </div>
     </div>
   </div>
 
-  <div id="leave-gratuity" class="tab-pane">
-    <div class="card" style="max-width:560px">
-      <div class="section-title">Gratuity Calculator — Federal Decree 33/2021</div>
+  <div id="exit-apply" class="tab-pane">
+    <div class="card" style="max-width:620px">
+      <div class="section-title">Submit Resignation</div>
       <div class="form-grid">
         <div class="form-group">
-          <label>Basic Daily Salary (AED)</label>
-          <input type="number" id="gc-salary" placeholder="e.g. 333.33" oninput="calcGratuity()">
+          <label>Employee</label>
+          <select id="exit-emp-select"><option value="">Select employee…</option></select>
         </div>
         <div class="form-group">
-          <label>Years of Service</label>
-          <input type="number" id="gc-years" placeholder="e.g. 5" oninput="calcGratuity()">
+          <label>Resignation Date</label>
+          <input id="exit-resignation-date" type="date">
         </div>
         <div class="form-group">
-          <label>Reason for Termination</label>
-          <select id="gc-reason" onchange="calcGratuity()">
-            <option value="resignation">Resignation</option>
-            <option value="termination">Termination by Employer</option>
+          <label>Requested Last Working Day</label>
+          <input id="exit-lwd" type="date">
+        </div>
+        <div class="form-group">
+          <label>Reason for Leaving</label>
+          <select id="exit-reason-category">
+            <option value="PERSONAL">Personal</option>
+            <option value="CAREER_GROWTH">Career Growth</option>
+            <option value="RELOCATION">Relocation</option>
+            <option value="OTHER">Other</option>
           </select>
         </div>
+        <div class="form-group">
+          <label>Notice Period Accepted?</label>
+          <select id="exit-notice-accepted"><option value="true">Yes</option><option value="false">No</option></select>
+        </div>
+        <div class="form-group full">
+          <label>Remarks</label>
+          <textarea id="exit-reason" placeholder="Briefly describe the reason for resignation…"></textarea>
+        </div>
+        <div class="form-group full">
+          <label>Supporting Document (optional · PDF/JPG/PNG · max 5 MB)</label>
+          <input id="exit-doc-file" type="file" accept=".pdf,.jpg,.jpeg,.png" style="padding:8px">
+        </div>
+        <div class="form-group full">
+          <label style="display:flex;gap:8px;align-items:center;font-weight:500">
+            <input id="exit-confirm" type="checkbox"> I confirm this resignation request is accurate and voluntary.
+          </label>
+        </div>
       </div>
-      <div class="calc-result" id="gratuity-result" style="display:none">
-        <div class="text-muted mb-16" style="margin-bottom:8px">Estimated Gratuity</div>
-        <div class="calc-amount" id="gratuity-amount">AED 0</div>
-        <div class="text-muted mt-16" style="margin-top:8px;font-size:11.5px" id="gratuity-formula"></div>
-        <div class="alert alert-info" style="margin-top:12px;font-size:12px"><span class="alert-icon">ℹ️</span>Cap: Cannot exceed 2 years' total salary. Formula: Basic Daily Salary × Days × Years</div>
+      <div id="exit-notice-note" class="text-muted" style="font-size:12px;margin-top:6px"></div>
+      <div class="flex gap-8 mt-16">
+        <button id="exit-submit-btn" class="btn btn-primary" onclick="window.__submitResignation()">Submit Resignation</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="exit-terminate" class="tab-pane">
+    <div class="card" style="max-width:620px">
+      <div class="section-title">Initiate Termination</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Employee</label>
+          <select id="term-emp-select"><option value="">Select employee…</option></select>
+        </div>
+        <div class="form-group">
+          <label>Reason Category</label>
+          <select id="term-reason-category">
+            <option value="MISCONDUCT">Misconduct</option>
+            <option value="REDUNDANCY">Redundancy</option>
+            <option value="CONTRACT_END">Contract End</option>
+            <option value="PROBATION_FAIL">Probation Failure</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Last Working Date</label>
+          <input id="term-lwd" type="date">
+        </div>
+        <div class="form-group full">
+          <label>Incident / Reason Notes</label>
+          <textarea id="term-notes" placeholder="Document the reason / incident details…"></textarea>
+        </div>
+        <div class="form-group full">
+          <label>Supporting Document (optional · PDF/JPG/PNG · max 5 MB)</label>
+          <input id="term-doc-file" type="file" accept=".pdf,.jpg,.jpeg,.png" style="padding:8px">
+        </div>
+      </div>
+      <div class="flex gap-8 mt-16">
+        <button class="btn btn-danger" onclick="window.__initiateTermination()">Initiate Termination</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════
+     PAY ADJUSTMENTS (DEDUCTIONS & ADDITIONS)
+════════════════════════════════════════════════════ -->
+<div id="view-payadjust" class="view">
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab(this,'adj-list')">Adjustments</button>
+    <button class="tab-btn" id="adj-new-tab-btn" onclick="switchTab(this,'adj-new')" style="display:none">New Adjustment</button>
+    <button class="tab-btn" onclick="switchTab(this,'adj-loans')">Loans &amp; Advances</button>
+  </div>
+
+  <div id="adj-list" class="tab-pane active">
+    <div class="card">
+      <div class="flex-between" style="margin-bottom:10px;flex-wrap:wrap;gap:8px">
+        <div class="section-title" style="margin:0">Payroll Adjustments</div>
+        <div class="flex gap-8" id="adj-process-wrap" style="display:none;flex-wrap:wrap">
+          <input id="adj-process-month" type="month" style="width:160px">
+          <button class="btn btn-secondary btn-sm" onclick="window.__processAdjustmentMonth()">Process Month (Finance)</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Reference</th><th>Employee</th><th>Type</th><th>Category</th><th>Amount</th><th>Month</th><th>Status</th><th>Action</th></tr></thead>
+          <tbody id="adj-list-body">
+            <tr><td colspan="8" class="text-muted">Loading adjustments…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div id="adj-new" class="tab-pane">
+    <div class="card" style="max-width:640px">
+      <div class="section-title">New Adjustment</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Employee</label>
+          <select id="adj-emp-select"><option value="">Select employee…</option></select>
+        </div>
+        <div class="form-group">
+          <label>Type</label>
+          <select id="adj-type"><option value="DEDUCTION">Deduction</option><option value="ADDITION">Addition</option></select>
+        </div>
+        <div class="form-group">
+          <label>Category</label>
+          <select id="adj-category"></select>
+        </div>
+        <div class="form-group">
+          <label>Amount (AED)</label>
+          <input id="adj-amount" type="number" min="1" step="0.01" placeholder="0.00">
+        </div>
+        <div class="form-group">
+          <label>Effective Month</label>
+          <input id="adj-month" type="month">
+        </div>
+        <div class="form-group">
+          <label>Recurring (Monthly)?</label>
+          <select id="adj-recurring"><option value="false">No</option><option value="true">Yes</option></select>
+        </div>
+        <div class="form-group" id="adj-recur-end-wrap" style="display:none">
+          <label>Recurring Until</label>
+          <input id="adj-recur-end" type="month">
+        </div>
+        <div class="form-group full">
+          <label>Reason / Remarks (min 20 characters)</label>
+          <textarea id="adj-reason" placeholder="Explain the reason for this adjustment in detail…"></textarea>
+        </div>
+        <div class="form-group full">
+          <label>Supporting Document (optional · PDF/JPG/PNG · max 5 MB)</label>
+          <input id="adj-doc-file" type="file" accept=".pdf,.jpg,.jpeg,.png" style="padding:8px">
+        </div>
+      </div>
+      <div class="flex gap-8 mt-16">
+        <button class="btn btn-primary" onclick="window.__submitAdjustment()">Create Adjustment</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="adj-loans" class="tab-pane">
+    <div class="grid2 mb-20">
+      <div class="card" id="adj-loan-form-card" style="display:none">
+        <div class="section-title">New Loan / Advance</div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Employee</label>
+            <select id="loan-emp-select"><option value="">Select employee…</option></select>
+          </div>
+          <div class="form-group">
+            <label>Type</label>
+            <select id="loan-type"><option value="ADVANCE">Salary Advance</option><option value="LOAN">Company Loan</option></select>
+          </div>
+          <div class="form-group">
+            <label>Total Amount (AED)</label>
+            <input id="loan-total" type="number" min="1" step="0.01">
+          </div>
+          <div class="form-group">
+            <label>Monthly Installment (AED)</label>
+            <input id="loan-installment" type="number" min="1" step="0.01">
+          </div>
+          <div class="form-group">
+            <label>Recovery Start Month</label>
+            <input id="loan-start" type="month">
+          </div>
+          <div class="form-group full">
+            <label>Reason</label>
+            <textarea id="loan-reason" placeholder="Purpose of the advance/loan…"></textarea>
+          </div>
+        </div>
+        <div class="text-muted" style="font-size:12px;margin-top:6px" id="loan-threshold-note"></div>
+        <div class="flex gap-8 mt-16">
+          <button class="btn btn-primary" onclick="window.__submitLoan()">Create Loan / Advance</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="section-title">Loans &amp; Advances</div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Employee</th><th>Type</th><th>Total</th><th>Recovered</th><th>Outstanding</th><th>Status</th><th>Action</th></tr></thead>
+            <tbody id="adj-loans-body">
+              <tr><td colspan="7" class="text-muted">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>
@@ -1811,6 +2035,120 @@ textarea { resize: vertical; min-height: 80px; }
       <div class="text-muted" style="margin-bottom:8px">Nearby Employee Tags</div>
       <div class="flex gap-8" style="flex-wrap:wrap" id="off-nearby-tags">
         <span class="badge badge-blue">Select an office to view nearby tags</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════
+     PRO / VISA & DOCUMENT MANAGEMENT
+════════════════════════════════════════════════════ -->
+<div id="view-pro" class="view">
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab(this,'pro-documents')">Document Registry</button>
+    <button class="tab-btn" onclick="switchTab(this,'pro-tasks')">PRO Tasks</button>
+    <button class="tab-btn" id="pro-doc-new-tab-btn" onclick="switchTab(this,'pro-doc-new')" style="display:none">Add Document</button>
+    <button class="tab-btn" id="pro-task-new-tab-btn" onclick="switchTab(this,'pro-task-new')" style="display:none">New PRO Task</button>
+  </div>
+
+  <div id="pro-documents" class="tab-pane active">
+    <div class="card">
+      <div class="section-title">Document Registry &amp; Expiry Alerts</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Employee</th><th>Document</th><th>Number</th><th>Authority</th><th>Expiry</th><th>Status</th><th>Action</th></tr></thead>
+          <tbody id="pro-docs-body">
+            <tr><td colspan="7" class="text-muted">Loading documents…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div id="pro-tasks" class="tab-pane">
+    <div class="card">
+      <div class="section-title">PRO / Immigration Tasks</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Reference</th><th>Employee</th><th>Type</th><th>Document</th><th>Stage</th><th>Gov. Ref / Fee</th><th>Action</th></tr></thead>
+          <tbody id="pro-tasks-body">
+            <tr><td colspan="7" class="text-muted">Loading PRO tasks…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div id="pro-doc-new" class="tab-pane">
+    <div class="card" style="max-width:640px">
+      <div class="section-title">Add / Register Document</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Employee</label>
+          <select id="pro-doc-emp"><option value="">Select employee…</option></select>
+        </div>
+        <div class="form-group">
+          <label>Document Type</label>
+          <select id="pro-doc-type"></select>
+        </div>
+        <div class="form-group">
+          <label>Document Number</label>
+          <input id="pro-doc-number" type="text" placeholder="e.g. 784-XXXX-XXXXXXX-X">
+        </div>
+        <div class="form-group">
+          <label>Issuing Authority</label>
+          <input id="pro-doc-authority" type="text" placeholder="e.g. GDRFA / ICP / MOHRE">
+        </div>
+        <div class="form-group">
+          <label>Issue Date</label>
+          <input id="pro-doc-issue" type="date">
+        </div>
+        <div class="form-group">
+          <label>Expiry Date</label>
+          <input id="pro-doc-expiry" type="date">
+        </div>
+        <div class="form-group full">
+          <label>Document File (optional · PDF/JPG/PNG · max 5 MB)</label>
+          <input id="pro-doc-file" type="file" accept=".pdf,.jpg,.jpeg,.png" style="padding:8px">
+        </div>
+        <div class="form-group full">
+          <label>Notes</label>
+          <textarea id="pro-doc-notes" placeholder="Optional notes…"></textarea>
+        </div>
+      </div>
+      <div class="flex gap-8 mt-16">
+        <button class="btn btn-primary" onclick="window.__submitProDocument()">Save Document</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="pro-task-new" class="tab-pane">
+    <div class="card" style="max-width:640px">
+      <div class="section-title">New PRO Task</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Employee</label>
+          <select id="pro-task-emp"><option value="">Select employee…</option></select>
+        </div>
+        <div class="form-group">
+          <label>Task Type</label>
+          <select id="pro-task-type">
+            <option value="NEW_VISA">New Visa Application</option>
+            <option value="RENEWAL">Visa / Document Renewal</option>
+            <option value="CANCELLATION">Visa Cancellation</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Related Document Type</label>
+          <select id="pro-task-doctype"></select>
+        </div>
+        <div class="form-group full">
+          <label>Notes</label>
+          <textarea id="pro-task-notes" placeholder="Optional notes…"></textarea>
+        </div>
+      </div>
+      <div class="flex gap-8 mt-16">
+        <button class="btn btn-primary" onclick="window.__submitProTask()">Create Task</button>
       </div>
     </div>
   </div>
@@ -2432,7 +2770,7 @@ textarea { resize: vertical; min-height: 80px; }
   <div class="modal">
     <div class="modal-header">
       <div class="modal-title">Add New Employee</div>
-      <button class="modal-close" onclick="closeModal('emp-modal')">✕</button>
+      <button class="modal-close" onclick="window.__attemptCloseEmployeeModal()">✕</button>
     </div>
     <div class="emp-sections">
       <section class="emp-section">
@@ -2511,14 +2849,14 @@ textarea { resize: vertical; min-height: 80px; }
         <div class="emp-section-title">Platform Access</div>
         <div class="emp-grid">
           <div class="form-group"><label>Enable Login</label><select id="emp-access-enabled"><option value="true">Yes</option><option value="false">No</option></select></div>
-          <div class="form-group"><label>Role / Access Level</label><select id="emp-user-role"><option value="EMPLOYEE">EMPLOYEE</option><option value="MANAGER">MANAGER</option><option value="HR_OFFICER">HR_OFFICER</option><option value="HR">HR</option><option value="SUPER_ADMIN">SUPER_ADMIN</option></select></div>
+          <div class="form-group"><label>Role / Access Level</label><select id="emp-user-role"><option value="EMPLOYEE">EMPLOYEE</option><option value="MANAGER">MANAGER</option><option value="PRO">PRO</option><option value="HR_OFFICER">HR_OFFICER</option><option value="HR">HR</option><option value="CEO">CEO</option><option value="SUPER_ADMIN">SUPER_ADMIN</option></select></div>
           <div class="form-group"><label>Login Email</label><input id="emp-login-email" type="email" placeholder="Leave blank to use work email"></div>
           <div class="form-group"><label>Temporary Password</label><input id="emp-login-password" type="password" placeholder="Leave blank for default: Welcome@123"></div>
         </div>
       </section>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-secondary" onclick="closeModal('emp-modal')">Cancel</button>
+      <button class="btn btn-secondary" onclick="window.__attemptCloseEmployeeModal()">Cancel</button>
       <button class="btn btn-primary" onclick="saveEmployee()">Create Employee</button>
     </div>
   </div>
@@ -2642,11 +2980,14 @@ function navigate(view, el) {
     dashboard: 'Dashboard <span>/ Overview</span>',
     employees: 'Employees <span>/ Master Records</span>',
     leave: 'Leave Management <span>/ Module 02</span>',
+    exits: 'Resignation &amp; Exit <span>/ Employee Offboarding</span>',
+    payadjust: 'Pay Adjustments <span>/ Deductions &amp; Additions</span>',
     payroll: 'Payroll & Overtime <span>/ Module 03</span>',
     ess: 'ESS Portal <span>/ Employee Self-Service</span>',
     attendance: 'Attendance & Tracking <span>/ Live Workforce Map</span>',
     calendar: 'Calendar <span>/ Attendance & Route Map</span>',
     offices: 'Office Master <span>/ Geofence Setup</span>',
+    pro: 'PRO &amp; Visas <span>/ Document &amp; Immigration</span>',
     profile: 'My Profile <span>/ Employee Information</span>',
     performance: 'Performance Management <span>/ Module 05</span>',
     recruitment: 'Recruitment <span>/ Module 07</span>',
@@ -2678,7 +3019,14 @@ function switchTab(btn, paneId) {
 function openModal(id) { document.getElementById(id).classList.add('open'); }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 document.querySelectorAll('.modal-overlay').forEach(o => {
-  o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); });
+  o.addEventListener('click', e => {
+    if (e.target !== o) return;
+    if (o.id === 'emp-modal') {
+      window.__attemptCloseEmployeeModal?.();
+      return;
+    }
+    o.classList.remove('open');
+  });
 });
 
 // ─── Toast ───

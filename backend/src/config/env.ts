@@ -8,6 +8,8 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(16),
   PORT: z.coerce.number().default(4000),
   CORS_ORIGIN: z.string().default("http://localhost:5173"),
+  ATTENDANCE_TIMEZONE: z.string().default("Asia/Dubai"),
+  ADJUSTMENT_DUAL_APPROVAL_THRESHOLD: z.coerce.number().default(5000),
 });
 
 export const env = envSchema.parse(process.env);
