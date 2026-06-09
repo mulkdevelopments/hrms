@@ -208,10 +208,12 @@ function getNotificationEntries() {
   const myEmployeeId = me.employee.id;
   const myExitActions = (exitRecordsCache ?? []).filter((record) => {
     switch (record.status) {
+      case "NEGOTIATION":
       case "PENDING":
-        return record.employee?.managerId === myEmployeeId || elevatedRoles.has(me.role);
+        return record.assignedApproverId === myEmployeeId
+          || record.employee?.managerId === myEmployeeId
+          || elevatedRoles.has(me.role);
       case "LM_APPROVED":
-      case "INITIATED":
       case "CLEARANCE_IN_PROGRESS":
       case "SETTLEMENT_READY":
         return elevatedRoles.has(me.role);
@@ -245,13 +247,55 @@ function getNotificationEntries() {
     });
   }
 
-  const expiringDocs = (proDocsCache ?? []).filter((doc) => doc.computedStatus === "EXPIRING" || doc.computedStatus === "EXPIRED");
+  const myPendingClearance = (clearanceTasksCache ?? []).filter((task) => {
+    if (task.status === "COMPLETED") return false;
+    if (task.department === "ADMIN" || task.department === "PRO") {
+      return elevatedRoles.has(me.role);
+    }
+    return task.assignedManagerId === myEmployeeId;
+  });
+  if (myPendingClearance.length && (me.role === "MANAGER" || elevatedRoles.has(me.role))) {
+    entries.push({
+      icon: "bi-clipboard-check",
+      tone: "warn",
+      title: `${myPendingClearance.length} Clearance Task(s) Pending`,
+      desc: "Complete clearance items with a note on the Clearance page.",
+      time: "Live",
+    });
+  }
+
+  const pendingFinanceLoans = (loansCache ?? []).filter((loan) => loan.status === "PENDING_FINANCE");
+  if (pendingFinanceLoans.length && isFinanceManagerUser()) {
+    entries.push({
+      icon: "bi-cash-coin",
+      tone: "warn",
+      title: `${pendingFinanceLoans.length} Loan/Advance Request(s) — Finance`,
+      desc: "Review and approve with a note on Pay Adjustments.",
+      time: "Live",
+    });
+  }
+  const pendingHrLoans = (loansCache ?? []).filter((loan) => loan.status === "PENDING_HR");
+  if (pendingHrLoans.length && canHrApproveLoan()) {
+    entries.push({
+      icon: "bi-cash-coin",
+      tone: "warn",
+      title: `${pendingHrLoans.length} Loan/Advance Request(s) — HR`,
+      desc: "Final approval with a note on Pay Adjustments.",
+      time: "Live",
+    });
+  }
+
+  const expiringDocs = getExpiringDocuments();
   if (expiringDocs.length) {
+    const expiredCount = expiringDocs.filter((doc) => doc.computedStatus === "EXPIRED").length;
+    const soonCount = expiringDocs.length - expiredCount;
     entries.push({
       icon: "bi-passport",
       tone: "warn",
-      title: `${expiringDocs.length} Document(s) Expiring / Expired`,
-      desc: "Visa, Emirates ID or permit documents need renewal attention.",
+      title: `${expiringDocs.length} Document(s) Expiring Within 30 Days`,
+      desc: expiredCount
+        ? `${soonCount} expiring soon, ${expiredCount} already expired — review in Documents.`
+        : "Passport, visa, Emirates ID and other documents need renewal attention.",
       time: "Live",
     });
   }
@@ -305,15 +349,15 @@ function setViewVisibility(view, visible) {
 function applyRoleBasedUi() {
   const role = me?.role ?? "EMPLOYEE";
   const roleViews = {
-    SUPER_ADMIN: ["dashboard", "employees", "leave", "exits", "payadjust", "pro", "payroll", "ess", "attendance", "calendar", "offices", "profile", "performance", "recruitment", "documents", "compliance", "reports", "settings"],
-    CEO: ["dashboard", "employees", "leave", "exits", "payadjust", "pro", "payroll", "ess", "attendance", "calendar", "offices", "profile", "performance", "recruitment", "documents", "compliance", "reports", "settings"],
-    HR: ["dashboard", "employees", "leave", "exits", "payadjust", "pro", "payroll", "ess", "attendance", "calendar", "offices", "profile", "performance", "recruitment", "documents", "compliance", "reports", "settings"],
-    HR_OFFICER: ["dashboard", "employees", "leave", "exits", "payadjust", "pro", "payroll", "ess", "attendance", "calendar", "offices", "profile", "performance", "recruitment", "documents", "compliance", "reports", "settings"],
-    PRO: ["dashboard", "employees", "pro", "ess", "attendance", "calendar", "profile", "settings"],
-    MANAGER: ["dashboard", "employees", "leave", "exits", "payadjust", "pro", "ess", "attendance", "calendar", "profile"],
-    EMPLOYEE: ["leave", "exits", "payadjust", "pro", "ess", "attendance", "calendar", "profile", "settings"],
+    SUPER_ADMIN: ["dashboard", "employees", "leave", "exits", "clearance", "payadjust", "pro", "documents", "attendance", "calendar", "offices", "profile", "settings"],
+    CEO: ["dashboard", "employees", "leave", "exits", "clearance", "payadjust", "pro", "documents", "attendance", "calendar", "offices", "profile", "settings"],
+    HR: ["dashboard", "employees", "leave", "exits", "clearance", "payadjust", "pro", "documents", "attendance", "calendar", "offices", "profile", "settings"],
+    HR_OFFICER: ["dashboard", "employees", "leave", "exits", "clearance", "payadjust", "pro", "documents", "attendance", "calendar", "offices", "profile", "settings"],
+    PRO: ["dashboard", "employees", "pro", "documents", "attendance", "calendar", "profile", "settings"],
+    MANAGER: ["dashboard", "employees", "leave", "exits", "clearance", "payadjust", "pro", "documents", "attendance", "calendar", "profile"],
+    EMPLOYEE: ["dashboard", "leave", "exits", "payadjust", "pro", "documents", "attendance", "calendar", "profile", "settings"],
   };
-  const allViews = ["dashboard", "employees", "leave", "exits", "payadjust", "pro", "payroll", "ess", "attendance", "calendar", "offices", "profile", "performance", "recruitment", "documents", "compliance", "reports", "settings"];
+  const allViews = ["dashboard", "employees", "leave", "exits", "clearance", "payadjust", "pro", "documents", "attendance", "calendar", "offices", "profile", "settings"];
   const allowed = new Set(roleViews[role] ?? roleViews.EMPLOYEE);
   allViews.forEach((view) => setViewVisibility(view, allowed.has(view)));
 
@@ -348,7 +392,7 @@ function applyRoleBasedUi() {
   }
   const loanFormCard = document.getElementById("adj-loan-form-card");
   if (loanFormCard) {
-    loanFormCard.style.display = elevatedRoles.has(role) ? "" : "none";
+    loanFormCard.style.display = "";
   }
   const canManagePro = elevatedRoles.has(role) || role === "PRO";
   ["pro-doc-new-tab-btn", "pro-task-new-tab-btn"].forEach((id) => {
@@ -359,6 +403,8 @@ function applyRoleBasedUi() {
   if (liveWorkforceCard) {
     liveWorkforceCard.style.display = role === "EMPLOYEE" ? "none" : "";
   }
+  applyDocumentsPageRoleUi();
+  applyEmployeeDashboardUi();
 
   document.querySelectorAll(".sidebar-nav .nav-section").forEach((section) => {
     const visibleItems = Array.from(section.querySelectorAll(".nav-item"))
@@ -1090,6 +1136,7 @@ async function refreshEmployees() {
   await loadEmployees();
   populateEmployeeSelectors();
   renderDashboardInsights();
+  if (isEmployeeDashboard()) renderEmployeeDashboardSummary();
 }
 
 function getEmployeeById(employeeId) {
@@ -1931,8 +1978,10 @@ window.__selectLeaveBalanceEmployee = async function selectLeaveBalanceEmployee(
 };
 
 let exitRecordsCache = [];
+let clearanceTasksCache = [];
 
 const EXIT_STATUS_LABELS = {
+  NEGOTIATION: "Negotiation",
   PENDING: "Pending L1",
   LM_APPROVED: "Line Manager Approved",
   HR_APPROVED: "HR Approved",
@@ -1959,6 +2008,182 @@ function fmtDate(value) {
   return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }
 
+function parseInputDate(value) {
+  if (!value) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const [y, m, d] = value.split("-").map(Number);
+    return new Date(y, m - 1, d);
+  }
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function addCalendarDays(date, days) {
+  const d = new Date(date);
+  d.setDate(d.getDate() + days);
+  return d;
+}
+
+function addCalendarDaysForDisplay(value, days) {
+  const start = value instanceof Date ? new Date(value) : parseInputDate(value);
+  if (!start || Number.isNaN(start.getTime())) return null;
+  return addCalendarDays(start, days);
+}
+
+function daysBetweenDates(from, to) {
+  const start = from instanceof Date ? new Date(from) : parseInputDate(from);
+  const end = to instanceof Date ? new Date(to) : parseInputDate(to);
+  if (!start || !end) return 0;
+  start.setHours(0, 0, 0, 0);
+  end.setHours(0, 0, 0, 0);
+  return Math.max(0, Math.round((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)));
+}
+
+function getEmployeeNoticeDays(employeeId) {
+  const emp = allEmployees.find((e) => e.id === employeeId);
+  return Number(emp?.noticePeriodDays ?? 30);
+}
+
+function toIsoFromInput(value) {
+  const d = parseInputDate(value);
+  if (!d) return new Date(value).toISOString();
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0).toISOString();
+}
+
+function buildNoticeWindow(employeeId, startDateStr, lwdDateStr) {
+  const noticePeriodDays = getEmployeeNoticeDays(employeeId);
+  const start = parseInputDate(startDateStr) ?? new Date();
+  start.setHours(0, 0, 0, 0);
+  const mandatoryEnd = addCalendarDays(start, noticePeriodDays);
+  const requestedEnd = parseInputDate(lwdDateStr);
+  const shortfall = requestedEnd
+    ? Math.max(0, noticePeriodDays - daysBetweenDates(start, requestedEnd))
+    : 0;
+  return { noticePeriodDays, start, mandatoryEnd, requestedEnd, shortfall };
+}
+
+function isoDateFromRecord(value) {
+  if (!value) return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function renderNoticeStartFieldsHtml(record, prefix) {
+  const noticeDays = record.noticePeriodDays ?? 30;
+  const defaultStart = record.type === "RESIGNATION"
+    ? isoDateFromRecord(record.resignationDate)
+    : isoDateFromRecord(record.noticePeriodStartDate ?? record.createdAt);
+  const minStart = defaultStart || new Date().toISOString().slice(0, 10);
+  const startForPreview = defaultStart || minStart;
+  const endPreview = addCalendarDaysForDisplay(startForPreview, noticeDays);
+  return `
+    <div class="form-group full">
+      <label>Notice period starts from</label>
+      <input id="${prefix}-notice-start-date" type="date" value="${escapeAttr(startForPreview)}" min="${escapeAttr(minStart)}" data-notice-days="${noticeDays}" onchange="window.__updateExitNoticePreview('${prefix}')">
+    </div>
+    <div id="${prefix}-notice-window-preview" class="text-muted" style="font-size:12px;margin-bottom:10px">
+      ${noticeDays} day notice: ${fmtDate(startForPreview)} → ${fmtDate(endPreview)}
+    </div>`;
+}
+
+window.__updateExitNoticePreview = function updateExitNoticePreview(prefix) {
+  const input = document.getElementById(`${prefix}-notice-start-date`);
+  const preview = document.getElementById(`${prefix}-notice-window-preview`);
+  if (!input || !preview) return;
+  const days = Number(input.dataset.noticeDays ?? 30);
+  const start = input.value;
+  if (!start) return;
+  const end = addCalendarDaysForDisplay(start, days);
+  preview.textContent = `${days} day notice: ${fmtDate(start)} → ${fmtDate(end)}`;
+};
+
+function renderExitNoticeInfoHtml(context, employeeId, startDateStr, lwdDateStr, mode = "resignation") {
+  if (!context || !employeeId) return "";
+  const windowInfo = buildNoticeWindow(employeeId, startDateStr, lwdDateStr);
+  const managerLine = context.lineManager
+    ? `<div><b>Line Manager:</b> ${escapeAttr(context.lineManager.name)} (${escapeAttr(context.lineManager.employeeCode)})</div>`
+    : `<div><b>Line Manager:</b> Not assigned</div>`;
+  const approverLine = context.assignedApprover
+    ? `<div><b>${context.assignedApprover.isActing ? "Acting Approver" : "Approver"}:</b> ${escapeAttr(context.assignedApprover.name)} (${escapeAttr(context.assignedApprover.employeeCode)})${context.managerOnLeave ? ' <span class="badge badge-amber">Primary manager on leave</span>' : ""}</div>`
+    : "";
+  const requestedLine = windowInfo.requestedEnd
+    ? `<div><b>Requested last working day:</b> ${fmtDate(windowInfo.requestedEnd)}${windowInfo.shortfall ? ` <span class="badge badge-coral">Shortfall ${windowInfo.shortfall} day(s)</span>` : ""}</div>`
+    : "";
+  const footer = mode === "termination"
+    ? "Dates are based on this employee's notice period setting and the dates you selected above."
+    : "Dates are based on this employee's notice period setting and the dates you selected above.";
+  return `
+    <div><b>Notice Period:</b> ${windowInfo.noticePeriodDays} days (from employee profile)</div>
+    <div><b>From:</b> ${fmtDate(windowInfo.start)} &nbsp;→&nbsp; <b>To:</b> ${fmtDate(windowInfo.mandatoryEnd)}</div>
+    ${requestedLine}
+    ${managerLine}
+    ${approverLine}
+    <div class="text-muted" style="margin-top:6px;font-size:12px">${footer}</div>`;
+}
+
+async function refreshExitNoticeInfo() {
+  const employeeId = document.getElementById("exit-emp-select")?.value;
+  const resignationDate = document.getElementById("exit-resignation-date")?.value;
+  const lwdDate = document.getElementById("exit-lwd")?.value;
+  const box = document.getElementById("exit-notice-info");
+  const body = document.getElementById("exit-notice-info-body");
+  if (!box || !body || !employeeId) {
+    if (box) box.style.display = "none";
+    return;
+  }
+  try {
+    const startQuery = resignationDate ? `?startDate=${encodeURIComponent(resignationDate)}` : "";
+    const context = await api(`/exits/context/${employeeId}${startQuery}`);
+    body.innerHTML = renderExitNoticeInfoHtml(context, employeeId, resignationDate, lwdDate, "resignation");
+    box.style.display = "block";
+    const lwdInput = document.getElementById("exit-lwd");
+    const { mandatoryEnd } = buildNoticeWindow(employeeId, resignationDate, lwdDate);
+    if (lwdInput && mandatoryEnd && !lwdInput.dataset.userEdited) {
+      const y = mandatoryEnd.getFullYear();
+      const m = String(mandatoryEnd.getMonth() + 1).padStart(2, "0");
+      const d = String(mandatoryEnd.getDate()).padStart(2, "0");
+      lwdInput.value = `${y}-${m}-${d}`;
+    }
+  } catch {
+    if (box) box.style.display = "none";
+  }
+}
+
+async function refreshTermNoticeInfo() {
+  const employeeId = document.getElementById("term-emp-select")?.value;
+  const noticeStart = document.getElementById("term-notice-start")?.value;
+  const lwdDate = document.getElementById("term-lwd")?.value;
+  const box = document.getElementById("term-notice-info");
+  const body = document.getElementById("term-notice-info-body");
+  if (!box || !body || !employeeId) {
+    if (box) box.style.display = "none";
+    return;
+  }
+  try {
+    const startQuery = noticeStart ? `?startDate=${encodeURIComponent(noticeStart)}` : "";
+    const context = await api(`/exits/context/${employeeId}${startQuery}`);
+    body.innerHTML = renderExitNoticeInfoHtml(context, employeeId, noticeStart, lwdDate, "termination");
+    box.style.display = "block";
+    const lwdInput = document.getElementById("term-lwd");
+    const { mandatoryEnd } = buildNoticeWindow(employeeId, noticeStart, lwdDate);
+    if (lwdInput && mandatoryEnd && !lwdInput.dataset.userEdited) {
+      const y = mandatoryEnd.getFullYear();
+      const m = String(mandatoryEnd.getMonth() + 1).padStart(2, "0");
+      const d = String(mandatoryEnd.getDate()).padStart(2, "0");
+      lwdInput.value = `${y}-${m}-${d}`;
+    }
+  } catch {
+    if (box) box.style.display = "none";
+  }
+}
+
+window.__refreshExitNoticeInfo = refreshExitNoticeInfo;
+window.__refreshTermNoticeInfo = refreshTermNoticeInfo;
+
 function populateExitEmployeeSelects() {
   const resignSelect = document.getElementById("exit-emp-select");
   const termSelect = document.getElementById("term-emp-select");
@@ -1972,6 +2197,11 @@ function populateExitEmployeeSelects() {
     if (me?.employee?.id && source.some((emp) => emp.id === me.employee.id)) {
       resignSelect.value = me.employee.id;
     }
+    resignSelect.onchange = () => {
+      const lwdInput = document.getElementById("exit-lwd");
+      if (lwdInput) delete lwdInput.dataset.userEdited;
+      refreshExitNoticeInfo();
+    };
     resignSelect.dispatchEvent(new Event("change"));
   }
   if (termSelect) {
@@ -1979,12 +2209,72 @@ function populateExitEmployeeSelects() {
       .filter((emp) => emp.id !== me?.employee?.id)
       .map((emp) => `<option value="${emp.id}">${escapeAttr(`${emp.firstName ?? ""} ${emp.lastName ?? ""}`.trim())} (${escapeAttr(emp.employeeCode ?? "—")})</option>`)
       .join("");
+    termSelect.onchange = () => {
+      const lwdInput = document.getElementById("term-lwd");
+      if (lwdInput) delete lwdInput.dataset.userEdited;
+      refreshTermNoticeInfo();
+    };
   }
   const todayIso = new Date().toISOString().slice(0, 10);
-  ["exit-resignation-date", "exit-lwd", "term-lwd"].forEach((id) => {
+  ["exit-resignation-date", "exit-lwd", "term-notice-start", "term-lwd"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.min = todayIso;
   });
+  const resignDateEl = document.getElementById("exit-resignation-date");
+  if (resignDateEl && !resignDateEl.dataset.exitWired) {
+    resignDateEl.dataset.exitWired = "1";
+    resignDateEl.value = todayIso;
+    resignDateEl.addEventListener("change", () => refreshExitNoticeInfo());
+  }
+  const termStartEl = document.getElementById("term-notice-start");
+  if (termStartEl && !termStartEl.dataset.exitWired) {
+    termStartEl.dataset.exitWired = "1";
+    termStartEl.value = todayIso;
+    termStartEl.addEventListener("change", () => refreshTermNoticeInfo());
+  }
+  const lwdEl = document.getElementById("exit-lwd");
+  if (lwdEl && !lwdEl.dataset.exitWired) {
+    lwdEl.dataset.exitWired = "1";
+    lwdEl.addEventListener("input", () => {
+      lwdEl.dataset.userEdited = "1";
+      refreshExitNoticeInfo();
+    });
+  }
+  const termLwdEl = document.getElementById("term-lwd");
+  if (termLwdEl && !termLwdEl.dataset.exitWired) {
+    termLwdEl.dataset.exitWired = "1";
+    termLwdEl.addEventListener("input", () => {
+      termLwdEl.dataset.userEdited = "1";
+      refreshTermNoticeInfo();
+    });
+  }
+}
+
+function getExitProceedAction(record) {
+  const role = me?.role;
+  const isElevated = elevatedRoles.has(role);
+  const isManager = role === "MANAGER";
+  const isCeo = role === "SUPER_ADMIN" || role === "CEO";
+  const isAssignedApprover = record.assignedApproverId === me?.employee?.id
+    || record.employee?.managerId === me?.employee?.id;
+  const inNegotiation = record.status === "NEGOTIATION" || record.status === "PENDING" || record.status === "INITIATED";
+
+  if (inNegotiation && record.type === "RESIGNATION" && (isElevated || (isManager && isAssignedApprover))) {
+    return { label: "End Negotiation", tone: "accent" };
+  }
+  if (inNegotiation && record.type === "TERMINATION" && (isElevated || (isManager && isAssignedApprover))) {
+    return { label: "End Negotiation", tone: "accent" };
+  }
+  if (record.status === "LM_APPROVED" && isElevated) {
+    return { label: "HR Approve", tone: "primary" };
+  }
+  if (record.status === "DOCUMENTED" && isCeo) {
+    return { label: "Final Approve", tone: "primary" };
+  }
+  if (record.status === "SETTLEMENT_READY" && isElevated) {
+    return { label: "Complete Exit", tone: "primary" };
+  }
+  return null;
 }
 
 function renderExitsTable() {
@@ -1998,6 +2288,14 @@ function renderExitsTable() {
     const emp = record.employee;
     const name = `${emp?.firstName ?? ""} ${emp?.lastName ?? ""}`.trim();
     const typeBadge = record.type === "TERMINATION" ? "badge-coral" : "badge-blue";
+    const canDelete = elevatedRoles.has(me?.role);
+    const proceed = getExitProceedAction(record);
+    const proceedBtn = proceed
+      ? `<button class="btn btn-${proceed.tone} btn-sm" onclick="window.__viewExit('${record.id}')">${escapeAttr(proceed.label)}</button>`
+      : "";
+    const deleteBtn = canDelete
+      ? `<button class="btn btn-danger btn-sm" onclick="window.__deleteExit('${record.id}')">Delete</button>`
+      : "";
     return `
       <tr>
         <td>${escapeAttr(name)} (${escapeAttr(emp?.employeeCode ?? "—")})</td>
@@ -2005,9 +2303,92 @@ function renderExitsTable() {
         <td><span class="badge ${exitStatusBadge(record.status)}">${escapeAttr(EXIT_STATUS_LABELS[record.status] ?? record.status)}</span></td>
         <td>${fmtDate(record.lastWorkingDate ?? record.requestedLastWorkingDay)}</td>
         <td>${fmtDate(record.createdAt)}</td>
-        <td><button class="btn btn-secondary btn-sm" onclick="window.__viewExit('${record.id}')">View</button></td>
+        <td><div class="flex gap-8" style="flex-wrap:wrap">${proceedBtn}<button class="btn btn-secondary btn-sm" onclick="window.__viewExit('${record.id}')">View</button>${deleteBtn}</div></td>
       </tr>`;
   }).join("");
+}
+
+function canCompleteClearanceTask(task) {
+  if (!task || task.status === "COMPLETED") return false;
+  if (task.department === "ADMIN" || task.department === "PRO") {
+    return elevatedRoles.has(me?.role);
+  }
+  return me?.role === "MANAGER" && task.assignedManagerId === me?.employee?.id;
+}
+
+function renderClearanceTables() {
+  const pendingBody = document.getElementById("clearance-pending-body");
+  const doneBody = document.getElementById("clearance-done-body");
+  const summary = document.getElementById("clearance-summary");
+  if (!pendingBody || !doneBody) return;
+
+  const pending = clearanceTasksCache.filter((t) => t.status !== "COMPLETED");
+  const done = clearanceTasksCache.filter((t) => t.status === "COMPLETED");
+
+  if (summary) {
+    summary.textContent = `${pending.length} pending · ${done.length} completed`;
+  }
+
+  if (!pending.length) {
+    pendingBody.innerHTML = `<tr><td colspan="7" class="text-muted">No pending clearance tasks.</td></tr>`;
+  } else {
+    pendingBody.innerHTML = pending.map((task) => {
+      const emp = task.exitRecord?.employee;
+      const name = `${emp?.firstName ?? ""} ${emp?.lastName ?? ""}`.trim();
+      const mgr = task.assignedManager;
+      const mgrName = mgr ? `${mgr.firstName ?? ""} ${mgr.lastName ?? ""}`.trim() : "—";
+      const lwd = task.exitRecord?.lastWorkingDate ?? task.exitRecord?.requestedLastWorkingDay;
+      const canComplete = canCompleteClearanceTask(task);
+      const action = canComplete
+        ? `<button class="btn btn-accent btn-sm" onclick="window.__openClearanceComplete('${task.id}','${escapeAttr(task.department)}','${escapeAttr(name)}')">Mark Done</button>`
+        : `<span class="text-muted" style="font-size:12px">${task.department === "ADMIN" || task.department === "PRO" ? "Awaiting HR / Admin" : "Awaiting manager"}</span>`;
+      return `
+        <tr>
+          <td>${escapeAttr(name)} (${escapeAttr(emp?.employeeCode ?? "—")})</td>
+          <td><span class="badge ${task.exitRecord?.type === "TERMINATION" ? "badge-coral" : "badge-blue"}">${escapeAttr(formatLabel(task.exitRecord?.type ?? "—"))}</span></td>
+          <td>${escapeAttr(task.department)}${task.urgent ? ' <span class="badge badge-coral">Urgent</span>' : ""}</td>
+          <td>${fmtDate(lwd)}</td>
+          <td>${escapeAttr(mgrName)}</td>
+          <td><span class="badge badge-amber">Pending</span></td>
+          <td>${action}</td>
+        </tr>`;
+    }).join("");
+  }
+
+  if (!done.length) {
+    doneBody.innerHTML = `<tr><td colspan="6" class="text-muted">No completed clearance yet.</td></tr>`;
+  } else {
+    doneBody.innerHTML = done.map((task) => {
+      const emp = task.exitRecord?.employee;
+      const name = `${emp?.firstName ?? ""} ${emp?.lastName ?? ""}`.trim();
+      const mgr = task.assignedManager;
+      const mgrName = mgr ? `${mgr.firstName ?? ""} ${mgr.lastName ?? ""}`.trim() : "—";
+      return `
+        <tr>
+          <td>${escapeAttr(name)} (${escapeAttr(emp?.employeeCode ?? "—")})</td>
+          <td><span class="badge ${task.exitRecord?.type === "TERMINATION" ? "badge-coral" : "badge-blue"}">${escapeAttr(formatLabel(task.exitRecord?.type ?? "—"))}</span></td>
+          <td>${escapeAttr(task.department)}</td>
+          <td>${fmtDate(task.completedAt)}</td>
+          <td>${escapeAttr(task.remarks ?? "—")}</td>
+          <td>${escapeAttr(mgrName)}</td>
+        </tr>`;
+    }).join("");
+  }
+}
+
+async function loadClearance() {
+  try {
+    clearanceTasksCache = await api("/exits/clearance/tasks");
+    if (!Array.isArray(clearanceTasksCache)) clearanceTasksCache = [];
+    renderClearanceTables();
+    renderNotifications();
+  } catch (error) {
+    clearanceTasksCache = [];
+    renderClearanceTables();
+    if (me?.role !== "EMPLOYEE" && me?.role !== "PRO") {
+      notify(error.message);
+    }
+  }
 }
 
 async function loadExits() {
@@ -2070,7 +2451,6 @@ window.__submitResignation = async function submitResignation() {
     const lwd = document.getElementById("exit-lwd")?.value;
     const reasonCategory = document.getElementById("exit-reason-category")?.value;
     const reason = document.getElementById("exit-reason")?.value.trim() ?? "";
-    const noticeAccepted = document.getElementById("exit-notice-accepted")?.value === "true";
     const confirmed = document.getElementById("exit-confirm")?.checked;
 
     if (!employeeId || !resignationDate || !lwd) {
@@ -2086,11 +2466,10 @@ window.__submitResignation = async function submitResignation() {
       method: "POST",
       body: JSON.stringify({
         employeeId,
-        resignationDate: new Date(resignationDate).toISOString(),
-        requestedLastWorkingDay: new Date(lwd).toISOString(),
+        resignationDate: toIsoFromInput(resignationDate),
+        requestedLastWorkingDay: toIsoFromInput(lwd),
         reasonCategory,
         reason,
-        noticeAccepted,
         supportingDocUrl,
         employeeConfirmed: true,
       }),
@@ -2112,10 +2491,11 @@ window.__initiateTermination = async function initiateTermination() {
   try {
     const employeeId = document.getElementById("term-emp-select")?.value;
     const reasonCategory = document.getElementById("term-reason-category")?.value;
+    const noticeStart = document.getElementById("term-notice-start")?.value;
     const lwd = document.getElementById("term-lwd")?.value;
     const notes = document.getElementById("term-notes")?.value.trim() ?? "";
-    if (!employeeId || !lwd) {
-      notify("Please select employee and last working date");
+    if (!employeeId || !noticeStart || !lwd) {
+      notify("Please select employee, notice start date and last working date");
       return;
     }
     const supportingDocUrl = await uploadAttachment("term-doc-file", "TERMINATION");
@@ -2124,7 +2504,8 @@ window.__initiateTermination = async function initiateTermination() {
       body: JSON.stringify({
         employeeId,
         reasonCategory,
-        lastWorkingDate: new Date(lwd).toISOString(),
+        noticeStartDate: toIsoFromInput(noticeStart),
+        lastWorkingDate: toIsoFromInput(lwd),
         incidentNotes: notes,
         supportingDocUrl,
       }),
@@ -2151,6 +2532,7 @@ function renderExitDetailHtml(record) {
 
   const timeline = [
     record.employeeConfirmedAt ? `Submitted ${fmtDate(record.employeeConfirmedAt)}` : "",
+    record.status === "NEGOTIATION" || record.negotiationNotes ? `Negotiation in progress` : "",
     record.lmApprovedAt ? `Line Manager approved ${fmtDate(record.lmApprovedAt)}` : "",
     record.hrApprovedAt ? `HR approved ${fmtDate(record.hrApprovedAt)}` : "",
     record.ceoApprovedAt ? `Director approved ${fmtDate(record.ceoApprovedAt)}` : "",
@@ -2158,12 +2540,34 @@ function renderExitDetailHtml(record) {
     record.rejectedAt ? `Rejected/Cancelled ${fmtDate(record.rejectedAt)}` : "",
   ].filter(Boolean).map((t) => `<li>${escapeAttr(t)}</li>`).join("");
 
+  const lineManager = record.employee?.manager;
+  const assignedApprover = record.assignedApprover;
+  const managerHtml = `
+    <div style="margin-top:8px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;font-size:13px;line-height:1.6">
+      <div><b>Notice period:</b> ${record.noticePeriodDays ?? 30} days (from employee profile)</div>
+      <div><b>From:</b> ${fmtDate(record.noticePeriodStartDate ?? record.resignationDate)} &nbsp;→&nbsp; <b>To:</b> ${fmtDate(addCalendarDaysForDisplay(record.noticePeriodStartDate ?? record.resignationDate, record.noticePeriodDays ?? 30))}</div>
+      <div><b>Last working day:</b> ${fmtDate(record.lastWorkingDate ?? record.requestedLastWorkingDay)}${record.noticeShortfallDays ? ` <span class="badge badge-coral">Shortfall ${record.noticeShortfallDays} day(s)</span>` : ""}</div>
+      <div><b>Line manager:</b> ${lineManager ? escapeAttr(`${lineManager.firstName ?? ""} ${lineManager.lastName ?? ""}`.trim()) + ` (${escapeAttr(lineManager.employeeCode ?? "—")})` : "Not assigned"}</div>
+      ${assignedApprover ? `<div><b>${assignedApprover.id !== lineManager?.id ? "Acting approver" : "Approver"}:</b> ${escapeAttr(`${assignedApprover.firstName ?? ""} ${assignedApprover.lastName ?? ""}`.trim())} (${escapeAttr(assignedApprover.employeeCode ?? "—")})</div>` : ""}
+      ${record.negotiationNotes ? `<div style="margin-top:6px"><b>Negotiation notes:</b> ${escapeAttr(record.negotiationNotes)}</div>` : ""}
+    </div>`;
+
   const clearance = (record.clearanceTasks ?? []).map((task) => {
     const done = task.status === "COMPLETED";
-    const action = (!done && (isElevated || isManager))
-      ? `<button class="btn btn-accent btn-sm" onclick="window.__exitClearance('${task.id}','COMPLETED')">Mark Done</button>`
-      : `<span class="badge ${done ? "badge-green" : "badge-amber"}">${done ? "Cleared" : "Pending"}</span>`;
-    return `<div class="flex-between" style="padding:8px 0;border-bottom:1px solid var(--border)"><span>${escapeAttr(task.department)}${task.urgent ? ' <span class="badge badge-coral">Urgent</span>' : ""}</span>${action}</div>`;
+    const manager = task.assignedManager;
+    const managerName = manager ? `${manager.firstName ?? ""} ${manager.lastName ?? ""}`.trim() : "—";
+    const assigneeLabel = task.department === "ADMIN" || task.department === "PRO" ? "HR / Admin" : "Dept manager";
+    return `<div style="padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">
+      <div class="flex-between">
+        <span>${escapeAttr(task.department)}${task.urgent ? ' <span class="badge badge-coral">Urgent</span>' : ""}</span>
+        <span class="badge ${done ? "badge-green" : "badge-amber"}">${done ? "Cleared" : "Pending"}</span>
+      </div>
+      <div class="text-muted" style="font-size:12px;margin-top:4px">${assigneeLabel}: ${escapeAttr(managerName)}</div>
+      ${done && task.remarks ? `<div style="margin-top:4px;font-size:12px"><b>Note:</b> ${escapeAttr(task.remarks)}</div>` : ""}
+      ${!done && canCompleteClearanceTask(task)
+        ? `<div style="margin-top:6px"><button class="btn btn-accent btn-sm" onclick="closeActionModal();window.__goClearancePage()">Clear on Clearance page</button></div>`
+        : ""}
+    </div>`;
   }).join("");
 
   const s = record.finalSettlement;
@@ -2178,9 +2582,29 @@ function renderExitDetailHtml(record) {
   ` : "";
 
   // Stage-specific actions
+  const canApproveResignation = (record.status === "NEGOTIATION" || record.status === "PENDING")
+    && record.type === "RESIGNATION"
+    && (isElevated || isManager);
+  const isAssignedApprover = record.assignedApproverId === me?.employee?.id
+    || record.employee?.managerId === me?.employee?.id;
+
+  const inNegotiation = record.status === "NEGOTIATION" || record.status === "PENDING" || record.status === "INITIATED";
+
   let actions = "";
-  if (record.status === "PENDING" && (isManager || isElevated)) {
-    actions = `<button class="btn btn-accent btn-sm" onclick="window.__exitAction('${record.id}','lm-approve')">Approve (L1)</button>`;
+  let negotiationBanner = "";
+  if (inNegotiation) {
+    negotiationBanner = `<div class="alert alert-info" style="font-size:13px;margin-bottom:10px">Negotiation is in progress. Set the notice period start date below — notice only counts from that date forward.</div>`;
+  }
+  if (canApproveResignation && (isElevated || isAssignedApprover)) {
+    actions = `
+      <div class="form-grid" style="margin-bottom:10px">
+        ${renderNoticeStartFieldsHtml(record, "exit-lm")}
+        <div class="form-group full">
+          <label>Negotiation notes (optional)</label>
+          <textarea id="exit-lm-notes" placeholder="Summarize negotiation outcome…">${escapeAttr(record.negotiationNotes ?? "")}</textarea>
+        </div>
+      </div>
+      <button class="btn btn-accent btn-sm" onclick="window.__exitLmApprove('${record.id}')">End Negotiation & Proceed</button>`;
   } else if (record.status === "LM_APPROVED" && isElevated) {
     actions = `
       <div class="form-grid" style="margin-bottom:10px">
@@ -2188,12 +2612,19 @@ function renderExitDetailHtml(record) {
         <div class="form-group"><label>Notice Shortfall (days)</label><input id="exit-hr-shortfall" type="number" min="0" value="${record.noticeShortfallDays ?? 0}"></div>
       </div>
       <button class="btn btn-primary btn-sm" onclick="window.__exitHrApprove('${record.id}')">HR Approve & Start Clearance</button>`;
-  } else if (record.status === "INITIATED" && isElevated) {
+  } else if (inNegotiation && record.type === "TERMINATION" && (isElevated || (isManager && isAssignedApprover))) {
     actions = `
-      <div class="form-group full" style="margin-bottom:10px"><label>Incident / Documentation Notes</label><textarea id="exit-doc-notes">${escapeAttr(record.incidentNotes ?? "")}</textarea></div>
-      <button class="btn btn-primary btn-sm" onclick="window.__exitDocument('${record.id}')">Save Documentation</button>`;
+      <div class="form-grid" style="margin-bottom:10px">
+        ${renderNoticeStartFieldsHtml(record, "exit-term")}
+        <div class="form-group full"><label>Incident / Documentation Notes</label><textarea id="exit-doc-notes">${escapeAttr(record.incidentNotes ?? "")}</textarea></div>
+        <div class="form-group full">
+          <label>Negotiation notes (optional)</label>
+          <textarea id="exit-term-notes" placeholder="Summarize negotiation outcome…">${escapeAttr(record.negotiationNotes ?? "")}</textarea>
+        </div>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="window.__exitDocument('${record.id}')">End Negotiation & Proceed</button>`;
   } else if (record.status === "DOCUMENTED" && isCeo) {
-    actions = `<button class="btn btn-primary btn-sm" onclick="window.__exitAction('${record.id}','ceo-approve')">Final Approve (CEO/Director)</button>`;
+    actions = `<button class="btn btn-primary btn-sm" onclick="window.__exitAction('${record.id}','ceo-approve')">Final Approve & Start Clearance</button>`;
   } else if (record.status === "CLEARANCE_IN_PROGRESS" && isElevated) {
     const allCleared = (record.clearanceTasks ?? []).every((t) => t.status === "COMPLETED");
     actions = allCleared ? `
@@ -2232,8 +2663,10 @@ function renderExitDetailHtml(record) {
       <div class="text-muted" style="font-size:13px">
         ${escapeAttr(formatLabel(record.type))} • ${escapeAttr(emp?.designation ?? "")} • ${escapeAttr(emp?.department ?? "")}<br>
         Reason: ${escapeAttr(formatLabel(record.reasonCategory ?? "—"))}${record.reason ? ` — ${escapeAttr(record.reason)}` : ""}<br>
-        Notice period: ${record.noticePeriodDays ?? 30} days • Shortfall: ${record.noticeShortfallDays ?? 0} days • LWD: ${fmtDate(record.lastWorkingDate ?? record.requestedLastWorkingDay)}
+        Shortfall: ${record.noticeShortfallDays ?? 0} days • LWD: ${fmtDate(record.lastWorkingDate ?? record.requestedLastWorkingDay)}
       </div>
+      ${negotiationBanner}
+      ${managerHtml}
       ${record.supportingDocUrl ? `<div><button class="btn btn-secondary btn-sm" onclick="window.__viewAttachment('${escapeAttr(record.supportingDocUrl)}')"><i class="bi bi-paperclip"></i> View Supporting Document</button></div>` : ""}
       ${rejectionHtml}
       ${timeline ? `<div><div class="section-title" style="font-size:13px">Progress</div><ul class="emp-tooltip-list" style="padding-left:16px;list-style:disc">${timeline}</ul></div>` : ""}
@@ -2242,6 +2675,21 @@ function renderExitDetailHtml(record) {
       ${(actions || rejectBtn) ? `<div><div class="section-title" style="font-size:13px">Actions</div><div class="flex gap-8" style="flex-wrap:wrap">${actions}${rejectBtn}</div></div>` : ""}
     </div>`;
 }
+
+window.__deleteExit = async function deleteExit(exitId) {
+  try {
+    const record = exitRecordsCache.find((r) => r.id === exitId);
+    const emp = record?.employee;
+    const label = emp ? ` for ${`${emp.firstName ?? ""} ${emp.lastName ?? ""}`.trim()}` : "";
+    if (!window.confirm(`Delete this exit record${label}? This cannot be undone.`)) return;
+    await api(`/exits/${exitId}`, { method: "DELETE" });
+    notify("Exit record deleted");
+    closeActionModal();
+    await loadExits();
+  } catch (error) {
+    notify(error.message);
+  }
+};
 
 window.__viewExit = async function viewExit(exitId) {
   try {
@@ -2272,6 +2720,28 @@ window.__exitAction = async function exitAction(exitId, action) {
   }
 };
 
+window.__exitLmApprove = async function exitLmApprove(exitId) {
+  try {
+    const noticeStartDate = document.getElementById("exit-lm-notice-start-date")?.value;
+    const negotiationNotes = document.getElementById("exit-lm-notes")?.value.trim() ?? "";
+    if (!noticeStartDate) {
+      notify("Please select when the notice period starts");
+      return;
+    }
+    await api(`/exits/${exitId}/lm-approve`, {
+      method: "POST",
+      body: JSON.stringify({
+        noticePeriodStartDate: toIsoFromInput(noticeStartDate),
+        negotiationNotes: negotiationNotes || undefined,
+      }),
+    });
+    notify("Negotiation ended; notice period start recorded");
+    await refreshExitModal(exitId);
+  } catch (error) {
+    notify(error.message);
+  }
+};
+
 window.__exitHrApprove = async function exitHrApprove(exitId) {
   try {
     const lwd = document.getElementById("exit-hr-lwd")?.value;
@@ -2293,23 +2763,73 @@ window.__exitHrApprove = async function exitHrApprove(exitId) {
 
 window.__exitDocument = async function exitDocument(exitId) {
   try {
+    const noticeStartDate = document.getElementById("exit-term-notice-start-date")?.value;
     const notes = document.getElementById("exit-doc-notes")?.value ?? "";
-    await api(`/exits/${exitId}/document`, { method: "POST", body: JSON.stringify({ incidentNotes: notes }) });
-    notify("Documentation saved");
+    const negotiationNotes = document.getElementById("exit-term-notes")?.value.trim() ?? "";
+    if (!noticeStartDate) {
+      notify("Please select when the notice period starts");
+      return;
+    }
+    await api(`/exits/${exitId}/document`, {
+      method: "POST",
+      body: JSON.stringify({
+        noticePeriodStartDate: toIsoFromInput(noticeStartDate),
+        incidentNotes: notes,
+        negotiationNotes: negotiationNotes || undefined,
+      }),
+    });
+    notify("Negotiation ended; notice period start recorded");
     await refreshExitModal(exitId);
   } catch (error) {
     notify(error.message);
   }
 };
 
-window.__exitClearance = async function exitClearance(taskId, status) {
+window.__exitClearance = async function exitClearance(taskId, note) {
   try {
-    const result = await api(`/exits/clearance/${taskId}`, { method: "PATCH", body: JSON.stringify({ status }) });
-    notify("Clearance updated");
-    await refreshExitModal(result?.exit?.id);
+    const remarks = note?.trim() ?? "";
+    if (remarks.length < 3) {
+      notify("Please enter a clearance note (at least 3 characters)");
+      return;
+    }
+    await api(`/exits/clearance/${taskId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status: "COMPLETED", remarks }),
+    });
+    notify("Clearance marked complete");
+    closeActionModal();
+    await loadClearance();
+    await loadExits();
   } catch (error) {
     notify(error.message);
   }
+};
+
+window.__goClearancePage = function goClearancePage() {
+  const nav = document.querySelector(".nav-item[onclick*=\"navigate('clearance'\"]");
+  if (typeof window.navigate === "function") {
+    window.navigate("clearance", nav);
+  }
+  loadClearance().catch((error) => notify(error.message));
+};
+
+window.__openClearanceComplete = function openClearanceComplete(taskId, department, employeeName) {
+  openActionModal({
+    title: `Complete ${department} Clearance`,
+    saveLabel: "Mark Done",
+    bodyHtml: `
+      <div style="display:grid;gap:10px">
+        <div class="text-muted" style="font-size:13px">Employee: <b>${escapeAttr(employeeName)}</b></div>
+        <div class="form-group full">
+          <label>Clearance note (required)</label>
+          <textarea id="clearance-note-input" placeholder="Describe what was cleared / returned / settled…" rows="4"></textarea>
+        </div>
+      </div>`,
+    onSave: async () => {
+      const note = document.getElementById("clearance-note-input")?.value ?? "";
+      await window.__exitClearance(taskId, note);
+    },
+  });
 };
 
 window.__exitSettlement = async function exitSettlement(exitId) {
@@ -2379,6 +2899,69 @@ function adjStatusBadge(status) {
   return "badge-amber";
 }
 
+function isFinanceManagerUser() {
+  const dept = (me?.employee?.department ?? "").trim().toLowerCase();
+  return me?.role === "MANAGER" && dept === "finance";
+}
+
+function canHrApproveLoan() {
+  return elevatedRoles.has(me?.role) || me?.role === "SUPER_ADMIN" || me?.role === "CEO";
+}
+
+let loanListTab = "pending";
+
+window.__switchLoanListTab = function switchLoanListTab(btn, tab) {
+  loanListTab = tab;
+  btn.parentElement?.querySelectorAll(".tab-btn").forEach((el) => el.classList.remove("active"));
+  btn.classList.add("active");
+  renderLoansTable();
+};
+
+function filterLoansByTab(loans) {
+  const myId = me?.employee?.id;
+  const isPendingForMe = (loan) => {
+    if (loan.status === "PENDING_FINANCE" && isFinanceManagerUser()) return true;
+    if (loan.status === "PENDING_HR" && canHrApproveLoan()) return true;
+    if (loan.status === "PENDING_FINANCE" || loan.status === "PENDING_HR") {
+      return loan.employeeId === myId || loan.employee?.id === myId;
+    }
+    return false;
+  };
+  if (loanListTab === "pending") {
+    return loans.filter(isPendingForMe);
+  }
+  return loans.filter((loan) => !isPendingForMe(loan));
+}
+
+function populateLoanEmpSelect() {
+  const wrap = document.getElementById("loan-emp-wrap");
+  const select = document.getElementById("loan-emp-select");
+  const selfLabel = document.getElementById("loan-self-label");
+  const role = me?.role;
+
+  if (role === "EMPLOYEE" || role === "PRO") {
+    if (wrap) wrap.style.display = "none";
+    if (selfLabel) {
+      selfLabel.style.display = "";
+      const name = `${me?.employee?.firstName ?? ""} ${me?.employee?.lastName ?? ""}`.trim();
+      selfLabel.textContent = `Requesting for: ${name} (${me?.employee?.employeeCode ?? "—"})`;
+    }
+    return;
+  }
+
+  if (wrap) wrap.style.display = "";
+  if (selfLabel) selfLabel.style.display = "none";
+  const source = elevatedRoles.has(role)
+    ? allEmployees
+    : role === "MANAGER"
+      ? allEmployees.filter((emp) => emp.id === me?.employee?.id || emp.managerId === me?.employee?.id)
+      : [];
+  const optionsHtml = `<option value="">Select employee…</option>` + source
+    .map((emp) => `<option value="${emp.id}">${escapeAttr(`${emp.firstName ?? ""} ${emp.lastName ?? ""}`.trim())} (${escapeAttr(emp.employeeCode ?? "—")})</option>`)
+    .join("");
+  if (select) select.innerHTML = optionsHtml;
+}
+
 function populateAdjustmentEmployeeSelects() {
   const source = elevatedRoles.has(me?.role)
     ? allEmployees
@@ -2388,10 +2971,9 @@ function populateAdjustmentEmployeeSelects() {
   const optionsHtml = `<option value="">Select employee…</option>` + source
     .map((emp) => `<option value="${emp.id}">${escapeAttr(`${emp.firstName ?? ""} ${emp.lastName ?? ""}`.trim())} (${escapeAttr(emp.employeeCode ?? "—")})</option>`)
     .join("");
-  ["adj-emp-select", "loan-emp-select"].forEach((id) => {
-    const el = document.getElementById(id);
-    if (el) el.innerHTML = optionsHtml;
-  });
+  const el = document.getElementById("adj-emp-select");
+  if (el) el.innerHTML = optionsHtml;
+  populateLoanEmpSelect();
 }
 
 function populateAdjustmentCategoryOptions() {
@@ -2410,7 +2992,7 @@ async function loadAdjustmentMeta() {
     adjustmentDualThreshold = Number(meta?.dualApprovalThreshold ?? 5000);
     populateAdjustmentCategoryOptions();
     const note = document.getElementById("loan-threshold-note");
-    if (note) note.textContent = `Loans/advances above AED ${adjustmentDualThreshold.toLocaleString("en-US")} require dual approval.`;
+    if (note) note.textContent = "Requests go to Finance for approval (with note), then HR/Admin final approval.";
   } catch (_error) {
     adjustmentCategories = [];
   }
@@ -2449,22 +3031,60 @@ function renderAdjustmentsTable() {
   }).join("");
 }
 
+function loanStatusBadge(status) {
+  if (status === "ACTIVE" || status === "CLOSED") return "badge-green";
+  if (status === "REJECTED") return "badge-coral";
+  if (status === "PENDING_HR") return "badge-blue";
+  return "badge-amber";
+}
+
 function renderLoansTable() {
   const tbody = document.getElementById("adj-loans-body");
+  const summary = document.getElementById("loan-list-summary");
   if (!tbody) return;
-  if (!loansCache.length) {
-    tbody.innerHTML = `<tr><td colspan="7" class="text-muted">No loans or advances.</td></tr>`;
+
+  const filtered = filterLoansByTab(loansCache);
+  const pendingAll = loansCache.filter((loan) => {
+    const myId = me?.employee?.id;
+    if (loan.status === "PENDING_FINANCE" && isFinanceManagerUser()) return true;
+    if (loan.status === "PENDING_HR" && canHrApproveLoan()) return true;
+    if (loan.status === "PENDING_FINANCE" || loan.status === "PENDING_HR") {
+      return loan.employeeId === myId || loan.employee?.id === myId;
+    }
+    return false;
+  }).length;
+  const historyAll = loansCache.length - pendingAll;
+  if (summary) {
+    summary.textContent = loanListTab === "pending"
+      ? `${filtered.length} pending`
+      : `${filtered.length} in history · ${pendingAll} still pending`;
+  }
+
+  if (!filtered.length) {
+    tbody.innerHTML = `<tr><td colspan="8" class="text-muted">${loanListTab === "pending" ? "No pending loan/advance requests." : "No loan/advance history yet."}</td></tr>`;
     return;
   }
-  const canApprove = elevatedRoles.has(me?.role);
-  tbody.innerHTML = loansCache.map((loan) => {
+  tbody.innerHTML = filtered.map((loan) => {
     const emp = loan.employee;
     const name = `${emp?.firstName ?? ""} ${emp?.lastName ?? ""}`.trim();
     const outstanding = Number(loan.outstandingAmount ?? Math.max(0, loan.totalAmount - loan.recoveredAmount));
+    const docCell = loan.supportingDocUrl
+      ? `<button class="btn btn-secondary btn-sm" onclick="window.__viewAttachment('${escapeAttr(loan.supportingDocUrl)}')"><i class="bi bi-paperclip"></i> View</button>`
+      : `<span class="text-muted">—</span>`;
     let action = `<span class="text-muted">—</span>`;
-    if (canApprove && loan.status === "PENDING_APPROVAL") {
-      const dualHint = loan.requiresDualApproval && loan.approver1Id ? " (2nd)" : loan.requiresDualApproval ? " (1st)" : "";
-      action = `<div class="flex gap-8"><button class="btn btn-accent btn-sm" onclick="window.__approveLoan('${loan.id}')">Approve${dualHint}</button><button class="btn btn-danger btn-sm" onclick="window.__rejectLoan('${loan.id}')">Reject</button></div>`;
+    if (loan.status === "PENDING_FINANCE" && isFinanceManagerUser()) {
+      action = `<div class="flex gap-8"><button class="btn btn-accent btn-sm" onclick="window.__openLoanApprove('${loan.id}','finance')">Finance Approve</button><button class="btn btn-danger btn-sm" onclick="window.__rejectLoan('${loan.id}')">Reject</button></div>`;
+    } else if (loan.status === "PENDING_HR" && canHrApproveLoan()) {
+      action = `<div class="flex gap-8"><button class="btn btn-accent btn-sm" onclick="window.__openLoanApprove('${loan.id}','hr')">HR / Admin Approve</button><button class="btn btn-danger btn-sm" onclick="window.__rejectLoan('${loan.id}')">Reject</button></div>`;
+    } else if (loan.status === "PENDING_FINANCE") {
+      action = `<span class="text-muted" style="font-size:12px">Awaiting Finance</span>`;
+    } else if (loan.status === "PENDING_HR") {
+      const financeNote = loan.financeApprovalNote ? `<div class="text-muted" style="font-size:11px;margin-top:4px">Finance: ${escapeAttr(loan.financeApprovalNote)}</div>` : "";
+      action = `<span class="text-muted" style="font-size:12px">Awaiting HR / Admin</span>${financeNote}`;
+    } else if (loan.status === "ACTIVE" || loan.status === "CLOSED") {
+      action = `<span class="text-muted" style="font-size:12px">Approved</span>`;
+    } else if (loan.status === "REJECTED") {
+      action = `<span class="text-muted" style="font-size:12px">Rejected</span>`;
     }
     return `
       <tr>
@@ -2473,7 +3093,8 @@ function renderLoansTable() {
         <td>AED ${Number(loan.totalAmount).toLocaleString("en-US")}</td>
         <td>AED ${Number(loan.recoveredAmount).toLocaleString("en-US")}</td>
         <td>AED ${outstanding.toLocaleString("en-US")}</td>
-        <td><span class="badge ${loan.status === "CLOSED" ? "badge-green" : loan.status === "REJECTED" ? "badge-coral" : loan.status === "ACTIVE" ? "badge-blue" : "badge-amber"}">${formatLabel(loan.status)}</span></td>
+        <td><span class="badge ${loanStatusBadge(loan.status)}">${escapeAttr(formatLabel(loan.status))}</span></td>
+        <td>${docCell}</td>
         <td>${action}</td>
       </tr>`;
   }).join("");
@@ -2592,7 +3213,11 @@ window.__processAdjustmentMonth = async function processAdjustmentMonth() {
 
 window.__submitLoan = async function submitLoan() {
   try {
-    const employeeId = document.getElementById("loan-emp-select")?.value;
+    const role = me?.role;
+    let employeeId = document.getElementById("loan-emp-select")?.value;
+    if (role === "EMPLOYEE" || role === "PRO") {
+      employeeId = me?.employee?.id;
+    }
     const type = document.getElementById("loan-type")?.value;
     const totalAmount = Number(document.getElementById("loan-total")?.value ?? 0);
     const installmentAmount = Number(document.getElementById("loan-installment")?.value ?? 0);
@@ -2606,6 +3231,7 @@ window.__submitLoan = async function submitLoan() {
       notify("Reason must be at least 10 characters");
       return;
     }
+    const supportingDocUrl = await uploadAttachment("loan-doc-file", "LOAN");
     await api("/adjustments/loans", {
       method: "POST",
       body: JSON.stringify({
@@ -2616,12 +3242,67 @@ window.__submitLoan = async function submitLoan() {
         startMonth: startParts.month,
         startYear: startParts.year,
         reason,
+        supportingDocUrl,
       }),
     });
-    notify("Loan/advance created (pending approval)");
+    notify("Loan/advance request submitted");
     document.getElementById("loan-total").value = "";
     document.getElementById("loan-installment").value = "";
     document.getElementById("loan-reason").value = "";
+    const loanFile = document.getElementById("loan-doc-file");
+    if (loanFile) loanFile.value = "";
+    await loadAdjustments();
+  } catch (error) {
+    notify(error.message);
+  }
+};
+
+window.__openLoanApprove = function openLoanApprove(loanId, stage) {
+  const title = stage === "finance" ? "Finance Approval" : "HR / Admin Approval";
+  openActionModal({
+    title,
+    saveLabel: "Approve",
+    bodyHtml: `
+      <div class="form-group full">
+        <label>Approval note (required)</label>
+        <textarea id="loan-approval-note" placeholder="Enter approval note…" rows="4"></textarea>
+      </div>`,
+    onSave: async () => {
+      const note = document.getElementById("loan-approval-note")?.value?.trim() ?? "";
+      if (note.length < 3) {
+        notify("Please enter an approval note (at least 3 characters)");
+        return;
+      }
+      if (stage === "finance") {
+        await window.__approveLoanFinance(loanId, note);
+      } else {
+        await window.__approveLoanHr(loanId, note);
+      }
+      closeActionModal();
+    },
+  });
+};
+
+window.__approveLoanFinance = async function approveLoanFinance(id, note) {
+  try {
+    await api(`/adjustments/loans/${id}/finance-approve`, {
+      method: "POST",
+      body: JSON.stringify({ note }),
+    });
+    notify("Finance approval recorded — awaiting HR/Admin");
+    await loadAdjustments();
+  } catch (error) {
+    notify(error.message);
+  }
+};
+
+window.__approveLoanHr = async function approveLoanHr(id, note) {
+  try {
+    await api(`/adjustments/loans/${id}/hr-approve`, {
+      method: "POST",
+      body: JSON.stringify({ note }),
+    });
+    notify("HR/Admin approval recorded — loan/advance is active");
     await loadAdjustments();
   } catch (error) {
     notify(error.message);
@@ -2629,13 +3310,7 @@ window.__submitLoan = async function submitLoan() {
 };
 
 window.__approveLoan = async function approveLoan(id) {
-  try {
-    await api(`/adjustments/loans/${id}/approve`, { method: "POST", body: JSON.stringify({}) });
-    notify("Loan/advance approval recorded");
-    await loadAdjustments();
-  } catch (error) {
-    notify(error.message);
-  }
+  notify("Use Finance Approve or HR Approve with a note");
 };
 
 window.__rejectLoan = async function rejectLoan(id) {
@@ -2671,6 +3346,36 @@ function wireAdjustmentForms() {
 let proDocsCache = [];
 let proTasksCache = [];
 let proDocTypes = [];
+let editingProDocId = null;
+const DOCUMENT_EXPIRY_ALERT_DAYS = 30;
+
+function canSearchEmployeeDocuments() {
+  return elevatedRoles.has(me?.role) || me?.role === "PRO" || me?.role === "CEO";
+}
+
+function getExpiringDocuments(docs = proDocsCache) {
+  let list = (docs ?? []).filter((doc) => doc.computedStatus === "EXPIRING" || doc.computedStatus === "EXPIRED");
+  if (me?.role === "EMPLOYEE" || me?.role === "MANAGER") {
+    list = list.filter((doc) => doc.employeeId === me?.employee?.id);
+  }
+  return list;
+}
+
+function formatDocTypeLabel(docType) {
+  const labels = {
+    PASSPORT: "Passport",
+    PHOTO: "Photo",
+    RESIDENCE_VISA: "Residence Visa",
+    EMIRATES_ID: "Emirates ID",
+    LABOUR_PERMIT: "Labour Permit",
+    HEALTH_CARD: "Health Card",
+    MEDICAL_FITNESS: "Medical Fitness",
+    LABOUR_CONTRACT: "Labour Contract",
+    ESTABLISHMENT_CARD: "Establishment Card",
+    TRADE_LICENSE: "Trade License",
+  };
+  return labels[docType] ?? formatLabel(docType);
+}
 
 function proDocStatusBadge(status) {
   if (status === "EXPIRED") return "badge-coral";
@@ -2698,7 +3403,7 @@ function populateProEmployeeSelects() {
 }
 
 function populateProDocTypeSelects() {
-  const optionsHtml = proDocTypes.map((t) => `<option value="${t}">${escapeAttr(formatLabel(t))}</option>`).join("");
+  const optionsHtml = proDocTypes.map((t) => `<option value="${t}">${escapeAttr(formatDocTypeLabel(t))}</option>`).join("");
   const docSel = document.getElementById("pro-doc-type");
   const taskSel = document.getElementById("pro-task-doctype");
   if (docSel) docSel.innerHTML = optionsHtml;
@@ -2726,13 +3431,22 @@ function renderProDocsTable() {
   tbody.innerHTML = proDocsCache.map((doc) => {
     const emp = doc.employee;
     const name = `${emp?.firstName ?? ""} ${emp?.lastName ?? ""}`.trim();
-    const action = doc.fileUrl
-      ? `<button class="btn btn-secondary btn-sm" onclick="window.__viewAttachment('${escapeAttr(doc.fileUrl)}')">File</button>`
-      : (canManage ? `<button class="btn btn-secondary btn-sm" onclick="window.__renewProDocument('${doc.id}')">Update</button>` : `<span class="text-muted">—</span>`);
+    let action = `<span class="text-muted">—</span>`;
+    if (canManage) {
+      const parts = [];
+      if (doc.fileUrl) {
+        parts.push(`<button class="btn btn-secondary btn-sm" onclick="window.__viewAttachment('${escapeAttr(doc.fileUrl)}')">View</button>`);
+      }
+      parts.push(`<button class="btn btn-secondary btn-sm" onclick="window.__editProDocument('${doc.id}')">Edit</button>`);
+      parts.push(`<button class="btn btn-danger btn-sm" onclick="window.__deleteProDocument('${doc.id}')">Delete</button>`);
+      action = `<div class="flex gap-8" style="flex-wrap:wrap">${parts.join("")}</div>`;
+    } else if (doc.fileUrl) {
+      action = `<button class="btn btn-secondary btn-sm" onclick="window.__viewAttachment('${escapeAttr(doc.fileUrl)}')">View</button>`;
+    }
     return `
       <tr>
         <td>${escapeAttr(name)}</td>
-        <td>${escapeAttr(formatLabel(doc.docType))}</td>
+        <td>${escapeAttr(formatDocTypeLabel(doc.docType))}</td>
         <td>${escapeAttr(doc.documentNumber ?? "—")}</td>
         <td>${escapeAttr(doc.issuingAuthority ?? "—")}</td>
         <td>${fmtDate(doc.expiryDate)}</td>
@@ -2742,11 +3456,33 @@ function renderProDocsTable() {
   }).join("");
 }
 
+function proStatusLabel(status) {
+  const labels = {
+    VISA_PROCESSING: "Visa Processing",
+    EVISA: "eVisa",
+    NON_EXIT: "Non Exit",
+    MEDICAL: "Medical",
+    EID: "EID",
+    COMPLETED: "Completed",
+    RENEWAL_INITIATED: "Renewal Initiated",
+    DOCUMENTS_VALIDATED: "Documents Validated",
+    SUBMITTED: "Submitted",
+    MEDICAL_IN_PROGRESS: "Medical In Progress",
+    CANCELLATION_PENDING: "Cancellation Pending",
+    PASSPORT_COLLECTED: "Passport Collected",
+    CANCELLATION_SUBMITTED: "Cancellation Submitted",
+    CANCELLED: "Cancelled",
+    PASSPORT_RETURNED: "Passport Returned",
+    ABORTED: "Aborted",
+  };
+  return labels[status] ?? formatLabel(status);
+}
+
 function renderProTasksTable() {
   const tbody = document.getElementById("pro-tasks-body");
   if (!tbody) return;
   if (!proTasksCache.length) {
-    tbody.innerHTML = `<tr><td colspan="7" class="text-muted">No PRO tasks.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" class="text-muted">No PRO tasks.</td></tr>`;
     return;
   }
   const canManage = canManageProUi();
@@ -2754,24 +3490,37 @@ function renderProTasksTable() {
     const emp = task.employee;
     const name = `${emp?.firstName ?? ""} ${emp?.lastName ?? ""}`.trim();
     const flow = Array.isArray(task.flow) ? task.flow : [];
-    const isFinal = flow.indexOf(task.status) >= flow.length - 1;
-    const terminal = ["COMPLETED", "CANCELLED", "PASSPORT_RETURNED", "ABORTED"].includes(task.status);
+    const terminal = ["ABORTED"].includes(task.status);
     let action = `<span class="text-muted">—</span>`;
-    if (canManage && !terminal && !isFinal) {
-      action = `<button class="btn btn-accent btn-sm" onclick="window.__advanceProTask('${task.id}')">Advance Stage</button>`;
+    if (canManage && !terminal && flow.length) {
+      const options = flow.map((stage) =>
+        `<option value="${stage}" ${stage === task.status ? "selected" : ""}>${escapeAttr(proStatusLabel(stage))}</option>`,
+      ).join("");
+      action = `<select class="pro-stage-select" onchange="window.__setProTaskStage('${task.id}', this.value, this)" style="min-width:150px;padding:6px 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text)">${options}</select>`;
     }
     const govFee = [task.governmentRef, task.feeAmount ? `AED ${Number(task.feeAmount).toLocaleString("en-US")}` : null].filter(Boolean).join(" · ") || "—";
+    const stageBadge = task.status === "COMPLETED" ? "badge-green" : task.status === "VISA_PROCESSING" ? "badge-amber" : "badge-blue";
     return `
       <tr>
         <td>${escapeAttr(task.referenceNumber)}${task.autoCreated ? ' <span class="badge badge-amber">Auto</span>' : ""}</td>
         <td>${escapeAttr(name)}</td>
         <td>${escapeAttr(formatLabel(task.taskType))}</td>
-        <td>${escapeAttr(task.documentType ? formatLabel(task.documentType) : "—")}</td>
-        <td><span class="badge badge-blue">${escapeAttr(formatLabel(task.status))}</span></td>
+        <td><span class="badge ${stageBadge}">${escapeAttr(proStatusLabel(task.status))}</span></td>
         <td>${escapeAttr(govFee)}</td>
         <td>${action}</td>
       </tr>`;
   }).join("");
+}
+
+function refreshEmployeeDashboardDocStat() {
+  if (!isEmployeeDashboard()) return;
+  const expiringDocCount = getExpiringDocuments().length;
+  const statValues = document.querySelectorAll("#view-dashboard .stats-grid .stat-value");
+  const statSubs = document.querySelectorAll("#view-dashboard .stats-grid .stat-sub");
+  if (statValues[3]) statValues[3].textContent = String(expiringDocCount);
+  if (statSubs[3]) {
+    statSubs[3].textContent = expiringDocCount ? "Within 30-day expiry window" : "All documents up to date";
+  }
 }
 
 async function loadPro() {
@@ -2782,10 +3531,239 @@ async function loadPro() {
     renderProDocsTable();
     renderProTasksTable();
     renderNotifications();
+    renderDashboardInsights();
+    refreshEmployeeDashboardDocStat();
   } catch (error) {
     notify(error.message);
   }
 }
+
+function renderEmployeeDocumentsTable(docs) {
+  const tbody = document.getElementById("documents-table-body");
+  if (!tbody) return;
+  if (!docs.length) {
+    tbody.innerHTML = `<tr><td colspan="7" class="text-muted">No documents registered for this employee yet.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = docs.map((doc) => {
+    const fileCell = doc.fileUrl
+      ? `<button class="btn btn-secondary btn-sm" onclick="window.__viewAttachment('${escapeAttr(doc.fileUrl)}')">View</button>`
+      : `<span class="text-muted">—</span>`;
+    return `
+      <tr>
+        <td>${escapeAttr(formatDocTypeLabel(doc.docType))}</td>
+        <td>${escapeAttr(doc.documentNumber ?? "—")}</td>
+        <td>${escapeAttr(doc.issuingAuthority ?? "—")}</td>
+        <td>${fmtDate(doc.issueDate)}</td>
+        <td>${fmtDate(doc.expiryDate)}</td>
+        <td><span class="badge ${proDocStatusBadge(doc.computedStatus)}">${escapeAttr(formatLabel(doc.computedStatus ?? "VALID"))}</span></td>
+        <td>${fileCell}</td>
+      </tr>`;
+  }).join("");
+}
+
+window.__selectDocumentsEmployee = async function selectDocumentsEmployee(employeeId, silent = false) {
+  const employee = allEmployees.find((item) => item.id === employeeId) ?? (employeeId === me?.employee?.id ? me.employee : null);
+  const resultsBox = document.getElementById("documents-search-results");
+  const searchInput = document.getElementById("documents-search");
+  const detail = document.getElementById("documents-detail");
+  const empty = document.getElementById("documents-empty");
+  if (!employee) {
+    if (!silent) notify("Employee not found");
+    return;
+  }
+  if (resultsBox) {
+    resultsBox.style.display = "none";
+    resultsBox.innerHTML = "";
+  }
+  const name = `${employee.firstName ?? ""} ${employee.lastName ?? ""}`.trim();
+  if (searchInput && canSearchEmployeeDocuments()) searchInput.value = name;
+
+  try {
+    const docs = await api(`/pro/documents?employeeId=${encodeURIComponent(employeeId)}`);
+    const rows = Array.isArray(docs) ? docs : [];
+
+    const avatar = document.getElementById("documents-avatar");
+    const nameEl = document.getElementById("documents-name");
+    const metaEl = document.getElementById("documents-meta");
+    if (avatar) {
+      avatar.textContent = name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "--";
+    }
+    if (nameEl) nameEl.textContent = name;
+    if (metaEl) metaEl.textContent = `${employee.employeeCode ?? "—"} • ${employee.department ?? ""} • ${employee.designation ?? ""}`;
+
+    renderEmployeeDocumentsTable(rows);
+    if (detail) detail.style.display = "";
+    if (empty) empty.style.display = "none";
+  } catch (error) {
+    notify(error.message);
+  }
+};
+
+function wireDocumentsLookup() {
+  const searchInput = document.getElementById("documents-search");
+  const resultsBox = document.getElementById("documents-search-results");
+  if (!searchInput || !resultsBox) return;
+
+  const closeResults = () => {
+    resultsBox.style.display = "none";
+    resultsBox.innerHTML = "";
+  };
+
+  const renderResults = (term) => {
+    const query = term.trim().toLowerCase();
+    if (!query) {
+      closeResults();
+      return;
+    }
+    const matches = allEmployees.filter((employee) => {
+      const haystack = [
+        employee.firstName,
+        employee.lastName,
+        employee.employeeCode,
+        employee.email,
+        employee.department,
+        employee.designation,
+      ].filter(Boolean).join(" ").toLowerCase();
+      return haystack.includes(query);
+    }).slice(0, 8);
+
+    if (!matches.length) {
+      resultsBox.innerHTML = `<div class="text-muted" style="padding:10px">No matching employees.</div>`;
+      resultsBox.style.display = "block";
+      return;
+    }
+
+    resultsBox.innerHTML = matches.map((employee) => {
+      const name = `${employee.firstName ?? ""} ${employee.lastName ?? ""}`.trim();
+      return `<button type="button" class="emp-action-item" style="display:block;width:100%;text-align:left;padding:9px 10px" onclick="window.__selectDocumentsEmployee('${employee.id}')">${escapeAttr(name)} (${escapeAttr(employee.employeeCode ?? "—")}) • ${escapeAttr(employee.department ?? "")}</button>`;
+    }).join("");
+    resultsBox.style.display = "block";
+  };
+
+  searchInput.addEventListener("input", () => renderResults(searchInput.value));
+  searchInput.addEventListener("focus", () => renderResults(searchInput.value));
+  document.addEventListener("click", (event) => {
+    if (event.target === searchInput) return;
+    if (resultsBox.contains(event.target)) return;
+    closeResults();
+  });
+}
+
+function applyDocumentsPageRoleUi() {
+  const canSearch = canSearchEmployeeDocuments();
+  const searchWrap = document.getElementById("documents-search-wrap");
+  const selfNote = document.getElementById("documents-self-note");
+  const pageTitle = document.getElementById("documents-page-title");
+  const empty = document.getElementById("documents-empty");
+  if (searchWrap) searchWrap.style.display = canSearch ? "" : "none";
+  if (selfNote) selfNote.style.display = canSearch ? "none" : "";
+  if (pageTitle) pageTitle.textContent = canSearch ? "Employee Document Lookup" : "My Documents";
+  if (empty && !canSearch) empty.style.display = "none";
+}
+
+async function loadDocumentsPage() {
+  applyDocumentsPageRoleUi();
+  if (canSearchEmployeeDocuments()) return;
+  if (me?.employee?.id) {
+    await window.__selectDocumentsEmployee(me.employee.id, true);
+  }
+}
+
+function resetProDocumentForm() {
+  editingProDocId = null;
+  const title = document.getElementById("pro-doc-form-title");
+  const saveBtn = document.getElementById("pro-doc-save-btn");
+  const cancelBtn = document.getElementById("pro-doc-cancel-btn");
+  const fileLabel = document.getElementById("pro-doc-file-label");
+  const fileNote = document.getElementById("pro-doc-file-note");
+  if (title) title.textContent = "Add / Register Document";
+  if (saveBtn) saveBtn.textContent = "Save Document";
+  if (cancelBtn) cancelBtn.style.display = "none";
+  if (fileLabel) fileLabel.textContent = "Document File (required · PDF/JPG/PNG · max 5 MB)";
+  if (fileNote) {
+    fileNote.style.display = "none";
+    fileNote.textContent = "";
+  }
+  ["pro-doc-number", "pro-doc-authority", "pro-doc-issue", "pro-doc-expiry", "pro-doc-notes"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.value = "";
+  });
+  const empSel = document.getElementById("pro-doc-emp");
+  if (empSel) {
+    empSel.value = "";
+    empSel.disabled = false;
+  }
+  const typeSel = document.getElementById("pro-doc-type");
+  if (typeSel && proDocTypes.length) typeSel.value = proDocTypes[0];
+  const fileInput = document.getElementById("pro-doc-file");
+  if (fileInput) fileInput.value = "";
+}
+
+window.__cancelProDocumentEdit = function cancelProDocumentEdit() {
+  resetProDocumentForm();
+  const tabBtn = document.querySelector("#view-pro .tab-btn[onclick*=\"pro-documents\"]");
+  if (tabBtn) switchTab(tabBtn, "pro-documents");
+};
+
+window.__editProDocument = function editProDocument(id) {
+  const doc = proDocsCache.find((item) => item.id === id);
+  if (!doc) {
+    notify("Document not found");
+    return;
+  }
+  populateProEmployeeSelects();
+  populateProDocTypeSelects();
+  editingProDocId = id;
+  const title = document.getElementById("pro-doc-form-title");
+  const saveBtn = document.getElementById("pro-doc-save-btn");
+  const cancelBtn = document.getElementById("pro-doc-cancel-btn");
+  const fileLabel = document.getElementById("pro-doc-file-label");
+  const fileNote = document.getElementById("pro-doc-file-note");
+  if (title) title.textContent = "Edit Document";
+  if (saveBtn) saveBtn.textContent = "Update Document";
+  if (cancelBtn) cancelBtn.style.display = "";
+  if (fileLabel) fileLabel.textContent = "Replace File (optional · PDF/JPG/PNG · max 5 MB)";
+  if (fileNote) {
+    fileNote.style.display = doc.fileUrl ? "" : "none";
+    fileNote.textContent = doc.fileUrl ? "Current file attached. Upload a new file only if you want to replace it." : "";
+  }
+  const empSel = document.getElementById("pro-doc-emp");
+  if (empSel) {
+    empSel.value = doc.employeeId;
+    empSel.disabled = true;
+  }
+  const typeSel = document.getElementById("pro-doc-type");
+  if (typeSel) typeSel.value = doc.docType;
+  const numberEl = document.getElementById("pro-doc-number");
+  if (numberEl) numberEl.value = doc.documentNumber ?? "";
+  const authorityEl = document.getElementById("pro-doc-authority");
+  if (authorityEl) authorityEl.value = doc.issuingAuthority ?? "";
+  const issueEl = document.getElementById("pro-doc-issue");
+  if (issueEl) issueEl.value = doc.issueDate ? String(doc.issueDate).slice(0, 10) : "";
+  const expiryEl = document.getElementById("pro-doc-expiry");
+  if (expiryEl) expiryEl.value = doc.expiryDate ? String(doc.expiryDate).slice(0, 10) : "";
+  const notesEl = document.getElementById("pro-doc-notes");
+  if (notesEl) notesEl.value = doc.notes ?? "";
+  const fileInput = document.getElementById("pro-doc-file");
+  if (fileInput) fileInput.value = "";
+  const tabBtn = document.querySelector("#view-pro .tab-btn[onclick*=\"pro-doc-new\"]");
+  if (tabBtn) switchTab(tabBtn, "pro-doc-new");
+};
+
+window.__deleteProDocument = async function deleteProDocument(id) {
+  try {
+    const doc = proDocsCache.find((item) => item.id === id);
+    const label = doc ? formatDocTypeLabel(doc.docType) : "this document";
+    if (!window.confirm(`Delete ${label}? This cannot be undone.`)) return;
+    await api(`/pro/documents/${id}`, { method: "DELETE" });
+    notify("Document deleted");
+    if (editingProDocId === id) resetProDocumentForm();
+    await loadPro();
+  } catch (error) {
+    notify(error.message);
+  }
+};
 
 window.__submitProDocument = async function submitProDocument() {
   try {
@@ -2797,48 +3775,40 @@ window.__submitProDocument = async function submitProDocument() {
     }
     const issueDate = document.getElementById("pro-doc-issue")?.value;
     const expiryDate = document.getElementById("pro-doc-expiry")?.value;
-    const fileUrl = await uploadAttachment("pro-doc-file", "DOCUMENT");
-    await api("/pro/documents", {
-      method: "POST",
-      body: JSON.stringify({
-        employeeId,
-        docType,
-        documentNumber: document.getElementById("pro-doc-number")?.value.trim() || undefined,
-        issuingAuthority: document.getElementById("pro-doc-authority")?.value.trim() || undefined,
-        issueDate: issueDate ? new Date(issueDate).toISOString() : undefined,
-        expiryDate: expiryDate ? new Date(expiryDate).toISOString() : undefined,
-        fileUrl,
-        notes: document.getElementById("pro-doc-notes")?.value.trim() || undefined,
-      }),
-    });
-    notify("Document saved");
-    ["pro-doc-number", "pro-doc-authority", "pro-doc-issue", "pro-doc-expiry", "pro-doc-notes"].forEach((id) => {
-      const el = document.getElementById(id);
-      if (el) el.value = "";
-    });
-    const f = document.getElementById("pro-doc-file");
-    if (f) f.value = "";
+    const fileInput = document.getElementById("pro-doc-file");
+    const hasNewFile = Boolean(fileInput?.files?.[0]);
+    if (!editingProDocId && !hasNewFile) {
+      notify("Please attach a document file (PDF, JPG or PNG)");
+      return;
+    }
+    const fileUrl = hasNewFile ? await uploadAttachment("pro-doc-file", "DOCUMENT") : undefined;
+    const payload = {
+      docType,
+      documentNumber: document.getElementById("pro-doc-number")?.value.trim() || undefined,
+      issuingAuthority: document.getElementById("pro-doc-authority")?.value.trim() || undefined,
+      issueDate: issueDate ? new Date(issueDate).toISOString() : undefined,
+      expiryDate: expiryDate ? new Date(expiryDate).toISOString() : undefined,
+      notes: document.getElementById("pro-doc-notes")?.value.trim() || undefined,
+    };
+    if (fileUrl) payload.fileUrl = fileUrl;
+
+    if (editingProDocId) {
+      await api(`/pro/documents/${editingProDocId}`, {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      });
+      notify("Document updated");
+    } else {
+      await api("/pro/documents", {
+        method: "POST",
+        body: JSON.stringify({ ...payload, employeeId, fileUrl }),
+      });
+      notify("Document saved");
+    }
+    resetProDocumentForm();
     await loadPro();
     const tabBtn = document.querySelector("#view-pro .tab-btn[onclick*=\"pro-documents\"]");
     if (tabBtn) switchTab(tabBtn, "pro-documents");
-  } catch (error) {
-    notify(error.message);
-  }
-};
-
-window.__renewProDocument = async function renewProDocument(id) {
-  try {
-    const newExpiry = window.prompt("Enter new expiry date (YYYY-MM-DD):");
-    if (!newExpiry || !/^\d{4}-\d{2}-\d{2}$/.test(newExpiry)) {
-      notify("Please enter a valid date (YYYY-MM-DD)");
-      return;
-    }
-    await api(`/pro/documents/${id}`, {
-      method: "PUT",
-      body: JSON.stringify({ expiryDate: new Date(`${newExpiry}T00:00:00`).toISOString() }),
-    });
-    notify("Document expiry updated");
-    await loadPro();
   } catch (error) {
     notify(error.message);
   }
@@ -2872,20 +3842,31 @@ window.__submitProTask = async function submitProTask() {
   }
 };
 
-window.__advanceProTask = async function advanceProTask(id) {
+window.__setProTaskStage = async function setProTaskStage(id, status, selectEl) {
+  const task = proTasksCache.find((t) => t.id === id);
+  if (!task || task.status === status) return;
   try {
-    const governmentRef = window.prompt("Government reference number (optional):") || undefined;
-    const feeInput = governmentRef !== undefined ? window.prompt("Fee amount for this step (optional, AED):") : undefined;
-    const feeAmount = feeInput && !Number.isNaN(Number(feeInput)) ? Number(feeInput) : undefined;
-    await api(`/pro/tasks/${id}/advance`, {
-      method: "POST",
-      body: JSON.stringify({ governmentRef, feeAmount }),
+    await api(`/pro/tasks/${id}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
     });
-    notify("Task advanced to next stage");
+    notify("Stage updated");
     await loadPro();
   } catch (error) {
     notify(error.message);
+    if (selectEl && task) selectEl.value = task.status;
   }
+};
+
+window.__advanceProTask = async function advanceProTask(id) {
+  const task = proTasksCache.find((t) => t.id === id);
+  const flow = Array.isArray(task?.flow) ? task.flow : [];
+  const idx = flow.indexOf(task?.status ?? "");
+  if (idx < 0 || idx >= flow.length - 1) {
+    notify("Use the stage dropdown to set the status");
+    return;
+  }
+  await window.__setProTaskStage(id, flow[idx + 1]);
 };
 
 function wireProForms() {
@@ -2894,6 +3875,47 @@ function wireProForms() {
   const expiry = document.getElementById("pro-doc-expiry");
   if (expiry) expiry.min = todayIso;
   if (issue) issue.max = todayIso;
+  const addDocTabBtn = document.getElementById("pro-doc-new-tab-btn");
+  addDocTabBtn?.addEventListener("click", () => {
+    resetProDocumentForm();
+  });
+}
+
+function isEmployeeDashboard() {
+  return me?.role === "EMPLOYEE";
+}
+
+function applyEmployeeDashboardUi() {
+  const isEmployee = isEmployeeDashboard();
+  document.getElementById("dash-employee-summary-card")?.style.setProperty("display", isEmployee ? "" : "none");
+  document.getElementById("dash-admin-insights-row")?.style.setProperty("display", isEmployee ? "none" : "");
+  document.getElementById("dash-overtime-panel")?.style.setProperty("display", isEmployee ? "none" : "");
+}
+
+function renderEmployeeDashboardSummary() {
+  const container = document.getElementById("dash-employee-summary");
+  const employee = allEmployees.find((item) => item.id === me?.employee?.id) ?? me?.employee;
+  if (!container || !employee) return;
+  const manager = employee.managerId
+    ? allEmployees.find((item) => item.id === employee.managerId)
+    : null;
+  const managerName = manager
+    ? `${manager.firstName ?? ""} ${manager.lastName ?? ""}`.trim()
+    : "—";
+  const items = [
+    ["Employee ID", employee.employeeCode ?? "—"],
+    ["Department", employee.department ?? "—"],
+    ["Designation", employee.designation ?? "—"],
+    ["Status", formatLabel(employee.status ?? "ACTIVE")],
+    ["Joined", employee.dateOfJoining ? fmtDate(employee.dateOfJoining) : "—"],
+    ["Reporting To", managerName],
+  ];
+  container.innerHTML = items.map(([label, value]) => `
+    <div style="background:rgba(21,101,192,0.08);border:1px solid var(--border-bright);border-radius:9px;padding:12px">
+      <div class="text-muted" style="font-size:11px;margin-bottom:4px">${escapeAttr(label)}</div>
+      <div style="font-weight:600">${escapeAttr(value)}</div>
+    </div>
+  `).join("");
 }
 
 async function loadDashboard() {
@@ -2902,26 +3924,56 @@ async function loadDashboard() {
   const statValues = document.querySelectorAll("#view-dashboard .stats-grid .stat-value");
   const statLabels = document.querySelectorAll("#view-dashboard .stats-grid .stat-label");
   const statSubs = document.querySelectorAll("#view-dashboard .stats-grid .stat-sub");
+  const isEmployee = isEmployeeDashboard();
+  const payrollMonth = data?.payrollCurrentMonth;
+  const expiringDocCount = getExpiringDocuments().length;
+
   if (statValues.length >= 4) {
-    statValues[0].textContent = String(data.headcount ?? 0);
-    statValues[1].textContent = String(data.onLeave ?? 0);
-    const payroll = Number(data.monthlyPayroll ?? 0);
-    statValues[2].textContent = payroll >= 1000000
-      ? `${(payroll / 1000000).toFixed(2)}M`
-      : Math.round(payroll).toLocaleString("en-US");
-    statValues[3].textContent = String(data.pendingLeaveApprovals ?? 0);
+    if (isEmployee) {
+      statValues[0].textContent = formatLabel(me?.employee?.status ?? "ACTIVE");
+      statValues[1].textContent = String(data.pendingLeaveApprovals ?? 0);
+      statValues[2].textContent = formatAed(payrollMonth?.netPay ?? 0).replace("AED ", "");
+      statValues[3].textContent = String(expiringDocCount);
+    } else {
+      statValues[0].textContent = String(data.headcount ?? 0);
+      statValues[1].textContent = String(data.onLeave ?? 0);
+      const payroll = Number(data.monthlyPayroll ?? 0);
+      statValues[2].textContent = payroll >= 1000000
+        ? `${(payroll / 1000000).toFixed(2)}M`
+        : Math.round(payroll).toLocaleString("en-US");
+      statValues[3].textContent = String(data.pendingLeaveApprovals ?? 0);
+    }
   }
   if (statLabels.length >= 4) {
-    statLabels[3].textContent = "Pending Approvals";
+    if (isEmployee) {
+      statLabels[0].textContent = "Employment Status";
+      statLabels[1].textContent = "Pending Leave Requests";
+      statLabels[2].textContent = "Net Pay (This Month)";
+      statLabels[3].textContent = "Documents Expiring";
+    } else {
+      statLabels[0].textContent = "Total Headcount";
+      statLabels[1].textContent = "On Leave Today";
+      statLabels[2].textContent = "Monthly Payroll (AED)";
+      statLabels[3].textContent = "Pending Approvals";
+    }
   }
   if (statSubs.length >= 4) {
-    const headcount = Number(data.headcount ?? 0);
-    const onLeave = Number(data.onLeave ?? 0);
-    const pendingApprovals = Number(data.pendingLeaveApprovals ?? 0);
-    statSubs[1].textContent = headcount ? `${((onLeave / headcount) * 100).toFixed(1)}% of workforce` : "No leave today";
-    statSubs[2].textContent = `Current cycle total`;
-    statSubs[3].textContent = l1Roles.has(me?.role) ? "Waiting for L1 action" : l2Roles.has(me?.role) ? "Waiting for L2 action" : "Track your leave workflow";
+    if (isEmployee) {
+      statSubs[0].textContent = me?.employee?.department ?? "Your department";
+      statSubs[1].textContent = Number(data.pendingLeaveApprovals ?? 0) ? "Awaiting manager/HR action" : "No open requests";
+      statSubs[2].textContent = payrollMonth?.month && payrollMonth?.year
+        ? new Date(payrollMonth.year, payrollMonth.month - 1, 1).toLocaleDateString("en-GB", { month: "long", year: "numeric" })
+        : "Current pay cycle";
+      statSubs[3].textContent = expiringDocCount ? "Within 30-day expiry window" : "All documents up to date";
+    } else {
+      const headcount = Number(data.headcount ?? 0);
+      const onLeave = Number(data.onLeave ?? 0);
+      statSubs[1].textContent = headcount ? `${((onLeave / headcount) * 100).toFixed(1)}% of workforce` : "No leave today";
+      statSubs[2].textContent = "Current cycle total";
+      statSubs[3].textContent = l1Roles.has(me?.role) ? "Waiting for L1 action" : l2Roles.has(me?.role) ? "Waiting for L2 action" : "Track your leave workflow";
+    }
   }
+  if (isEmployee) renderEmployeeDashboardSummary();
   renderDashboardInsights();
   renderNotifications();
 }
@@ -3013,11 +4065,13 @@ function renderDashboardInsights() {
   if (payrollTitle && payrollMonth?.month && payrollMonth?.year) {
     const periodLabel = new Date(payrollMonth.year, payrollMonth.month - 1, 1)
       .toLocaleDateString("en-GB", { month: "long", year: "numeric" });
-    payrollTitle.textContent = `Payroll Overview — ${periodLabel}`;
+    payrollTitle.textContent = isEmployeeDashboard()
+      ? `My Payslip — ${periodLabel}`
+      : `Payroll Overview — ${periodLabel}`;
   }
   if (payrollEarnings && payrollMonth) {
     payrollEarnings.innerHTML = `
-      <div class="payslip-row"><span>Basic Salaries</span><span>${formatAed(payrollMonth.basic)}</span></div>
+      <div class="payslip-row"><span>${isEmployeeDashboard() ? "Basic Salary" : "Basic Salaries"}</span><span>${formatAed(payrollMonth.basic)}</span></div>
       <div class="payslip-row"><span>Housing Allowance</span><span>${formatAed(payrollMonth.housing)}</span></div>
       <div class="payslip-row"><span>Transport</span><span>${formatAed(payrollMonth.transport)}</span></div>
       <div class="payslip-row"><span>Overtime</span><span>${formatAed(payrollMonth.overtime)}</span></div>
@@ -3042,7 +4096,7 @@ function renderDashboardInsights() {
     overtimeEmployeesEl.textContent = String(payrollMonth?.overtimeEmployees ?? 0);
   }
 
-  if (pendingApprovals > 0) {
+  if (pendingApprovals > 0 && !isEmployeeDashboard()) {
     alerts.push({
       tone: "success",
       icon: "bi-check2-circle",
@@ -3062,7 +4116,7 @@ function renderDashboardInsights() {
       desc: "Your leave request is moving through L1/L2 workflow.",
     });
   }
-  if (onLeave > 0) {
+  if (onLeave > 0 && !isEmployeeDashboard()) {
     alerts.push({
       tone: "warn",
       icon: "bi-calendar-check",
@@ -3070,12 +4124,28 @@ function renderDashboardInsights() {
       desc: "Coverage planning may be required.",
     });
   }
-  if (probationCount > 0) {
+  if (isEmployeeDashboard() && me?.employee?.status === "ON_LEAVE") {
+    alerts.push({
+      tone: "info",
+      icon: "bi-calendar-check",
+      title: "You are on leave today",
+      desc: "Enjoy your time off — check Leave Management for details.",
+    });
+  }
+  if (probationCount > 0 && !isEmployeeDashboard()) {
     alerts.push({
       tone: "info",
       icon: "bi-flag",
       title: `${probationCount} Employee${probationCount === 1 ? "" : "s"} on Probation`,
       desc: "Review probation outcomes and confirmations.",
+    });
+  }
+  if (isEmployeeDashboard() && me?.employee?.status === "PROBATION") {
+    alerts.push({
+      tone: "info",
+      icon: "bi-flag",
+      title: "You are on probation",
+      desc: "Your confirmation review is tracked by HR and your manager.",
     });
   }
   if (me?.employee && (!me.employee.bankName || !me.employee.iban)) {
@@ -3084,6 +4154,20 @@ function renderDashboardInsights() {
       icon: "bi-bank",
       title: "Bank profile incomplete",
       desc: "Update IBAN and Bank Name in your profile.",
+    });
+  }
+
+  const expiringDocs = getExpiringDocuments();
+  if (expiringDocs.length) {
+    const expiredCount = expiringDocs.filter((doc) => doc.computedStatus === "EXPIRED").length;
+    const soonCount = expiringDocs.length - expiredCount;
+    alerts.push({
+      tone: "warn",
+      icon: "bi-passport",
+      title: `${expiringDocs.length} Document(s) Within 30-Day Expiry Window`,
+      desc: expiredCount
+        ? `${soonCount} expiring soon, ${expiredCount} expired — open Documents to review.`
+        : "Passport, visa, Emirates ID and permits need renewal planning.",
     });
   }
 
@@ -3114,7 +4198,11 @@ function renderDashboardInsights() {
     });
   }
 
-  [...leaveRequestsCache]
+  const leaveTimelineSource = isEmployeeDashboard() && myEmployeeId
+    ? leaveRequestsCache.filter((request) => request.employeeId === myEmployeeId)
+    : leaveRequestsCache;
+
+  [...leaveTimelineSource]
     .sort((a, b) => new Date(dashboardRequestDate(b)).getTime() - new Date(dashboardRequestDate(a)).getTime())
     .slice(0, 5)
     .forEach((request) => {
@@ -3122,10 +4210,13 @@ function renderDashboardInsights() {
       const leaveType = request.leaveType?.name ?? "Leave";
       const statusText = formatLeaveStatus(request.status);
       const statusTone = request.status === "APPROVED" ? "green" : request.status === "REJECTED" ? "amber" : "";
+      const timelineText = isEmployeeDashboard()
+        ? `Your <b>${escapeAttr(leaveType)}</b> request was marked as ${escapeAttr(statusText)}.`
+        : `<b>${escapeAttr(employeeName)}</b> ${escapeAttr(leaveType)} request marked as ${escapeAttr(statusText)}.`;
       timelineRows.push({
         tone: statusTone,
         date: new Date(dashboardRequestDate(request)),
-        text: `<b>${escapeAttr(employeeName)}</b> ${escapeAttr(leaveType)} request marked as ${escapeAttr(statusText)}.`,
+        text: timelineText,
       });
     });
 
@@ -4622,34 +5713,6 @@ window.__faceResetFromSettings = async function faceResetFromSettings() {
   }
 };
 
-async function loadEss() {
-  if (!me?.employee?.id) return;
-
-  const [balances, payslips] = await Promise.all([
-    api(`/leave/balances/${me.employee.id}`),
-    api("/ess/my-payslips"),
-  ]);
-
-  const essAlert = document.querySelector("#view-ess .alert b");
-  if (essAlert) {
-    essAlert.textContent = `${me.employee.firstName} ${me.employee.lastName}`;
-  }
-
-  const leaveCards = document.querySelectorAll("#view-ess .stats-grid .stat-value");
-  const annual = balances.find((item) => item.leaveType.code === "AL");
-  const sick = balances.find((item) => item.leaveType.code === "SL");
-
-  if (leaveCards.length >= 4) {
-    leaveCards[0].textContent = String(Math.max(0, Math.round((annual?.openingBalance ?? 0) + (annual?.accrued ?? 0) - (annual?.used ?? 0))));
-    leaveCards[1].textContent = String(Math.max(0, Math.round((sick?.openingBalance ?? 0) + (sick?.accrued ?? 0) - (sick?.used ?? 0))));
-    const latestPayslip = payslips[0];
-    if (latestPayslip) {
-      const monthName = new Date(latestPayslip.year, latestPayslip.month - 1, 1).toLocaleDateString("en-GB", { month: "short", year: "numeric" });
-      leaveCards[2].textContent = monthName;
-    }
-  }
-}
-
 function formatProfileDate(value) {
   if (!value) return "—";
   const date = new Date(value);
@@ -4746,10 +5809,15 @@ async function start() {
     populateLeaveTypes();
     wireLeaveApplyForm();
     wireLeaveBalanceLookup();
+    wireDocumentsLookup();
     const exitNav = document.querySelector(".nav-item[onclick*=\"navigate('exits'\"]");
     exitNav?.addEventListener("click", () => {
       populateExitEmployeeSelects();
       loadExits().catch((error) => notify(error.message));
+    });
+    const clearanceNav = document.querySelector(".nav-item[onclick*=\"navigate('clearance'\"]");
+    clearanceNav?.addEventListener("click", () => {
+      loadClearance().catch((error) => notify(error.message));
     });
     wireAdjustmentForms();
     const payadjustNav = document.querySelector(".nav-item[onclick*=\"navigate('payadjust'\"]");
@@ -4765,6 +5833,14 @@ async function start() {
       populateProDocTypeSelects();
       loadPro().catch((error) => notify(error.message));
     });
+    const documentsNav = document.querySelector(".nav-item[onclick*=\"navigate('documents'\"]");
+    documentsNav?.addEventListener("click", () => {
+      loadDocumentsPage().catch((error) => notify(error.message));
+    });
+    const dashboardNav = document.querySelector(".nav-item[onclick*=\"navigate('dashboard'\"]");
+    dashboardNav?.addEventListener("click", () => {
+      loadDashboard().catch((error) => notify(error.message));
+    });
     wireEmployeeCreation();
     wireEmployeeFilters();
     document.getElementById("face-modal")?.addEventListener("click", (event) => {
@@ -4772,9 +5848,10 @@ async function start() {
         window.__closeFaceModal();
       }
     });
-    await Promise.all([loadDashboard(), refreshEmployees(), loadLeaveRequests(), loadEss(), loadAttendanceStatus(), loadOnlineAttendance(), loadFaceStatus()]);
+    await Promise.all([loadDashboard(), refreshEmployees(), loadLeaveRequests(), loadAttendanceStatus(), loadOnlineAttendance(), loadFaceStatus()]);
     populateExitEmployeeSelects();
     loadExits().catch(() => null);
+    loadClearance().catch(() => null);
     populateAdjustmentEmployeeSelects();
     loadAdjustmentMeta().catch(() => null);
     loadAdjustments().catch(() => null);
@@ -4801,6 +5878,9 @@ async function start() {
     if (document.getElementById("view-calendar")?.classList.contains("active")) {
       await loadCalendarMonth();
       setTimeout(() => calendarMap?.invalidateSize(), 120);
+    }
+    if (document.getElementById("view-documents")?.classList.contains("active")) {
+      await loadDocumentsPage();
     }
     if (document.getElementById("view-attendance")?.classList.contains("active")) {
       await Promise.all([loadAttendanceStatus(), loadOnlineAttendance()]);

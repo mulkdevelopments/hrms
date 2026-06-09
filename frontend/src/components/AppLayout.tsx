@@ -18,9 +18,6 @@ export function AppLayout() {
           <NavLink to="/leave" className="nav-link">
             Leave Management
           </NavLink>
-          <NavLink to="/ess" className="nav-link">
-            ESS Portal
-          </NavLink>
         </nav>
       </aside>
 

@@ -1,0 +1,48 @@
+{
+  "expo": {
+    "name": "HRMS",
+    "slug": "hrms-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "hrms",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#0f172a"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.opencoders.hrms",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "HRMS uses your location to verify office geofence during attendance check-in/out.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "HRMS uses your location to track attendance while you are checked in."
+      }
+    },
+    "android": {
+      "package": "com.opencoders.hrms",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
+    },
+    "extra": {
+      "apiBaseUrl": "https://hrms-app-dzsr.onrender.com/api",
+      "eas": {
+        "projectId": "aa0085a5-5368-4340-87fe-bdbad7fadea8"
+      }
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "HRMS uses your location to verify office geofence during attendance."
+        }
+      ],
+      "expo-asset",
+      "expo-font"
+    ]
+  }
+}

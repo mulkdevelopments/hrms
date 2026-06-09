@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node --watch --env-file=.env --import tsx src/index.ts",
+    "dev": "npm run prisma:generate && node --watch --env-file=.env --import tsx src/index.ts",
     "build": "npm run prisma:generate && tsc -p tsconfig.json",
     "start": "node dist/src/index.js",
     "prisma:generate": "prisma generate",
@@ -12,7 +12,9 @@
     "prisma:migrate": "prisma migrate dev --name init",
     "prisma:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
-    "seed": "npm run prisma:generate && node --env-file=.env --import tsx prisma/seed.ts"
+    "seed": "npm run prisma:generate && node --env-file=.env --import tsx prisma/seed.ts",
+    "ensure-dept-managers": "npm run prisma:generate && node --env-file=.env --import tsx prisma/ensure-department-managers.ts",
+    "migrate-pro-onboarding": "npm run prisma:generate && node --env-file=.env --import tsx prisma/migrate-pro-onboarding.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

@@ -55,6 +55,8 @@ model Employee {
   attendanceSessions AttendanceSession[]
   locationPings      LocationPing[]
   exitRecords        ExitRecord[]   @relation("ExitEmployee")
+  exitApprovalsAssigned ExitRecord[] @relation("ExitAssignedApprover")
+  clearanceTasksAssigned ClearanceTask[] @relation("ClearanceAssignedManager")
   payrollAdjustments PayrollAdjustment[] @relation("AdjustmentEmployee")
   advanceLoans       SalaryAdvanceLoan[] @relation("LoanEmployee")
   documents          EmployeeDocument[]  @relation("DocumentEmployee")
@@ -200,9 +202,12 @@ model ExitRecord {
   resignationDate     DateTime?
   requestedLastWorkingDay DateTime?
   lastWorkingDate     DateTime?
-  noticePeriodDays    Int      @default(30)
-  noticeAccepted      Boolean  @default(true)
-  noticeShortfallDays Int      @default(0)
+  noticePeriodDays      Int      @default(30)
+  noticePeriodStartDate DateTime?
+  noticeAccepted        Boolean  @default(true)
+  noticeShortfallDays   Int      @default(0)
+  assignedApproverId    String?
+  negotiationNotes      String?
   supportingDocUrl    String?
   incidentNotes       String?
   employeeConfirmed   Boolean  @default(false)
@@ -222,29 +227,33 @@ model ExitRecord {
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
-  employee        Employee         @relation("ExitEmployee", fields: [employeeId], references: [id])
-  clearanceTasks  ClearanceTask[]
-  finalSettlement FinalSettlement?
+  employee          Employee         @relation("ExitEmployee", fields: [employeeId], references: [id])
+  assignedApprover  Employee?        @relation("ExitAssignedApprover", fields: [assignedApproverId], references: [id])
+  clearanceTasks    ClearanceTask[]
+  finalSettlement   FinalSettlement?
 
   @@index([employeeId])
   @@index([status])
 }
 
 model ClearanceTask {
-  id            String   @id @default(cuid())
-  exitRecordId  String
-  department    String // IT | FINANCE | ADMIN | PRO
-  status        String   @default("PENDING") // PENDING | COMPLETED
-  urgent        Boolean  @default(false)
-  remarks       String?
-  completedById String?
-  completedAt   DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id                 String   @id @default(cuid())
+  exitRecordId       String
+  department         String // IT | FINANCE | ADMIN | PRO
+  status             String   @default("PENDING") // PENDING | COMPLETED
+  urgent             Boolean  @default(false)
+  remarks            String?
+  assignedManagerId  String?
+  completedById      String?
+  completedAt        DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
-  exitRecord ExitRecord @relation(fields: [exitRecordId], references: [id], onDelete: Cascade)
+  exitRecord       ExitRecord @relation(fields: [exitRecordId], references: [id], onDelete: Cascade)
+  assignedManager  Employee?  @relation("ClearanceAssignedManager", fields: [assignedManagerId], references: [id])
 
   @@index([exitRecordId])
+  @@index([assignedManagerId])
 }
 
 model PayrollAdjustment {
@@ -293,8 +302,15 @@ model SalaryAdvanceLoan {
   startYear        Int
   recoveredAmount  Float    @default(0)
   reason           String
-  status           String   @default("PENDING_APPROVAL") // PENDING_APPROVAL | ACTIVE | CLOSED | REJECTED
+  supportingDocUrl String?
+  status           String   @default("PENDING_FINANCE") // PENDING_FINANCE | PENDING_HR | ACTIVE | CLOSED | REJECTED
   requiresDualApproval Boolean @default(false)
+  financeApprovedById String?
+  financeApprovedAt   DateTime?
+  financeApprovalNote String?
+  hrApprovedById      String?
+  hrApprovedAt        DateTime?
+  hrApprovalNote      String?
   createdById      String?
   approver1Id      String?
   approver1At      DateTime?

@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "../../lib/prisma.js";
 import { applyEmploymentStatusToEmployee, getProbationCutoffDate } from "../../lib/employment-status.js";
+import { createOnboardingProTask } from "../../lib/pro-tasks.js";
 import { authMiddleware, requireRoles, type AuthRequest } from "../../middleware/auth.js";
 
 const privilegedRoles = ["SUPER_ADMIN", "HR", "HR_OFFICER"] as const;
@@ -209,6 +210,8 @@ employeesRouter.post("/", requireRoles(...privilegedRoles), async (req, res) => 
       },
     },
   });
+
+  await createOnboardingProTask(employee.id);
 
   return res.status(201).json(applyEmploymentStatusToEmployee(employee));
 });

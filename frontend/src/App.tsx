@@ -6,7 +6,6 @@ import { LoginPage } from "./pages/LoginPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { EmployeesPage } from "./pages/EmployeesPage";
 import { LeavePage } from "./pages/LeavePage";
-import { EssPage } from "./pages/EssPage";
 
 function PrivateRoute({ children }: { children: ReactElement }) {
   const { token } = useAuth();
@@ -31,7 +30,6 @@ export default function App() {
         <Route index element={<DashboardPage />} />
         <Route path="employees" element={<EmployeesPage />} />
         <Route path="leave" element={<LeavePage />} />
-        <Route path="ess" element={<EssPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

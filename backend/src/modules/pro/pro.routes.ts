@@ -2,19 +2,27 @@ import { Router } from "express";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../../lib/prisma.js";
+import {
+  createOnboardingProTask,
+  ensureOnboardingProTasks,
+  generateProRef,
+  NEW_VISA_ONBOARDING_FLOW,
+  ONBOARDING_INITIAL_STATUS,
+} from "../../lib/pro-tasks.js";
 import { authMiddleware, requireRoles, type AuthRequest } from "../../middleware/auth.js";
 
 export const proRouter = Router();
 proRouter.use(authMiddleware);
 
 const PRO_ROLES: ("SUPER_ADMIN" | "HR" | "HR_OFFICER" | "PRO")[] = ["SUPER_ADMIN", "HR", "HR_OFFICER", "PRO"];
-const EXPIRY_ALERT_DAYS = 90;
+const EXPIRY_ALERT_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 const DOC_TYPES = [
+  "PASSPORT",
+  "PHOTO",
   "RESIDENCE_VISA",
   "EMIRATES_ID",
-  "PASSPORT",
   "LABOUR_PERMIT",
   "HEALTH_CARD",
   "MEDICAL_FITNESS",
@@ -25,14 +33,7 @@ const DOC_TYPES = [
 
 // Ordered workflow stages per task type.
 const TASK_FLOWS: Record<string, string[]> = {
-  NEW_VISA: [
-    "DOCUMENTS_REQUIRED",
-    "ENTRY_PERMIT_SUBMITTED",
-    "ENTRY_PERMIT_APPROVED",
-    "MEDICAL_IN_PROGRESS",
-    "VISA_STAMPING",
-    "COMPLETED",
-  ],
+  NEW_VISA: [...NEW_VISA_ONBOARDING_FLOW],
   RENEWAL: [
     "RENEWAL_INITIATED",
     "DOCUMENTS_VALIDATED",
@@ -53,6 +54,10 @@ function canManage(role?: string) {
   return Boolean(role && (PRO_ROLES as readonly string[]).includes(role));
 }
 
+function canViewAllDocuments(role?: string) {
+  return canManage(role) || role === "CEO";
+}
+
 function docStatus(expiryDate: Date | null) {
   if (!expiryDate) return "VALID";
   const now = Date.now();
@@ -66,13 +71,6 @@ function withDocStatus<T extends { expiryDate: Date | null }>(doc: T) {
   return { ...doc, computedStatus: docStatus(doc.expiryDate) };
 }
 
-async function generateProRef() {
-  const now = new Date();
-  const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}`;
-  const count = await prisma.proTask.count();
-  return `PRO-${stamp}-${String(count + 1).padStart(5, "0")}`;
-}
-
 const docInclude = {
   employee: { select: { id: true, employeeCode: true, firstName: true, lastName: true, department: true } },
 } satisfies Prisma.EmployeeDocumentInclude;
@@ -84,10 +82,12 @@ const documentSchema = z.object({
   issuingAuthority: z.string().optional(),
   issueDate: z.string().datetime().optional(),
   expiryDate: z.string().datetime().optional(),
-  fileUrl: z.string().optional(),
+  fileUrl: z.string().min(1, "Document file is required"),
   notes: z.string().optional(),
 });
-const documentUpdateSchema = documentSchema.partial().omit({ employeeId: true });
+const documentUpdateSchema = documentSchema.partial().omit({ employeeId: true, fileUrl: true }).extend({
+  fileUrl: z.string().min(1).optional(),
+});
 
 const taskSchema = z.object({
   employeeId: z.string(),
@@ -100,9 +100,15 @@ const advanceSchema = z.object({
   feeAmount: z.number().nonnegative().optional(),
   notes: z.string().optional(),
 });
+const setStatusSchema = z.object({
+  status: z.string().min(1),
+  governmentRef: z.string().optional(),
+  feeAmount: z.number().nonnegative().optional(),
+  notes: z.string().optional(),
+});
 
 function scopeDocWhere(auth: AuthRequest["auth"]): Prisma.EmployeeDocumentWhereInput {
-  if (canManage(auth?.role)) return {};
+  if (canViewAllDocuments(auth?.role)) return {};
   if (auth?.role === "MANAGER") return { employee: { managerId: auth.employeeId } };
   return { employeeId: auth?.employeeId ?? "__none__" };
 }
@@ -113,7 +119,14 @@ proRouter.get("/doc-types", (_req, res) => res.json({ docTypes: DOC_TYPES, alert
 
 proRouter.get("/documents", async (req: AuthRequest, res) => {
   const where = scopeDocWhere(req.auth);
-  if (req.query.employeeId && canManage(req.auth?.role)) where.employeeId = String(req.query.employeeId);
+  if (req.query.employeeId) {
+    const employeeId = String(req.query.employeeId);
+    if (canViewAllDocuments(req.auth?.role)) {
+      where.employeeId = employeeId;
+    } else if (employeeId === req.auth?.employeeId) {
+      where.employeeId = employeeId;
+    }
+  }
   const docs = await prisma.employeeDocument.findMany({ where, include: docInclude, orderBy: { expiryDate: "asc" } });
   return res.json(docs.map(withDocStatus));
 });
@@ -165,7 +178,7 @@ proRouter.put("/documents/:id", requireRoles(...PRO_ROLES), async (req, res) => 
   return res.json(withDocStatus(doc));
 });
 
-proRouter.delete("/documents/:id", requireRoles("SUPER_ADMIN", "HR", "PRO"), async (req, res) => {
+proRouter.delete("/documents/:id", requireRoles(...PRO_ROLES), async (req, res) => {
   const existing = await prisma.employeeDocument.findUnique({ where: { id: String(req.params.id) } });
   if (!existing) return res.status(404).json({ message: "Document not found" });
   await prisma.employeeDocument.delete({ where: { id: existing.id } });
@@ -185,6 +198,7 @@ const taskInclude = {
 } satisfies Prisma.ProTaskInclude;
 
 proRouter.get("/tasks", async (req: AuthRequest, res) => {
+  await ensureOnboardingProTasks();
   const where = scopeTaskWhere(req.auth);
   if (req.query.status) where.status = String(req.query.status);
   if (req.query.taskType) where.taskType = String(req.query.taskType);
@@ -197,19 +211,53 @@ proRouter.post("/tasks", requireRoles(...PRO_ROLES), async (req: AuthRequest, re
   const employee = await prisma.employee.findUnique({ where: { id: payload.employeeId }, select: { id: true } });
   if (!employee) return res.status(404).json({ message: "Employee not found" });
   const flow = TASK_FLOWS[payload.taskType];
+  const initialStatus = payload.taskType === "NEW_VISA" ? ONBOARDING_INITIAL_STATUS : flow[0];
   const task = await prisma.proTask.create({
     data: {
       referenceNumber: await generateProRef(),
       employeeId: payload.employeeId,
       taskType: payload.taskType,
       documentType: payload.documentType,
-      status: flow[0],
+      status: initialStatus,
       notes: payload.notes,
       createdById: req.auth?.employeeId,
     },
     include: taskInclude,
   });
   return res.status(201).json({ ...task, flow });
+});
+
+proRouter.patch("/tasks/:id/status", requireRoles(...PRO_ROLES), async (req, res) => {
+  const payload = setStatusSchema.parse(req.body);
+  const task = await prisma.proTask.findUnique({ where: { id: String(req.params.id) } });
+  if (!task) return res.status(404).json({ message: "Task not found" });
+  if (task.status === "ABORTED") {
+    return res.status(400).json({ message: "Aborted tasks cannot be updated" });
+  }
+
+  const flow = TASK_FLOWS[task.taskType] ?? [];
+  if (!flow.includes(payload.status)) {
+    return res.status(400).json({ message: "Invalid stage for this task type" });
+  }
+
+  const finalStage = flow[flow.length - 1];
+  const isFinal = payload.status === finalStage;
+
+  const updated = await prisma.proTask.update({
+    where: { id: task.id },
+    data: {
+      status: payload.status,
+      governmentRef: payload.governmentRef ?? task.governmentRef,
+      feeAmount: payload.feeAmount ?? task.feeAmount,
+      notes: payload.notes ?? task.notes,
+      submittedAt: payload.status.includes("SUBMITTED")
+        ? (task.submittedAt ?? new Date())
+        : task.submittedAt,
+      completedAt: isFinal ? new Date() : null,
+    },
+    include: taskInclude,
+  });
+  return res.json({ ...updated, flow });
 });
 
 proRouter.post("/tasks/:id/advance", requireRoles(...PRO_ROLES), async (req, res) => {
@@ -249,7 +297,8 @@ proRouter.post("/tasks/:id/cancel", requireRoles(...PRO_ROLES), async (req, res)
   return res.json({ ...updated, flow: TASK_FLOWS[task.taskType] ?? [] });
 });
 
-// Auto-create renewal tasks for documents expiring within the alert window.
+export { createOnboardingProTask, ensureOnboardingProTasks } from "../../lib/pro-tasks.js";
+
 export async function autoCreateRenewalTasks() {
   const cutoff = new Date(Date.now() + EXPIRY_ALERT_DAYS * DAY_MS);
   const renewableTypes = ["RESIDENCE_VISA", "LABOUR_PERMIT", "EMIRATES_ID", "HEALTH_CARD"];
