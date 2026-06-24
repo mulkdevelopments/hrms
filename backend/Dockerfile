@@ -19,6 +19,7 @@ COPY . .
 RUN npm run build
 
 ENV NODE_ENV=production
+ENV NODE_OPTIONS=--max-old-space-size=460
 EXPOSE 4000
 
-CMD ["sh", "-c", "npx prisma migrate deploy && npm start"]
+CMD ["sh", "-c", "npx prisma migrate deploy && exec node dist/src/index.js"]

@@ -1,19 +1,20 @@
-import "@tensorflow/tfjs-node";
-import * as tf from "@tensorflow/tfjs-node";
-import * as faceapi from "@vladmandic/face-api";
-import canvas from "canvas";
-
 const MODEL_BASE = "https://justadudewhohacks.github.io/face-api.js/models";
 export const FACE_MATCH_THRESHOLD = 0.55;
 
 let modelsReady = false;
 let modelsLoading: Promise<void> | null = null;
+let faceapiModule: typeof import("@vladmandic/face-api") | null = null;
+let canvasModule: typeof import("canvas") | null = null;
 
 async function loadModels(): Promise<void> {
-  faceapi.env.monkeyPatch({
-    Canvas: canvas.Canvas as never,
-    Image: canvas.Image as never,
-    ImageData: canvas.ImageData as never,
+  const tf = await import("@tensorflow/tfjs-node");
+  faceapiModule = await import("@vladmandic/face-api");
+  canvasModule = await import("canvas");
+
+  faceapiModule.env.monkeyPatch({
+    Canvas: canvasModule.Canvas as never,
+    Image: canvasModule.Image as never,
+    ImageData: canvasModule.ImageData as never,
   });
 
   try {
@@ -24,9 +25,9 @@ async function loadModels(): Promise<void> {
   await tf.ready();
 
   await Promise.all([
-    faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_BASE),
-    faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_BASE),
-    faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_BASE),
+    faceapiModule.nets.tinyFaceDetector.loadFromUri(MODEL_BASE),
+    faceapiModule.nets.faceLandmark68TinyNet.loadFromUri(MODEL_BASE),
+    faceapiModule.nets.faceRecognitionNet.loadFromUri(MODEL_BASE),
   ]);
 
   modelsReady = true;
@@ -50,13 +51,17 @@ function decodeBase64Image(base64: string): Buffer {
 
 export async function descriptorFromImageBase64(base64: string): Promise<number[]> {
   await ensureFaceModels();
+  if (!faceapiModule || !canvasModule) {
+    throw new Error("Face recognition is unavailable");
+  }
+
   const buffer = decodeBase64Image(base64);
-  const image = await canvas.loadImage(buffer);
-  const surface = canvas.createCanvas(image.width, image.height);
+  const image = await canvasModule.loadImage(buffer);
+  const surface = canvasModule.createCanvas(image.width, image.height);
   const context = surface.getContext("2d");
   context.drawImage(image, 0, 0, image.width, image.height);
-  const detection = await faceapi
-    .detectSingleFace(surface as never, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.25 }))
+  const detection = await faceapiModule
+    .detectSingleFace(surface as never, new faceapiModule.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.25 }))
     .withFaceLandmarks(true)
     .withFaceDescriptor();
 
