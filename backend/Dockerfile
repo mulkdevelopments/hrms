@@ -22,4 +22,6 @@ ENV NODE_ENV=production
 ENV NODE_OPTIONS=--max-old-space-size=460
 EXPOSE 4000
 
-CMD ["sh", "-c", "npx prisma migrate deploy && exec node dist/src/index.js"]
+RUN chmod +x docker-entrypoint.sh
+
+CMD ["./docker-entrypoint.sh"]
