@@ -74,7 +74,7 @@ export async function recordLateCheckInSideEffects(employee: {
   id: string;
   firstName: string;
   lastName: string;
-  email: string;
+  email: string | null;
   loginEmail: string | null;
 }) {
   const policy = await getAttendancePolicy();
@@ -107,7 +107,7 @@ export async function recordLateCheckInSideEffects(employee: {
     return { monthlyLateCount, warningEmailed: true };
   }
 
-  const destination = employee.loginEmail ?? employee.email;
+  const destination = employee.loginEmail ?? employee.email ?? "";
   try {
     await sendLateCheckInWarningEmail({
       to: destination,

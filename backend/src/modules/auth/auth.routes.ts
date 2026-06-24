@@ -43,8 +43,8 @@ async function findLoginEmployee(email: string) {
   });
 }
 
-function loginEmailFor(employee: { email: string; loginEmail: string | null }) {
-  return employee.loginEmail ?? employee.email;
+function loginEmailFor(employee: { email: string | null; loginEmail: string | null }) {
+  return employee.loginEmail ?? employee.email ?? "";
 }
 
 function issueAuthToken(employee: { id: string; role: string }) {

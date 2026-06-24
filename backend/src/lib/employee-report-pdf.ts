@@ -351,7 +351,7 @@ function buildProfileRows(employee: ReportEmployee) {
     { label: "Office", value: employee.office?.name ?? "—" },
     { label: "Date of Joining", value: formatDate(employee.dateOfJoining) },
     { label: "Nationality", value: employee.nationality ?? "—" },
-    { label: "Email", value: employee.email },
+    { label: "Email", value: employee.email ?? "—" },
     { label: "Mobile", value: employee.phone ?? "—" },
     { label: "Line Manager", value: manager },
     { label: "Category", value: employee.category ?? "—" },

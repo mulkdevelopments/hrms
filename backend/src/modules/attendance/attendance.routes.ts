@@ -146,7 +146,7 @@ async function createAttendanceCheckIn(params: {
     officeId: string | null;
     firstName: string;
     lastName: string;
-    email: string;
+    email: string | null;
     loginEmail: string | null;
   };
   checkInMethod: string;
