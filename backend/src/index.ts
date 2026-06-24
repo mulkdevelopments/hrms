@@ -15,6 +15,10 @@ import { exitRouter } from "./modules/exit/exit.routes.js";
 import { uploadsRouter } from "./modules/uploads/uploads.routes.js";
 import { adjustmentsRouter } from "./modules/adjustments/adjustments.routes.js";
 import { proRouter, autoCreateRenewalTasks } from "./modules/pro/pro.routes.js";
+import { masterRouter } from "./modules/master/master.routes.js";
+import { importRouter } from "./modules/import/import.routes.js";
+import { reportsRouter } from "./modules/reports/reports.routes.js";
+import { seedMasterData } from "./lib/master-data.js";
 import { errorHandler } from "./middleware/error-handler.js";
 
 const app = express();
@@ -47,6 +51,9 @@ app.use("/api/exits", exitRouter);
 app.use("/api/uploads", uploadsRouter);
 app.use("/api/adjustments", adjustmentsRouter);
 app.use("/api/pro", proRouter);
+app.use("/api/master", masterRouter);
+app.use("/api/import", importRouter);
+app.use("/api/reports", reportsRouter);
 
 const frontendDistPath = path.resolve(process.cwd(), "../frontend/dist");
 if (existsSync(frontendDistPath)) {
@@ -60,6 +67,9 @@ app.use(errorHandler);
 
 app.listen(env.PORT, () => {
   console.log(`HRMS backend running on http://localhost:${env.PORT}`);
+  seedMasterData().catch((error) => {
+    console.error("Master data seed failed:", error);
+  });
 });
 
 const AUTO_CHECKOUT_INTERVAL_MS = 5 * 60 * 1000;

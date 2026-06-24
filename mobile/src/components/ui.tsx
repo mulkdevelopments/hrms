@@ -61,7 +61,11 @@ export function Button({
         { backgroundColor: bg, opacity: disabled || loading ? 0.6 : pressed ? 0.85 : 1 },
       ]}
     >
-      {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>{title}</Text>}
+      {loading ? (
+        <ActivityIndicator color={variant === "primary" ? "#0a0a0a" : "#fff"} />
+      ) : (
+        <Text style={[styles.buttonText, variant === "primary" && styles.buttonTextPrimary]}>{title}</Text>
+      )}
     </Pressable>
   );
 }
@@ -71,7 +75,7 @@ export function Badge({ text, tone = "neutral" }: { text: string; tone?: "green"
     green: { bg: "rgba(16,185,129,0.18)", fg: "#6ee7b7" },
     amber: { bg: "rgba(245,158,11,0.18)", fg: "#fcd34d" },
     coral: { bg: "rgba(239,68,68,0.18)", fg: "#fca5a5" },
-    blue: { bg: "rgba(59,130,246,0.18)", fg: "#93c5fd" },
+    blue: { bg: "rgba(255,255,255,0.1)", fg: "#fafafa" },
     neutral: { bg: "rgba(148,163,184,0.18)", fg: "#cbd5e1" },
   };
   const c = map[tone] ?? map.neutral;
@@ -133,6 +137,9 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "700",
     fontSize: 15,
+  },
+  buttonTextPrimary: {
+    color: "#0a0a0a",
   },
   badge: {
     alignSelf: "flex-start",

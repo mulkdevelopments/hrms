@@ -1,4 +1,4 @@
-const API_BASE = "/api";
+const API_BASE = import.meta.env.VITE_API_URL || "/api";
 let token = localStorage.getItem("hrms_token");
 let me = null;
 let leaveTypes = [];
@@ -8,8 +8,79 @@ let offices = [];
 let editingEmployeeId = null;
 let managerSearchTerm = "";
 const elevatedRoles = new Set(["SUPER_ADMIN", "HR", "HR_OFFICER"]);
+let publicMasterConfig = null;
+let masterDataCache = null;
+let pendingMasterDataLoad = false;
+const individualContributorRoles = new Set(["EMPLOYEE", "LABOUR", "STAFF"]);
 const l1Roles = new Set(["MANAGER"]);
 const l2Roles = new Set(["HR", "HR_OFFICER", "SUPER_ADMIN"]);
+
+function isIndividualContributor(role) {
+  return individualContributorRoles.has(role ?? "");
+}
+
+function canVoidActingColleague(role) {
+  return role === "LABOUR" || role === "STAFF";
+}
+
+function myEmployeeId() {
+  return me?.employee?.id ?? me?.id ?? "";
+}
+
+function canViewAirTicketForEmployee(employeeId) {
+  const myId = myEmployeeId();
+  return elevatedRoles.has(me?.role) || Boolean(employeeId && myId && employeeId === myId);
+}
+
+function formatAirTicketSummary(request) {
+  if (request.status === "APPROVED") {
+    if (request.airTicketEligible && request.airTicketFare != null) {
+      return `<span class="badge badge-green">AED ${Number(request.airTicketFare).toLocaleString()}</span>`;
+    }
+    if (request.airTicketEligible === false) {
+      return `<span class="text-muted" style="font-size:11px">Not eligible</span>`;
+    }
+  }
+
+  const preview = request.airTicketPreview;
+  if (!preview) return `<span class="text-muted">—</span>`;
+  if (preview.eligible && preview.fare != null) {
+    return `<span class="badge badge-green">AED ${Number(preview.fare).toLocaleString()}</span><div class="text-muted" style="font-size:11px">${escapeAttr(preview.country ?? "")} · ${escapeAttr((preview.roleBand ?? "STAFF").toLowerCase())}</div>`;
+  }
+  return `<span class="text-muted" style="font-size:11px">${escapeAttr(preview.reason ?? "Not eligible")}</span>`;
+}
+
+const ACTING_VOID_VALUE = "__VOID__";
+
+const individualContributorViews = [
+  "dashboard", "leave", "exits", "pro", "documents", "profile", "settings",
+];
+
+const MOBILE_BOTTOM_PREFERRED = [
+  "dashboard", "attendance", "leave", "employees", "calendar", "documents", "profile",
+];
+
+const SIDEBAR_VIEW_ORDER = [
+  "dashboard", "employees", "leave", "exits", "clearance", "payadjust",
+  "attendance", "calendar", "documents", "profile", "offices", "pro", "masterdata", "settings",
+];
+
+const MOBILE_TAB_META = {
+  dashboard: { label: "Home", icon: "bi-house-door" },
+  employees: { label: "Team", icon: "bi-people" },
+  leave: { label: "Leave", icon: "bi-calendar2-week" },
+  exits: { label: "Exits", icon: "bi-box-arrow-right" },
+  clearance: { label: "Clearance", icon: "bi-clipboard-check" },
+  payadjust: { label: "Pay", icon: "bi-sliders" },
+  attendance: { label: "Attendance", icon: "bi-geo-alt" },
+  calendar: { label: "Calendar", icon: "bi-calendar3" },
+  documents: { label: "Docs", icon: "bi-folder2-open" },
+  profile: { label: "Profile", icon: "bi-person" },
+  offices: { label: "Offices", icon: "bi-buildings" },
+  pro: { label: "PRO", icon: "bi-passport" },
+  masterdata: { label: "Master", icon: "bi-sliders" },
+  settings: { label: "Settings", icon: "bi-gear" },
+};
 
 const employeeFilters = {
   search: "",
@@ -36,6 +107,24 @@ let calendarMap = null;
 let calendarRouteLayer = null;
 let calendarEmployeeId = null;
 let calendarEmployeeName = null;
+let calendarDayCache = null;
+let calendarShowPingDetails = false;
+let lateJoinersMonth = new Date();
+let lateJoinersCache = [];
+const ATTENDANCE_PING_INTERVAL_MS = 30 * 60 * 1000;
+
+const CALENDAR_SIGNIFICANT_PING_TYPES = new Set([
+  "CHECK_IN_BLOCKED_OUTSIDE_GEOFENCE",
+  "MANUAL_LOGOUT_LOCK",
+  "CHECK_IN_WINDOW_CLOSED",
+]);
+const CALENDAR_SESSION_BOUNDARY_PING_TYPES = new Set([
+  "MANUAL_CHECK_IN",
+  "MANUAL_CHECK_OUT",
+  "AUTO_CHECK_IN",
+  "AUTO_CHECK_OUT",
+  "AUTO_CHECK_OUT_TIME",
+]);
 let selectedOfficeId = null;
 let officeFormEditingId = null;
 let officesMap = null;
@@ -94,14 +183,14 @@ function setHeaderLocationLabel(text) {
   }
 }
 
-async function reverseGeocodeLocationName(latitude, longitude) {
+async function reverseGeocodeLocation(latitude, longitude) {
   const key = `${Number(latitude).toFixed(4)},${Number(longitude).toFixed(4)}`;
   if (headerLocationCache.has(key)) {
     return headerLocationCache.get(key);
   }
 
   const response = await fetch(
-    `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(latitude)}&lon=${encodeURIComponent(longitude)}&zoom=14&addressdetails=1`,
+    `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(latitude)}&lon=${encodeURIComponent(longitude)}&zoom=16&addressdetails=1`,
     { headers: { Accept: "application/json" } },
   );
   if (!response.ok) {
@@ -109,16 +198,39 @@ async function reverseGeocodeLocationName(latitude, longitude) {
   }
   const payload = await response.json();
   const address = payload?.address ?? {};
-  const resolvedName = address.city
+  const coordFallback = `${Number(latitude).toFixed(4)}, ${Number(longitude).toFixed(4)}`;
+  const geoTag = address.city
     || address.town
     || address.village
     || address.suburb
+    || address.neighbourhood
     || address.state
     || payload?.name
     || (typeof payload?.display_name === "string" ? payload.display_name.split(",")[0] : "")
-    || `${Number(latitude).toFixed(4)}, ${Number(longitude).toFixed(4)}`;
-  headerLocationCache.set(key, resolvedName);
-  return resolvedName;
+    || coordFallback;
+  const geoAddress = typeof payload?.display_name === "string" ? payload.display_name : null;
+  const resolved = { geoTag, geoAddress };
+  headerLocationCache.set(key, resolved);
+  return resolved;
+}
+
+async function reverseGeocodeLocationName(latitude, longitude) {
+  const resolved = await reverseGeocodeLocation(latitude, longitude);
+  return resolved.geoTag;
+}
+
+function formatPingLocation(ping) {
+  if (!ping) return "—";
+  if (ping.geoTag) {
+    const coords = Number.isFinite(Number(ping.latitude)) && Number.isFinite(Number(ping.longitude))
+      ? `${Number(ping.latitude).toFixed(5)}, ${Number(ping.longitude).toFixed(5)}`
+      : null;
+    return coords ? `${ping.geoTag} (${coords})` : ping.geoTag;
+  }
+  if (Number.isFinite(Number(ping.latitude)) && Number.isFinite(Number(ping.longitude))) {
+    return `${Number(ping.latitude).toFixed(5)}, ${Number(ping.longitude).toFixed(5)}`;
+  }
+  return "—";
 }
 
 function updateHeaderLocationFromPing(ping) {
@@ -126,20 +238,24 @@ function updateHeaderLocationFromPing(ping) {
     setHeaderLocationLabel("Location unavailable");
     return;
   }
+  if (ping.geoTag) {
+    setHeaderLocationLabel(ping.geoTag);
+    return;
+  }
   const lat = Number(ping.latitude);
   const lng = Number(ping.longitude);
   const cacheKey = `${lat.toFixed(4)},${lng.toFixed(4)}`;
   if (headerLocationCache.has(cacheKey)) {
-    setHeaderLocationLabel(headerLocationCache.get(cacheKey));
+    setHeaderLocationLabel(headerLocationCache.get(cacheKey).geoTag);
     return;
   }
 
   const seq = ++headerLocationLookupSeq;
   setHeaderLocationLabel("Locating...");
-  reverseGeocodeLocationName(lat, lng)
-    .then((name) => {
+  reverseGeocodeLocation(lat, lng)
+    .then((resolved) => {
       if (seq !== headerLocationLookupSeq) return;
-      setHeaderLocationLabel(name);
+      setHeaderLocationLabel(resolved.geoTag);
     })
     .catch(() => {
       if (seq !== headerLocationLookupSeq) return;
@@ -159,7 +275,9 @@ function getNotificationEntries() {
     time: "Just now",
   });
 
-  const pendingRequests = leaveRequestsCache.filter((item) => item.status === "PENDING_L1" || item.status === "PENDING_L2");
+  const pendingRequests = leaveRequestsCache.filter((item) =>
+    ["PENDING_L1", "PENDING_ACTING", "PENDING_L2"].includes(item.status),
+  );
   if (pendingRequests.length) {
     const approvalText = l2Roles.has(me.role)
       ? "Awaiting your L2 approval"
@@ -192,6 +310,17 @@ function getNotificationEntries() {
       title: "Probation status active",
       desc: "Your profile is currently marked under probation.",
       time: "Current",
+    });
+  }
+
+  const lateAttendance = dashboardCache?.lateAttendance ?? attendanceCache?.lateAttendance;
+  if (lateAttendance?.warningActive) {
+    entries.push({
+      icon: "bi-alarm",
+      tone: "warn",
+      title: "Late check-in warning",
+      desc: `You have checked in late ${lateAttendance.monthlyLateCount} time(s) this month (limit: ${lateAttendance.threshold}). Please arrive on time.`,
+      time: "Action needed",
     });
   }
 
@@ -249,7 +378,7 @@ function getNotificationEntries() {
 
   const myPendingClearance = (clearanceTasksCache ?? []).filter((task) => {
     if (task.status === "COMPLETED") return false;
-    if (task.department === "ADMIN" || task.department === "PRO") {
+    if (task.department === "ADMIN" || task.department === "PRO" || task.department === "HR") {
       return elevatedRoles.has(me.role);
     }
     return task.assignedManagerId === myEmployeeId;
@@ -292,7 +421,7 @@ function getNotificationEntries() {
     entries.push({
       icon: "bi-passport",
       tone: "warn",
-      title: `${expiringDocs.length} Document(s) Expiring Within 30 Days`,
+      title: documentExpiryAlertTitle(expiringDocs.length),
       desc: expiredCount
         ? `${soonCount} expiring soon, ${expiredCount} already expired — review in Documents.`
         : "Passport, visa, Emirates ID and other documents need renewal attention.",
@@ -346,24 +475,59 @@ function setViewVisibility(view, visible) {
   if (viewPanel) viewPanel.style.display = visible ? "" : "none";
 }
 
-function applyRoleBasedUi() {
+async function loadPublicMasterConfig() {
+  try {
+    publicMasterConfig = await api("/master/public-config");
+  } catch {
+    publicMasterConfig = null;
+  }
+  return publicMasterConfig;
+}
+
+function populateAssignableRoles() {
+  const select = document.getElementById("emp-user-role");
+  if (!select) return;
+  const roles = publicMasterConfig?.roles?.filter((role) => role.assignable) ?? [];
+  if (!roles.length) return;
+  const current = select.value;
+  select.innerHTML = roles.map((role) => `<option value="${escapeAttr(role.code)}">${escapeAttr(role.label)} (${escapeAttr(role.code)})</option>`).join("");
+  if (current && roles.some((role) => role.code === current)) {
+    select.value = current;
+  }
+}
+
+async function applyRoleBasedUi() {
+  if (!publicMasterConfig) {
+    await loadPublicMasterConfig();
+  }
+  populateAssignableRoles();
   const role = me?.role ?? "EMPLOYEE";
-  const roleViews = {
-    SUPER_ADMIN: ["dashboard", "employees", "leave", "exits", "clearance", "payadjust", "pro", "documents", "attendance", "calendar", "offices", "profile", "settings"],
+  const fallbackRoleViews = {
+    SUPER_ADMIN: ["dashboard", "employees", "leave", "exits", "clearance", "payadjust", "pro", "documents", "attendance", "calendar", "offices", "masterdata", "profile", "settings"],
     CEO: ["dashboard", "employees", "leave", "exits", "clearance", "payadjust", "pro", "documents", "attendance", "calendar", "offices", "profile", "settings"],
-    HR: ["dashboard", "employees", "leave", "exits", "clearance", "payadjust", "pro", "documents", "attendance", "calendar", "offices", "profile", "settings"],
+    HR: ["dashboard", "employees", "leave", "exits", "clearance", "payadjust", "pro", "documents", "attendance", "calendar", "offices", "masterdata", "profile", "settings"],
     HR_OFFICER: ["dashboard", "employees", "leave", "exits", "clearance", "payadjust", "pro", "documents", "attendance", "calendar", "offices", "profile", "settings"],
-    PRO: ["dashboard", "employees", "pro", "documents", "attendance", "calendar", "profile", "settings"],
-    MANAGER: ["dashboard", "employees", "leave", "exits", "clearance", "payadjust", "pro", "documents", "attendance", "calendar", "profile"],
-    EMPLOYEE: ["dashboard", "leave", "exits", "payadjust", "pro", "documents", "attendance", "calendar", "profile", "settings"],
+    PRO: ["dashboard", "employees", "pro", "documents", "profile", "settings"],
+    MANAGER: ["dashboard", "employees", "leave", "exits", "clearance", "pro", "documents", "profile"],
+    EMPLOYEE: individualContributorViews,
+    LABOUR: individualContributorViews,
+    STAFF: individualContributorViews,
   };
-  const allViews = ["dashboard", "employees", "leave", "exits", "clearance", "payadjust", "pro", "documents", "attendance", "calendar", "offices", "profile", "settings"];
-  const allowed = new Set(roleViews[role] ?? roleViews.EMPLOYEE);
+  const configuredRole = publicMasterConfig?.roles?.find((item) => item.code === role);
+  const allowed = new Set(
+    configuredRole?.allowedViews
+      ?? fallbackRoleViews[role]
+      ?? (isIndividualContributor(role) ? individualContributorViews : fallbackRoleViews.EMPLOYEE),
+  );
+  const allViews = publicMasterConfig?.views ?? [
+    "dashboard", "employees", "leave", "exits", "clearance", "payadjust", "pro",
+    "documents", "attendance", "calendar", "offices", "masterdata", "profile", "settings",
+  ];
   allViews.forEach((view) => setViewVisibility(view, allowed.has(view)));
 
   const activeView = document.querySelector(".view.active")?.id?.replace("view-", "");
   if (!activeView || !allowed.has(activeView)) {
-    const fallbackView = roleViews[role]?.[0] ?? "leave";
+    const fallbackView = configuredRole?.allowedViews?.[0] ?? fallbackRoleViews[role]?.[0] ?? "leave";
     const navItem = document.querySelector(`.nav-item[onclick*="navigate('${fallbackView}'"]`);
     if (typeof window.navigate === "function") {
       window.navigate(fallbackView, navItem);
@@ -372,7 +536,7 @@ function applyRoleBasedUi() {
 
   const pendingApprovalsTab = document.querySelector("button[onclick*=\"leave-pending\"]");
   if (pendingApprovalsTab) {
-    pendingApprovalsTab.style.display = role === "EMPLOYEE" ? "none" : "";
+    pendingApprovalsTab.style.display = isIndividualContributor(role) ? "none" : "";
   }
   const leaveBalanceTabBtn = document.getElementById("leave-balance-tab-btn");
   if (leaveBalanceTabBtn) {
@@ -401,16 +565,91 @@ function applyRoleBasedUi() {
   });
   const liveWorkforceCard = document.getElementById("att-live-workforce-card");
   if (liveWorkforceCard) {
-    liveWorkforceCard.style.display = role === "EMPLOYEE" ? "none" : "";
+    liveWorkforceCard.style.display = isIndividualContributor(role) ? "none" : "";
   }
   applyDocumentsPageRoleUi();
   applyEmployeeDashboardUi();
 
+  mobileNavAllowedViews = allowed;
+  syncMobileBottomTabs(allowed);
+  syncSidebarSectionVisibility();
+}
+
+let mobileNavAllowedViews = null;
+
+function isMobileNavViewport() {
+  return window.innerWidth <= 900;
+}
+
+function isSidebarNavItemVisible(item) {
+  if (item.style.display === "none") return false;
+  if (isMobileNavViewport() && item.classList.contains("nav-in-bottom-bar")) return false;
+  return true;
+}
+
+function syncSidebarSectionVisibility() {
   document.querySelectorAll(".sidebar-nav .nav-section").forEach((section) => {
-    const visibleItems = Array.from(section.querySelectorAll(".nav-item"))
-      .some((item) => item.style.display !== "none");
-    section.style.display = visibleItems ? "" : "none";
+    const hasVisibleItems = Array.from(section.querySelectorAll(".nav-item")).some(isSidebarNavItemVisible);
+    section.style.display = hasVisibleItems ? "" : "none";
   });
+}
+
+function refreshMobileSidebarNav() {
+  if (mobileNavAllowedViews) {
+    syncMobileBottomTabs(mobileNavAllowedViews);
+  } else {
+    syncSidebarSectionVisibility();
+  }
+}
+
+function pickMobileBottomTabs(allowed) {
+  const picked = [];
+  const add = (view) => {
+    if (picked.length >= 5 || !allowed.has(view) || picked.includes(view)) return;
+    picked.push(view);
+  };
+  MOBILE_BOTTOM_PREFERRED.forEach(add);
+  SIDEBAR_VIEW_ORDER.forEach(add);
+  return picked;
+}
+
+function syncMobileBottomTabs(allowed) {
+  const nav = document.getElementById("mobile-bottom-nav");
+  if (!nav) return;
+
+  const tabs = pickMobileBottomTabs(allowed);
+  const activeView = document.querySelector(".view.active")?.id?.replace("view-", "");
+
+  nav.innerHTML = "";
+  nav.style.gridTemplateColumns = `repeat(${Math.max(tabs.length, 1)}, 1fr)`;
+
+  tabs.forEach((view) => {
+    const meta = MOBILE_TAB_META[view] ?? { label: view, icon: "bi-circle" };
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = `bottom-tab${view === activeView ? " active" : ""}`;
+    btn.dataset.view = view;
+    btn.onclick = () => {
+      if (typeof window.navigateFromBottomTab === "function") {
+        window.navigateFromBottomTab(view);
+      }
+    };
+    btn.innerHTML = `<i class="bi ${meta.icon}"></i><span class="bottom-tab-label">${escapeAttr(meta.label)}</span>`;
+    nav.appendChild(btn);
+  });
+
+  const bottomViews = new Set(tabs);
+  document.querySelectorAll(".sidebar-nav .nav-item").forEach((item) => {
+    const match = item.getAttribute("onclick")?.match(/navigate\('([^']+)'/);
+    const view = match?.[1];
+    item.classList.toggle("nav-in-bottom-bar", Boolean(view && bottomViews.has(view)));
+  });
+
+  if (activeView && typeof window.updateBottomTabActive === "function") {
+    window.updateBottomTabActive(activeView);
+  }
+
+  syncSidebarSectionVisibility();
 }
 
 window.toggleNotifPanel = function toggleNotifPanelLive() {
@@ -470,54 +709,244 @@ async function api(path, options = {}) {
   return response.json();
 }
 
+async function requestPasswordCode(email) {
+  return api("/auth/forgot-password", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+async function completePasswordReset(email, code, newPassword) {
+  const result = await api("/auth/reset-password", {
+    method: "POST",
+    body: JSON.stringify({ email, code, newPassword }),
+  });
+  token = result.token;
+  localStorage.setItem("hrms_token", token);
+  return result;
+}
+
 function showLoginModal() {
   return new Promise((resolve) => {
     const existing = document.getElementById("hrms-login-modal");
     if (existing) existing.remove();
 
+    let step = "email";
+    let emailValue = "";
+
     const wrapper = document.createElement("div");
     wrapper.id = "hrms-login-modal";
     wrapper.className = "modal-overlay open";
-    wrapper.innerHTML = `
-      <div class="modal" style="max-width:460px">
-        <div class="modal-header" style="justify-content:center;gap:12px;margin-bottom:18px;">
-          <img
-            src="/Mask%20group.avif"
-            alt="HRMS logo"
-            style="width:72px;height:72px;object-fit:contain;"
-          >
-        </div>
-        <div class="form-grid">
-          <div class="form-group full">
-            <label>Email</label>
-            <input id="login-email" type="email" value="" placeholder="name@company.com" autocomplete="username">
-          </div>
-          <div class="form-group full">
-            <label>Password</label>
-            <input id="login-password" type="password" value="" placeholder="Enter your password" autocomplete="current-password">
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn btn-primary" id="login-submit-btn">Sign In</button>
-        </div>
-      </div>
-    `;
 
-    document.body.appendChild(wrapper);
-    const submitBtn = wrapper.querySelector("#login-submit-btn");
-    const emailInput = wrapper.querySelector("#login-email");
-    const passwordInput = wrapper.querySelector("#login-password");
+    const render = () => {
+      const passwordBlock = step === "password" ? `
+          <div class="form-group">
+            <label for="login-password">Password</label>
+            <div class="password-field">
+              <input id="login-password" type="password" value="" placeholder="Enter your password" autocomplete="current-password">
+              <button type="button" class="password-toggle-btn" id="login-password-toggle" aria-label="Show password">
+                <i class="bi bi-eye"></i>
+              </button>
+            </div>
+            <div class="login-password-meta">
+              <button type="button" class="btn btn-link btn-sm" id="login-forgot-btn">Forgot password?</button>
+            </div>
+          </div>` : "";
 
-    const submit = () => {
-      const email = emailInput.value.trim();
-      const password = passwordInput.value;
-      resolve({ email, password, close: () => wrapper.remove() });
+      const resetBlock = step === "setup" || step === "reset" ? `
+          <div class="form-group">
+            <label for="login-code">Verification Code</label>
+            <input id="login-code" type="text" inputmode="numeric" maxlength="6" placeholder="6-digit code from email">
+          </div>
+          <div class="form-group">
+            <label for="login-new-password">New Password</label>
+            <input id="login-new-password" type="password" placeholder="Minimum 8 characters" autocomplete="new-password">
+          </div>
+          <div class="form-group">
+            <label for="login-confirm-password">Confirm Password</label>
+            <input id="login-confirm-password" type="password" placeholder="Re-enter new password" autocomplete="new-password">
+          </div>` : "";
+
+      const submitLabel = step === "email"
+        ? "Continue"
+        : step === "password"
+          ? "Sign In"
+          : step === "setup"
+            ? "Create Password & Sign In"
+            : "Reset Password & Sign In";
+
+      const emailField = `
+          <div class="form-group">
+            <label for="login-email">Email</label>
+            <input id="login-email" class="${step !== "email" ? "login-email-readonly" : ""}" type="email" value="${emailValue.replace(/"/g, "&quot;")}" placeholder="name@company.com" autocomplete="username" ${step !== "email" ? "readonly" : ""}>
+          </div>`;
+
+      wrapper.innerHTML = `
+      <div class="modal login-modal">
+        <div class="login-brand">
+          <img class="theme-logo-dark" src="/brand/logo-mark-light-sm.png" alt="">
+          <img class="theme-logo-light" src="/brand/logo-mark-sm.png" alt="">
+          <div>
+            <div class="login-brand-name">Mulk HRMS</div>
+            <div class="login-brand-tag">Employee portal</div>
+          </div>
+        </div>
+        <p id="login-info" class="login-info" role="status"></p>
+        <div class="login-form">
+          ${emailField}
+          ${passwordBlock}
+          ${resetBlock}
+        </div>
+        <div id="login-error" class="login-error" role="alert"></div>
+        <div class="login-actions">
+          ${step === "setup" ? '<button type="button" class="btn btn-secondary btn-sm" id="login-send-code-btn">Send Verification Code</button>' : ""}
+          <button type="button" class="btn btn-primary" id="login-submit-btn">${submitLabel}</button>
+          ${step !== "email" ? '<button type="button" class="btn btn-link btn-sm" id="login-back-btn">Use a different email</button>' : ""}
+        </div>
+      </div>`;
+
+      const submitBtn = wrapper.querySelector("#login-submit-btn");
+      const errorEl = wrapper.querySelector("#login-error");
+      const infoEl = wrapper.querySelector("#login-info");
+
+      const showError = (message) => {
+        errorEl.textContent = message;
+        errorEl.style.display = "block";
+      };
+      const showInfo = (message) => {
+        if (!infoEl) return;
+        infoEl.textContent = message;
+        infoEl.style.display = message ? "block" : "none";
+      };
+
+      const passwordToggle = wrapper.querySelector("#login-password-toggle");
+      passwordToggle?.addEventListener("click", () => {
+        const passwordInput = wrapper.querySelector("#login-password");
+        if (!passwordInput) return;
+        const showing = passwordInput.type === "text";
+        passwordInput.type = showing ? "password" : "text";
+        passwordToggle.innerHTML = showing ? '<i class="bi bi-eye"></i>' : '<i class="bi bi-eye-slash"></i>';
+      });
+
+      wrapper.querySelector("#login-back-btn")?.addEventListener("click", () => {
+        step = "email";
+        emailValue = "";
+        render();
+      });
+
+      wrapper.querySelector("#login-forgot-btn")?.addEventListener("click", async () => {
+        submitBtn.disabled = true;
+        errorEl.style.display = "none";
+        try {
+          const result = await requestPasswordCode(emailValue);
+          step = "reset";
+          render();
+          showInfo(result.message);
+        } catch (error) {
+          showError(error.message || "Unable to send verification code");
+        } finally {
+          submitBtn.disabled = false;
+        }
+      });
+
+      wrapper.querySelector("#login-send-code-btn")?.addEventListener("click", async () => {
+        submitBtn.disabled = true;
+        errorEl.style.display = "none";
+        try {
+          const result = await requestPasswordCode(emailValue);
+          showInfo(result.message);
+        } catch (error) {
+          showError(error.message || "Unable to send verification code");
+        } finally {
+          submitBtn.disabled = false;
+        }
+      });
+
+      submitBtn.addEventListener("click", async () => {
+        errorEl.style.display = "none";
+        submitBtn.disabled = true;
+        submitBtn.textContent = "Please wait…";
+
+        try {
+          if (step === "email") {
+            emailValue = wrapper.querySelector("#login-email")?.value.trim() ?? "";
+            if (!emailValue) {
+              showError("Email is required.");
+              return;
+            }
+            const status = await api("/auth/account-status", {
+              method: "POST",
+              body: JSON.stringify({ email: emailValue }),
+            });
+            if (status.status === "not_found") {
+              showError("No account found for this email.");
+              return;
+            }
+            if (status.status === "disabled") {
+              showError("This account is disabled. Contact HR.");
+              return;
+            }
+            if (status.status === "setup_required") {
+              step = "setup";
+              render();
+              showInfo("No password is set yet. Click Send Verification Code to create one.");
+              return;
+            }
+            step = "password";
+            render();
+            wrapper.querySelector("#login-password")?.focus();
+            return;
+          }
+
+          if (step === "password") {
+            const password = wrapper.querySelector("#login-password")?.value ?? "";
+            if (!password) {
+              showError("Password is required.");
+              return;
+            }
+            await login(emailValue, password);
+            wrapper.remove();
+            resolve();
+            return;
+          }
+
+          const code = wrapper.querySelector("#login-code")?.value.trim() ?? "";
+          const newPassword = wrapper.querySelector("#login-new-password")?.value ?? "";
+          const confirmPassword = wrapper.querySelector("#login-confirm-password")?.value ?? "";
+          if (!/^\d{6}$/.test(code)) {
+            showError("Enter the 6-digit verification code from your email.");
+            return;
+          }
+          if (newPassword.length < 8) {
+            showError("Password must be at least 8 characters.");
+            return;
+          }
+          if (newPassword !== confirmPassword) {
+            showError("Passwords do not match.");
+            return;
+          }
+          await completePasswordReset(emailValue, code, newPassword);
+          wrapper.remove();
+          resolve();
+        } catch (error) {
+          showError(error.message || "Unable to sign in");
+        } finally {
+          submitBtn.disabled = false;
+          submitBtn.textContent = step === "email"
+            ? "Continue"
+            : step === "password"
+              ? "Sign In"
+              : step === "setup"
+                ? "Create Password & Sign In"
+                : "Reset Password & Sign In";
+        }
+      });
+
+      wrapper.querySelector("#login-email")?.focus();
     };
 
-    submitBtn.addEventListener("click", submit);
-    passwordInput.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") submit();
-    });
+    document.body.appendChild(wrapper);
+    render();
   });
 }
 
@@ -528,26 +957,18 @@ async function login(email, password) {
     body: JSON.stringify({ email, password }),
   });
 
+  const loginData = await loginResponse.json().catch(() => ({}));
   if (!loginResponse.ok) {
-    throw new Error("Invalid credentials");
+    throw new Error(loginData.message || "Invalid credentials");
   }
 
-  const loginData = await loginResponse.json();
   token = loginData.token;
   localStorage.setItem("hrms_token", token);
 }
 
 async function bootstrapAuth() {
   if (!token) {
-    while (!token) {
-      const loginState = await showLoginModal();
-      try {
-        await login(loginState.email, loginState.password);
-        loginState.close();
-      } catch (error) {
-        notify(error.message);
-      }
-    }
+    await showLoginModal();
   }
 
   try {
@@ -693,13 +1114,26 @@ function resetEmployeeModalForm() {
   const saveBtn = modal.querySelector(".modal-footer .btn.btn-primary");
 
   [
-    "emp-full-name", "emp-code", "emp-dob", "emp-mobile", "emp-email", "emp-designation",
-    "emp-join-date", "emp-basic-salary", "emp-emirates-id", "emp-passport", "emp-iban",
-    "emp-bank-name", "emp-labour-card", "emp-line-manager-search", "emp-login-email", "emp-login-password", "emp-office-id",
+    "emp-full-name", "emp-code", "emp-legacy-id", "emp-dob", "emp-mobile", "emp-email", "emp-designation",
+    "emp-join-date", "emp-basic-salary", "emp-gross-salary", "emp-ctc-month", "emp-ctc-year", "emp-emirates-id",
+    "emp-passport", "emp-iban", "emp-bank-name", "emp-labour-card", "emp-line-manager-search", "emp-login-email",
+    "emp-login-password", "emp-office-id", "emp-category", "emp-sub-category", "emp-grade", "emp-employee-type",
+    "emp-business-unit", "emp-division", "emp-work-location", "emp-work-country", "emp-payroll-type",
+    "emp-payroll-status", "emp-payroll-division", "emp-joining-month", "emp-probation-status", "emp-probation-completion",
+    "emp-conveyance", "emp-fixed-ot", "emp-food", "emp-housing", "emp-other-allow", "emp-overseas", "emp-performance",
+    "emp-petrol", "emp-risk", "emp-social-insurance", "emp-telephone", "emp-transport", "emp-vehicle", "emp-kids-education",
+    "emp-ot-eligible", "emp-ot-rule", "emp-net-currency", "emp-visa-type", "emp-visa-sponsor", "emp-hod-name",
+    "emp-hod-email", "emp-comments",
   ].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
+
+  const empCodeInput = document.getElementById("emp-code");
+  if (empCodeInput) {
+    empCodeInput.removeAttribute("readonly");
+    empCodeInput.placeholder = "e.g. 2120 (auto if blank)";
+  }
 
   [
     "emp-gender", "emp-nationality", "emp-marital-status", "emp-department", "emp-employment-type",
@@ -744,6 +1178,23 @@ function updateEmploymentStatusBadge() {
   badge.className = `badge ${isActive ? "badge-green" : "badge-purple"}`;
 }
 
+function readOptionalText(id) {
+  const value = document.getElementById(id)?.value?.trim();
+  return value || undefined;
+}
+
+function readOptionalNumber(id) {
+  const raw = document.getElementById(id)?.value;
+  if (raw === undefined || raw === "") return undefined;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : undefined;
+}
+
+function readOptionalIsoDate(id) {
+  const value = document.getElementById(id)?.value;
+  return value ? new Date(value).toISOString() : undefined;
+}
+
 function readEmployeePayloadFromModal() {
   const fullName = document.getElementById("emp-full-name").value.trim();
   const firstName = fullName;
@@ -754,11 +1205,12 @@ function readEmployeePayloadFromModal() {
   const loginPassword = document.getElementById("emp-login-password").value;
 
   return {
+    employeeCode: readOptionalText("emp-code"),
     firstName,
     lastName,
     email: document.getElementById("emp-email").value.trim(),
     phone: document.getElementById("emp-mobile").value.trim() || undefined,
-    dateOfBirth: document.getElementById("emp-dob").value ? new Date(document.getElementById("emp-dob").value).toISOString() : undefined,
+    dateOfBirth: readOptionalIsoDate("emp-dob"),
     dateOfJoining: document.getElementById("emp-join-date").value ? new Date(document.getElementById("emp-join-date").value).toISOString() : new Date().toISOString(),
     designation: document.getElementById("emp-designation").value.trim() || "Staff",
     department: document.getElementById("emp-department").value,
@@ -775,68 +1227,158 @@ function readEmployeePayloadFromModal() {
     labourCardNumber: document.getElementById("emp-labour-card").value.trim() || undefined,
     noticePeriodDays: Number.parseInt(document.getElementById("emp-notice")?.value ?? "30", 10) || 30,
     basicSalary,
-    housingAllowance: Math.round(basicSalary * 0.3),
-    transportAllowance: Math.round(basicSalary * 0.1),
+    housingAllowance: readOptionalNumber("emp-housing") ?? Math.round(basicSalary * 0.3),
+    transportAllowance: readOptionalNumber("emp-transport") ?? Math.round(basicSalary * 0.1),
     accessEnabled,
     userRole: accessEnabled ? document.getElementById("emp-user-role").value : undefined,
     loginEmail: accessEnabled ? (loginEmail || undefined) : undefined,
     loginPassword: accessEnabled ? (loginPassword || undefined) : undefined,
+    legacyEmpId: readOptionalText("emp-legacy-id"),
+    gender: readOptionalText("emp-gender"),
+    maritalStatus: readOptionalText("emp-marital-status"),
+    category: readOptionalText("emp-category"),
+    subCategory: readOptionalText("emp-sub-category"),
+    grade: readOptionalText("emp-grade"),
+    employeeType: readOptionalText("emp-employee-type"),
+    businessUnit: readOptionalText("emp-business-unit"),
+    division: readOptionalText("emp-division"),
+    workLocation: readOptionalText("emp-work-location"),
+    workCountry: readOptionalText("emp-work-country"),
+    payrollType: readOptionalText("emp-payroll-type"),
+    payrollStatus: readOptionalText("emp-payroll-status"),
+    payrollDivision: readOptionalText("emp-payroll-division"),
+    conveyanceAllowance: readOptionalNumber("emp-conveyance"),
+    fixedOtAllowance: readOptionalNumber("emp-fixed-ot"),
+    foodAllowance: readOptionalNumber("emp-food"),
+    otherAllowance: readOptionalNumber("emp-other-allow"),
+    overseasAllowance: readOptionalNumber("emp-overseas"),
+    performanceAllowance: readOptionalNumber("emp-performance"),
+    petrolAllowance: readOptionalNumber("emp-petrol"),
+    riskAllowance: readOptionalNumber("emp-risk"),
+    socialInsurance: readOptionalNumber("emp-social-insurance"),
+    telephoneAllowance: readOptionalNumber("emp-telephone"),
+    vehicleAllowance: readOptionalNumber("emp-vehicle"),
+    kidsEducationAllowance: readOptionalNumber("emp-kids-education"),
+    grossSalary: readOptionalNumber("emp-gross-salary"),
+    otEligible: readOptionalText("emp-ot-eligible"),
+    otRuleNormal: readOptionalNumber("emp-ot-rule"),
+    netPayCurrency: readOptionalText("emp-net-currency"),
+    visaType: readOptionalText("emp-visa-type"),
+    visaSponsor: readOptionalText("emp-visa-sponsor"),
+    hodName: readOptionalText("emp-hod-name"),
+    hodEmail: readOptionalText("emp-hod-email"),
+    comments: readOptionalText("emp-comments"),
+    probationStatus: readOptionalText("emp-probation-status"),
+    joiningMonth: readOptionalText("emp-joining-month"),
+    probationCompletionDate: readOptionalIsoDate("emp-probation-completion"),
+    ctcMonth: readOptionalNumber("emp-ctc-month"),
+    ctcYear: readOptionalNumber("emp-ctc-year"),
   };
+}
+
+function buildEmployeeActionItems(employee, canManageEmployees) {
+  const presence = employeePresenceMap.get(employee.id);
+  return [
+    `<button class="emp-action-item emp-action-view" type="button" onclick="window.__viewEmployeeById('${employee.id}')"><i class="bi bi-person-lines-fill"></i><span>View Profile</span></button>`,
+    presence?.isOnline
+      ? `<button class="emp-action-item" type="button" onclick="window.__viewEmployeeLiveLocation('${employee.id}')"><i class="bi bi-geo-alt"></i><span>Live Location</span></button>`
+      : "",
+    `<button class="emp-action-item" type="button" onclick="window.__viewEmployeeCalendar('${employee.id}')"><i class="bi bi-calendar3"></i><span>Calendar</span></button>`,
+    canManageEmployees
+      ? `<button class="emp-action-item emp-action-edit" type="button" onclick="window.__editEmployee('${employee.id}')"><i class="bi bi-pencil-square"></i><span>Edit</span></button>`
+      : "",
+    canManageEmployees
+      ? `<button class="emp-action-item emp-action-bank" type="button" onclick="window.__alterBankDetails('${employee.id}')"><i class="bi bi-bank"></i><span>Bank</span></button>`
+      : "",
+    canManageEmployees
+      ? `<button class="emp-action-item emp-action-salary" type="button" onclick="window.__alterSalaryDetails('${employee.id}')"><i class="bi bi-cash-stack"></i><span>Salary</span></button>`
+      : "",
+  ].filter(Boolean).join("");
+}
+
+function buildEmployeeMobileCard(employee, canManageEmployees) {
+  const name = `${employee.firstName ?? ""} ${employee.lastName ?? ""}`.trim() || "Employee";
+  const initials = employeeInitials(employee);
+  const presence = employeePresenceMap.get(employee.id);
+  const joinDate = employee.dateOfJoining
+    ? new Date(employee.dateOfJoining).toLocaleDateString("en-GB", { month: "short", year: "numeric" })
+    : "—";
+  const actionItems = buildEmployeeActionItems(employee, canManageEmployees);
+  const attendanceBadge = presence?.isOnline
+    ? `<span class="badge badge-green">Checked In</span>`
+    : `<span class="badge badge-amber">Offline</span>`;
+
+  return `
+    <article class="record-card">
+      <div class="record-card-head">
+        <div class="user-avatar" style="width:42px;height:42px;font-size:13px;flex-shrink:0">${initials}</div>
+        <div class="record-card-head-main">
+          <div class="record-card-name">${escapeAttr(name)}</div>
+          <div class="record-card-sub">${escapeAttr(employee.email ?? "—")}</div>
+          <div class="record-card-badges">
+            <span class="badge ${statusBadge(employee.status)}">${escapeAttr(formatLabel(employee.status))}</span>
+            ${attendanceBadge}
+          </div>
+        </div>
+      </div>
+      <div class="record-card-grid">
+        <div class="record-card-field"><span class="record-card-label">Employee ID</span><span class="record-card-value">${escapeAttr(employee.employeeCode ?? "—")}</span></div>
+        <div class="record-card-field"><span class="record-card-label">Department</span><span class="record-card-value">${escapeAttr(employee.department ?? "—")}</span></div>
+        <div class="record-card-field"><span class="record-card-label">Designation</span><span class="record-card-value">${escapeAttr(employee.designation ?? "—")}</span></div>
+        <div class="record-card-field"><span class="record-card-label">Join Date</span><span class="record-card-value">${escapeAttr(joinDate)}</span></div>
+        <div class="record-card-field"><span class="record-card-label">Type</span><span class="record-card-value">${escapeAttr(employee.employmentType ?? "Full-Time")}</span></div>
+        <div class="record-card-field"><span class="record-card-label">Emirates ID</span><span class="record-card-value">${escapeAttr(employee.emiratesId ?? "—")}</span></div>
+      </div>
+      <div class="record-card-actions">
+        <button class="btn btn-primary btn-sm" type="button" onclick="window.__viewEmployeeById('${employee.id}')">View Profile</button>
+        <button class="btn btn-secondary btn-sm" type="button" onclick="window.__viewEmployeeCalendar('${employee.id}')">Calendar</button>
+        ${presence?.isOnline ? `<button class="btn btn-secondary btn-sm" type="button" onclick="window.__viewEmployeeLiveLocation('${employee.id}')">Location</button>` : ""}
+        <button class="btn btn-secondary btn-sm emp-action-toggle" type="button" onclick="window.__toggleEmployeeActionsMenu('${employee.id}', this)">More</button>
+      </div>
+      <div class="emp-action-source" id="emp-actions-${employee.id}" style="display:none">${actionItems}</div>
+    </article>
+  `;
 }
 
 function renderEmployeesTable() {
   const tableBody = document.querySelector("#emp-table tbody");
+  const mobileList = document.getElementById("emp-mobile-list");
   if (!tableBody) return;
   const canManageEmployees = elevatedRoles.has(me?.role);
+
+  if (!employees.length) {
+    tableBody.innerHTML = `<tr><td colspan="10" class="text-muted">No employees match your filters.</td></tr>`;
+    if (mobileList) mobileList.innerHTML = `<div class="mobile-empty">No employees match your filters.</div>`;
+    return;
+  }
 
   tableBody.innerHTML = employees
     .map((employee) => {
       const name = `${employee.firstName ?? ""} ${employee.lastName ?? ""}`.trim();
-      const initials = name
-        .split(/\s+/)
-        .filter(Boolean)
-        .slice(0, 2)
-        .map((part) => part[0])
-        .join("")
-        .toUpperCase() || "--";
+      const initials = employeeInitials(employee);
       const presence = employeePresenceMap.get(employee.id);
       const attendanceBadge = presence?.isOnline
         ? `<span class="badge badge-green">Checked In</span>`
         : `<span class="badge badge-amber">Offline</span>`;
-      const actionItems = [
-        `<button class="emp-action-item" type="button" onclick="window.__viewEmployeeById('${employee.id}')">View</button>`,
-        presence?.isOnline
-          ? `<button class="emp-action-item" type="button" onclick="window.__viewEmployeeLiveLocation('${employee.id}')">Live Location</button>`
-          : "",
-        `<button class="emp-action-item" type="button" onclick="window.__viewEmployeeCalendar('${employee.id}')">Calendar</button>`,
-        canManageEmployees
-          ? `<button class="emp-action-item" type="button" onclick="window.__editEmployee('${employee.id}')">Edit</button>`
-          : "",
-        canManageEmployees
-          ? `<button class="emp-action-item" type="button" onclick="window.__alterBankDetails('${employee.id}')">Bank</button>`
-          : "",
-        canManageEmployees
-          ? `<button class="emp-action-item" type="button" onclick="window.__alterSalaryDetails('${employee.id}')">Salary</button>`
-          : "",
-      ].filter(Boolean).join("");
+      const actionItems = buildEmployeeActionItems(employee, canManageEmployees);
       return `
         <tr>
           <td>
             <div class="flex-center gap-8">
               <div class="user-avatar" style="width:30px;height:30px;font-size:11px">${initials}</div>
               <div>
-                <div style="font-weight:500">${name}</div>
-                <div class="text-muted">${employee.email}</div>
+                <div style="font-weight:500">${escapeAttr(name)}</div>
+                <div class="text-muted">${escapeAttr(employee.email ?? "")}</div>
               </div>
             </div>
           </td>
-          <td>${employee.employeeCode}</td>
-          <td>${employee.department}</td>
-          <td>${employee.designation}</td>
-          <td><span class="badge badge-blue">${employee.employmentType ?? "Full-Time"}</span></td>
-          <td>${new Date(employee.dateOfJoining).toLocaleDateString("en-GB", { month: "short", year: "numeric" })}</td>
-          <td>${employee.emiratesId ?? "—"}</td>
-          <td><span class="badge ${statusBadge(employee.status)}">${formatLabel(employee.status)}</span></td>
+          <td>${escapeAttr(employee.employeeCode ?? "—")}</td>
+          <td>${escapeAttr(employee.department ?? "—")}</td>
+          <td>${escapeAttr(employee.designation ?? "—")}</td>
+          <td><span class="badge badge-blue">${escapeAttr(employee.employmentType ?? "Full-Time")}</span></td>
+          <td>${employee.dateOfJoining ? new Date(employee.dateOfJoining).toLocaleDateString("en-GB", { month: "short", year: "numeric" }) : "—"}</td>
+          <td>${escapeAttr(employee.emiratesId ?? "—")}</td>
+          <td><span class="badge ${statusBadge(employee.status)}">${escapeAttr(formatLabel(employee.status))}</span></td>
           <td>${attendanceBadge}</td>
           <td>
             <div class="emp-action-menu-wrap">
@@ -852,6 +1394,10 @@ function renderEmployeesTable() {
       `;
     })
     .join("");
+
+  if (mobileList) {
+    mobileList.innerHTML = employees.map((employee) => buildEmployeeMobileCard(employee, canManageEmployees)).join("");
+  }
 }
 
 function getEmployeeActionPortal() {
@@ -1016,6 +1562,202 @@ function wireEmployeeCreation() {
   };
 }
 
+async function uploadExcelImport(path, file, extra = {}, handlers = {}) {
+  const onPhase = handlers.onPhase;
+  onPhase?.("Reading file…", 2);
+
+  const buffer = await file.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 1) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  const dataBase64 = btoa(binary);
+
+  onPhase?.("Uploading…", 8);
+
+  const headers = {
+    "Content-Type": "application/json",
+    ...(handlers.headers ?? {}),
+  };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      fileName: file.name,
+      dataBase64,
+      ...extra,
+    }),
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.message || `Import failed: ${response.status}`);
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) {
+    throw new Error("Import stream unavailable");
+  }
+
+  const decoder = new TextDecoder();
+  let pending = "";
+  let result = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    pending += decoder.decode(value, { stream: true });
+    const lines = pending.split("\n");
+    pending = lines.pop() ?? "";
+
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      const event = JSON.parse(line);
+      if (event.type === "progress") {
+        const total = Number(event.total ?? 0);
+        const processed = Number(event.processed ?? 0);
+        const pct = total > 0 ? 10 + Math.round((processed / total) * 88) : 12;
+        let label = total > 0 ? `Processing row ${processed} of ${total}` : "Processing…";
+        if (event.phase === "managers") label = "Linking line managers…";
+        if (event.sheetName && event.phase !== "managers") {
+          label += ` · ${event.sheetName}`;
+        }
+        onPhase?.(label, pct);
+      } else if (event.type === "complete") {
+        result = event;
+        onPhase?.("Finishing…", 100);
+      } else if (event.type === "error") {
+        throw new Error(event.message || "Import failed");
+      }
+    }
+  }
+
+  if (!result) {
+    throw new Error("Import finished without a result");
+  }
+
+  return result;
+}
+
+function showImportProgressModal(title, status = "Preparing…", percent = 0) {
+  const modal = document.getElementById("import-progress-modal");
+  const titleEl = document.getElementById("import-progress-title");
+  if (titleEl) titleEl.textContent = title;
+  updateImportProgressModal(percent, status);
+  modal?.classList.add("open");
+}
+
+function updateImportProgressModal(percent, status) {
+  const bar = document.getElementById("import-progress-bar");
+  const statusEl = document.getElementById("import-progress-status");
+  const pctEl = document.getElementById("import-progress-percent");
+  const safe = Math.max(0, Math.min(100, Math.round(percent)));
+  if (bar) bar.style.width = `${safe}%`;
+  if (statusEl && status) statusEl.textContent = status;
+  if (pctEl) pctEl.textContent = `${safe}%`;
+}
+
+function hideImportProgressModal() {
+  document.getElementById("import-progress-modal")?.classList.remove("open");
+}
+
+async function runExcelImportWithProgress({ path, file, extra, title, onComplete }) {
+  showImportProgressModal(title, "Preparing…", 0);
+  try {
+    const result = await uploadExcelImport(path, file, extra, {
+      onPhase: (status, percent) => updateImportProgressModal(percent, status),
+    });
+    hideImportProgressModal();
+    await onComplete(result);
+  } catch (error) {
+    hideImportProgressModal();
+    throw error;
+  }
+}
+
+function summarizeLeaveImportResult(result) {
+  const errors = Array.isArray(result?.errors) ? result.errors : [];
+  const notFound = errors.filter((item) => /not found/i.test(item.message ?? "")).length;
+  const invalidDates = errors.filter((item) => /invalid start or end date/i.test(item.message ?? "")).length;
+  let summary = `Leave import: ${result.created ?? 0} created, ${result.updated ?? 0} updated, ${result.skipped ?? 0} skipped`;
+  if (!errors.length) return summary;
+  summary += `, ${errors.length} errors`;
+  if (notFound >= errors.length * 0.5) {
+    summary += `. ${notFound} row(s) reference employees missing from HRMS — import the employee master file first, then re-import leave.`;
+  } else if (invalidDates) {
+    summary += `. ${invalidDates} row(s) have invalid dates.`;
+  } else if (errors[0]?.message) {
+    summary += `. First error (row ${errors[0].row}): ${errors[0].message}`;
+  }
+  return summary;
+}
+
+function summarizeEmployeeImportResult(result) {
+  const errors = Array.isArray(result?.errors) ? result.errors : [];
+  let summary = `Import done: ${result.created ?? 0} created, ${result.updated ?? 0} updated, ${result.skipped ?? 0} skipped`;
+  if (!errors.length) return summary;
+  summary += `, ${errors.length} errors`;
+  if (errors[0]?.message) {
+    summary += `. First error (row ${errors[0].row}): ${errors[0].message}`;
+  }
+  return summary;
+}
+
+function summarizeProImportResult(result) {
+  const errors = Array.isArray(result?.errors) ? result.errors : [];
+  let summary = `PRO import done: ${result.updated ?? 0} employees updated, ${result.skipped ?? 0} skipped`;
+  const proCreated = result.proDocsCreated ?? 0;
+  const proUpdated = result.proDocsUpdated ?? 0;
+  if (proCreated || proUpdated) {
+    summary += `, ${proCreated} documents created, ${proUpdated} documents updated`;
+  }
+  if (!errors.length) return summary;
+  summary += `, ${errors.length} errors`;
+  const first = errors[0];
+  if (first?.message) {
+    summary += `. First error (${first.sheetName ?? "sheet"} row ${first.row}): ${first.message}`;
+  }
+  return summary;
+}
+
+function wireLeaveImport() {
+  const importButton = document.getElementById("leave-import-btn");
+  const importFile = document.getElementById("leave-import-file");
+  if (!importButton || !importFile) return;
+
+  if (elevatedRoles.has(me?.role)) {
+    importButton.style.display = "";
+    importButton.onclick = () => importFile.click();
+    importFile.onchange = async (event) => {
+      const file = event.target.files?.[0];
+      event.target.value = "";
+      if (!file) return;
+      try {
+        await runExcelImportWithProgress({
+          path: "/import/leave",
+          file,
+          title: "Importing leave records",
+          onComplete: async (result) => {
+            notify(summarizeLeaveImportResult(result));
+            await loadLeaveRequests();
+            window.__loadLeaveHistory?.();
+          },
+        });
+      } catch (error) {
+        notify(error.message);
+      }
+    };
+  } else {
+    importButton.style.display = "none";
+  }
+}
+
 function wireEmployeeFilters() {
   const toolbar = document.querySelector("#view-employees .toolbar");
   if (!toolbar) return;
@@ -1024,6 +1766,37 @@ function wireEmployeeFilters() {
   const departmentSelect = document.getElementById("emp-filter-department");
   const statusSelect = document.getElementById("emp-filter-status");
   const exportButton = document.getElementById("emp-export-btn");
+  const importButton = document.getElementById("emp-import-btn");
+  const importFile = document.getElementById("emp-import-file");
+
+  if (importButton && importFile && elevatedRoles.has(me?.role)) {
+    importButton.style.display = "";
+    importButton.onclick = () => importFile.click();
+    importFile.onchange = async (event) => {
+      const file = event.target.files?.[0];
+      event.target.value = "";
+      if (!file) return;
+      const includeSeparated = window.confirm(
+        "Import separated/exited employees too?\n\nChoose OK to import all sheets (including Separated). Choose Cancel for active master sheet only.",
+      );
+      try {
+        await runExcelImportWithProgress({
+          path: "/import/employees",
+          file,
+          extra: { includeSeparated },
+          title: "Importing employees",
+          onComplete: async (result) => {
+            notify(summarizeEmployeeImportResult(result));
+            await refreshEmployees();
+          },
+        });
+      } catch (error) {
+        notify(error.message);
+      }
+    };
+  } else if (importButton) {
+    importButton.style.display = "none";
+  }
 
   if (searchInput) {
     searchInput.addEventListener("input", async (event) => {
@@ -1095,6 +1868,25 @@ async function loadEmployeesPresence() {
   );
 }
 
+function populateEmployeeFilterOptions() {
+  const departmentSelect = document.getElementById("emp-filter-department");
+  if (!departmentSelect) return;
+
+  const departments = new Set();
+  allEmployees.forEach((employee) => {
+    if (employee.department?.trim()) departments.add(employee.department.trim());
+  });
+
+  const currentDepartment = employeeFilters.department;
+  departmentSelect.innerHTML = `<option>All Departments</option>${[...departments].sort((a, b) => a.localeCompare(b))
+    .map((department) => `<option>${escapeAttr(department)}</option>`)
+    .join("")}`;
+  departmentSelect.value = [...departmentSelect.options].some((option) => option.value === currentDepartment)
+    ? currentDepartment
+    : "All Departments";
+  employeeFilters.department = departmentSelect.value;
+}
+
 async function loadEmployees() {
   const normalizedStatus = employeeFilters.status === "All Status"
     ? ""
@@ -1110,6 +1902,7 @@ async function loadEmployees() {
       employee.firstName,
       employee.lastName,
       employee.employeeCode,
+      employee.legacyEmpId,
       employee.department,
       employee.designation,
       employee.email,
@@ -1118,7 +1911,10 @@ async function loadEmployees() {
       .join(" ")
       .toLowerCase();
 
-    const matchesSearch = !normalizedSearch || searchable.includes(normalizedSearch);
+    const matchesSearch = !normalizedSearch
+      || searchable.includes(normalizedSearch)
+      || employee.employeeCode === normalizedSearch
+      || (employee.legacyEmpId ?? "").toLowerCase() === normalizedSearch;
     return matchesDepartment && matchesStatus && matchesSearch;
   });
 
@@ -1133,6 +1929,7 @@ async function refreshEmployees() {
   if (Array.isArray(latest)) {
     allEmployees = latest;
   }
+  populateEmployeeFilterOptions();
   await loadEmployees();
   populateEmployeeSelectors();
   renderDashboardInsights();
@@ -1145,6 +1942,377 @@ function getEmployeeById(employeeId) {
 
 function closeActionModal() {
   document.getElementById("emp-action-modal")?.remove();
+}
+
+function formatProfileMoney(value, currency) {
+  if (value == null || Number.isNaN(Number(value))) return "—";
+  const code = formatCurrencyLabel(currency);
+  const amount = Math.round(Number(value)).toLocaleString();
+  return code ? `${code} ${amount}` : amount;
+}
+
+function formatCurrencyLabel(currency) {
+  if (!currency) return "";
+  const key = String(currency).trim().toLowerCase();
+  const aliases = {
+    aed: "AED",
+    inr: "INR",
+    "indian rupees": "INR",
+    dollars: "USD",
+    usd: "USD",
+    euro: "EUR",
+    eur: "EUR",
+    egp: "EGP",
+    "ghana cedi": "GHS",
+    "irani riyal": "IRR",
+  };
+  if (aliases[key]) return aliases[key];
+  if (/^[a-z]{3}$/i.test(String(currency).trim())) return String(currency).trim().toUpperCase();
+  return String(currency).trim();
+}
+
+function employeeInitials(employee) {
+  const name = `${employee.firstName ?? ""} ${employee.lastName ?? ""}`.trim();
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase() || "--";
+}
+
+function profileDetailRow(label, value) {
+  const display = value == null || value === "" ? "—" : String(value);
+  return `
+    <div class="profile-item">
+      <span class="profile-key">${escapeAttr(label)}</span>
+      <span class="profile-value">${escapeAttr(display)}</span>
+    </div>
+  `;
+}
+
+function profileDetailRowHtml(label, html) {
+  return `
+    <div class="profile-item">
+      <span class="profile-key">${escapeAttr(label)}</span>
+      <span class="profile-value">${html}</span>
+    </div>
+  `;
+}
+
+function profileDetailPanel(title, rows) {
+  const content = rows.filter(Boolean).join("");
+  if (!content) return "";
+  return `
+    <div class="profile-panel">
+      <div class="profile-panel-title">${escapeAttr(title)}</div>
+      <div class="profile-list">${content}</div>
+    </div>
+  `;
+}
+
+function buildEmployeeProfileHtml(employee) {
+  const fullName = `${employee.firstName ?? ""} ${employee.lastName ?? ""}`.trim() || "Employee";
+  const payCurrency = employee.netPayCurrency;
+  const money = (value) => formatProfileMoney(value, payCurrency);
+  const managerName = employee.manager
+    ? `${employee.manager.firstName ?? ""} ${employee.manager.lastName ?? ""}`.trim()
+    : "";
+  const managerLine = managerName
+    ? `${managerName} (${employee.manager.employeeCode ?? "—"})`
+    : "Not assigned";
+  const presence = employeePresenceMap.get(employee.id);
+  const presenceBadge = presence?.isOnline
+    ? '<span class="badge badge-green">Checked In</span>'
+    : '<span class="badge badge-amber">Offline</span>';
+  const legacyLine = employee.legacyEmpId ? ` • Legacy ${employee.legacyEmpId}` : "";
+  const allowanceRows = [
+    ["Conveyance", employee.conveyanceAllowance],
+    ["Fixed OT", employee.fixedOtAllowance],
+    ["Food", employee.foodAllowance],
+    ["Other", employee.otherAllowance],
+    ["Overseas", employee.overseasAllowance],
+    ["Performance", employee.performanceAllowance],
+    ["Petrol", employee.petrolAllowance],
+    ["Risk", employee.riskAllowance],
+    ["Social Insurance", employee.socialInsurance],
+    ["Telephone", employee.telephoneAllowance],
+    ["Vehicle", employee.vehicleAllowance],
+    ["Kids Education", employee.kidsEducationAllowance],
+  ]
+    .filter(([, amount]) => amount != null && Number(amount) > 0)
+    .map(([label, amount]) => profileDetailRow(label, money(amount)));
+
+  return `
+    <div class="emp-profile-view">
+      <div class="profile-hero">
+        <div class="profile-hero-body">
+          <div class="profile-avatar">${escapeAttr(employeeInitials(employee))}</div>
+          <div class="profile-headline">
+            <div class="profile-name">${escapeAttr(fullName)}</div>
+            <div class="profile-subline">
+              ${escapeAttr(employee.employeeCode ?? "—")}${legacyLine ? escapeAttr(legacyLine) : ""}<br>
+              ${escapeAttr(employee.designation ?? "—")} • ${escapeAttr(employee.department ?? "—")}
+            </div>
+          </div>
+          <div class="profile-hero-meta">
+            <span class="profile-role-pill">${escapeAttr(formatLabel(employee.role ?? "EMPLOYEE"))}</span>
+            <span class="badge ${statusBadge(employee.status)}">${escapeAttr(formatLabel(employee.status ?? "ACTIVE"))}</span>
+            ${presenceBadge}
+          </div>
+        </div>
+      </div>
+
+      <div class="profile-quick-stats">
+        <div class="profile-stat">
+          <div class="profile-stat-label">Join Date</div>
+          <div class="profile-stat-value">${escapeAttr(formatProfileDate(employee.dateOfJoining))}</div>
+        </div>
+        <div class="profile-stat">
+          <div class="profile-stat-label">Employment</div>
+          <div class="profile-stat-value">${escapeAttr(employee.employmentType ?? "Full-Time")}</div>
+        </div>
+        <div class="profile-stat">
+          <div class="profile-stat-label">Work Mode</div>
+          <div class="profile-stat-value">${escapeAttr(formatLabel(employee.workMode ?? "OFFICE"))}</div>
+        </div>
+        <div class="profile-stat">
+          <div class="profile-stat-label">Gross Salary</div>
+          <div class="profile-stat-value">${escapeAttr(money(employee.grossSalary ?? employee.basicSalary))}</div>
+        </div>
+      </div>
+
+      <div class="profile-grid">
+        ${profileDetailPanel("Contact & Employment", [
+          profileDetailRow("Work Email", employee.email),
+          profileDetailRow("Login Email", employee.loginEmail ?? employee.email),
+          profileDetailRow("Mobile", employee.phone),
+          profileDetailRow("Line Manager", managerLine),
+          profileDetailRow("Office", employee.office?.name ?? "—"),
+          profileDetailRow("Notice Period", employee.noticePeriodDays ? `${employee.noticePeriodDays} days` : "—"),
+          profileDetailRowHtml("Platform Access", employee.accessEnabled ? '<span class="badge badge-green">Enabled</span>' : '<span class="badge badge-amber">Disabled</span>'),
+        ])}
+        ${profileDetailPanel("Organization & Payroll", [
+          profileDetailRow("Category", employee.category),
+          profileDetailRow("Sub Category", employee.subCategory),
+          profileDetailRow("Grade", employee.grade),
+          profileDetailRow("Employee Type", employee.employeeType),
+          profileDetailRow("Business Unit", employee.businessUnit),
+          profileDetailRow("Division", employee.division),
+          profileDetailRow("Work Location", employee.workLocation),
+          profileDetailRow("Work Country", employee.workCountry),
+          profileDetailRow("Payroll Type", employee.payrollType),
+          profileDetailRow("Payroll Status", employee.payrollStatus),
+          profileDetailRow("Payroll Division", employee.payrollDivision),
+        ])}
+        ${profileDetailPanel("Compensation", [
+          profileDetailRow("Basic Salary", money(employee.basicSalary)),
+          profileDetailRow("Housing Allowance", money(employee.housingAllowance)),
+          profileDetailRow("Transport Allowance", money(employee.transportAllowance)),
+          profileDetailRow("Gross Salary", money(employee.grossSalary)),
+          profileDetailRow("CTC / Month", money(employee.ctcMonth)),
+          profileDetailRow("CTC / Year", money(employee.ctcYear)),
+          profileDetailRow("Net Pay Currency", formatCurrencyLabel(employee.netPayCurrency) || "—"),
+          profileDetailRow("OT Eligible", employee.otEligible),
+          profileDetailRow("OT Rule (Normal)", employee.otRuleNormal),
+        ])}
+        ${allowanceRows.length ? profileDetailPanel("Allowances", allowanceRows) : ""}
+        ${profileDetailPanel("Compliance & IDs", [
+          profileDetailRow("Nationality", employee.nationality),
+          profileDetailRow("Gender", employee.gender),
+          profileDetailRow("Marital Status", employee.maritalStatus),
+          profileDetailRow("Date of Birth", formatProfileDate(employee.dateOfBirth)),
+          profileDetailRow("Emirates ID", employee.emiratesId),
+          profileDetailRow("Passport", employee.passportNumber),
+          profileDetailRow("Labour Card", employee.labourCardNumber),
+          profileDetailRow("Probation Status", employee.probationStatus),
+          profileDetailRow("Probation Completion", formatProfileDate(employee.probationCompletionDate)),
+        ])}
+        ${profileDetailPanel("Bank & WPS", [
+          profileDetailRow("Bank Name", employee.bankName),
+          profileDetailRow("IBAN", employee.iban),
+          profileDetailRowHtml("WPS Enabled", employee.wpsEnabled ? '<span class="badge badge-green">Yes</span>' : '<span class="badge badge-coral">No</span>'),
+        ])}
+        ${profileDetailPanel("Visa & HOD", [
+          profileDetailRow("Visa Type", employee.visaType),
+          profileDetailRow("Visa Sponsor", employee.visaSponsor),
+          profileDetailRow("HOD Name", employee.hodName),
+          profileDetailRow("HOD Email", employee.hodEmail),
+          profileDetailRow("Comments", employee.comments),
+        ])}
+      </div>
+    </div>
+  `;
+}
+
+const EMPLOYEE_REPORT_SECTIONS = [
+  { id: "profile", label: "Profile & Master Data" },
+  { id: "attendance", label: "Attendance & Tracking" },
+  { id: "leave", label: "Leave History & Balances" },
+  { id: "payroll", label: "Payroll" },
+  { id: "exit", label: "Exit & Clearance" },
+  { id: "performance", label: "Performance" },
+];
+
+function buildEmployeeReportSectionCheckboxes() {
+  return `
+    <div class="emp-report-sections">
+      <div class="emp-report-sections-head">
+        <div class="emp-report-sections-title">Include in report</div>
+        <div class="emp-report-sections-actions">
+          <button type="button" id="emp-report-select-all">Select all</button>
+          <button type="button" id="emp-report-clear-all">Clear all</button>
+        </div>
+      </div>
+      <div class="emp-report-section-grid">
+        ${EMPLOYEE_REPORT_SECTIONS.map((section) => `
+          <label class="emp-report-check">
+            <input type="checkbox" class="emp-report-section-input" value="${section.id}" checked>
+            <span>${escapeAttr(section.label)}</span>
+          </label>
+        `).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function readSelectedEmployeeReportSections(container) {
+  return [...container.querySelectorAll(".emp-report-section-input:checked")].map((input) => input.value);
+}
+
+async function downloadEmployeeReportPdf(employeeId, from, to, sections) {
+  const params = new URLSearchParams({ from, to, sections: sections.join(",") });
+  const headers = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const response = await fetch(`${API_BASE}/reports/employee/${employeeId}/pdf?${params}`, {
+    headers,
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.message || "Failed to generate report");
+  }
+
+  const blob = await response.blob();
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const match = disposition.match(/filename="([^"]+)"/);
+  const fileName = match?.[1] ?? `Employee_Report_${from}_${to}.pdf`;
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+function openEmployeeViewModal(employee) {
+  closeActionModal();
+  const canManage = elevatedRoles.has(me?.role);
+  const range = defaultLeaveHistoryRange();
+  const wrapper = document.createElement("div");
+  wrapper.id = "emp-action-modal";
+  wrapper.className = "modal-overlay open";
+  wrapper.innerHTML = `
+    <div class="modal emp-view-modal">
+      <div class="modal-header">
+        <div class="modal-title">Employee Profile</div>
+        <button class="modal-close" id="emp-modal-close" aria-label="Close">✕</button>
+      </div>
+      <div class="emp-profile-view-scroll">${buildEmployeeProfileHtml(employee)}</div>
+      ${canManage ? `
+        <div class="emp-report-bar">
+          <div class="emp-report-actions-row">
+            <div class="form-group">
+              <label for="emp-report-from">Report from</label>
+              <input type="date" id="emp-report-from" value="${range.from}">
+            </div>
+            <div class="form-group">
+              <label for="emp-report-to">Report to</label>
+              <input type="date" id="emp-report-to" value="${range.to}">
+            </div>
+            <button type="button" class="btn btn-primary btn-sm" id="emp-view-download-pdf" style="margin-bottom:2px">
+              <i class="bi bi-file-earmark-pdf"></i> Download PDF Report
+            </button>
+          </div>
+          ${buildEmployeeReportSectionCheckboxes()}
+          <div class="emp-report-note">
+            Choose which sections to include. Attendance, leave, and payroll use the date range above.
+          </div>
+        </div>
+      ` : ""}
+      <div class="modal-footer" style="margin-top:14px">
+        <button class="btn btn-secondary" id="emp-view-close">Close</button>
+        ${canManage ? `<button class="btn btn-secondary" id="emp-view-edit"><i class="bi bi-pencil-square"></i> Edit</button>` : ""}
+        <button class="btn btn-primary" id="emp-view-calendar"><i class="bi bi-calendar3"></i> Calendar</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(wrapper);
+
+  const close = () => closeActionModal();
+  wrapper.querySelector("#emp-modal-close")?.addEventListener("click", close);
+  wrapper.querySelector("#emp-view-close")?.addEventListener("click", close);
+  wrapper.addEventListener("click", (event) => {
+    if (event.target === wrapper) close();
+  });
+  wrapper.querySelector("#emp-view-edit")?.addEventListener("click", () => {
+    close();
+    window.__editEmployee(employee.id);
+  });
+  wrapper.querySelector("#emp-view-calendar")?.addEventListener("click", () => {
+    close();
+    window.__viewEmployeeCalendar(employee.id);
+  });
+  wrapper.querySelector("#emp-report-select-all")?.addEventListener("click", () => {
+    wrapper.querySelectorAll(".emp-report-section-input").forEach((input) => {
+      input.checked = true;
+    });
+  });
+  wrapper.querySelector("#emp-report-clear-all")?.addEventListener("click", () => {
+    wrapper.querySelectorAll(".emp-report-section-input").forEach((input) => {
+      input.checked = false;
+    });
+  });
+  wrapper.querySelector("#emp-view-download-pdf")?.addEventListener("click", async () => {
+    const from = wrapper.querySelector("#emp-report-from")?.value;
+    const to = wrapper.querySelector("#emp-report-to")?.value;
+    const sections = readSelectedEmployeeReportSections(wrapper);
+    if (!from || !to) {
+      notify("Select both report dates.");
+      return;
+    }
+    if (from > to) {
+      notify("Report from date must be on or before to date.");
+      return;
+    }
+    if (!sections.length) {
+      notify("Select at least one section to include in the report.");
+      return;
+    }
+    const button = wrapper.querySelector("#emp-view-download-pdf");
+    const original = button?.innerHTML;
+    try {
+      if (button) {
+        button.disabled = true;
+        button.innerHTML = "Generating…";
+      }
+      await downloadEmployeeReportPdf(employee.id, from, to, sections);
+      notify("Employee report downloaded");
+    } catch (error) {
+      notify(error.message);
+    } finally {
+      if (button) {
+        button.disabled = false;
+        button.innerHTML = original ?? '<i class="bi bi-file-earmark-pdf"></i> Download PDF Report';
+      }
+    }
+  });
 }
 
 function openActionModal({ title, bodyHtml, saveLabel = "Save", hideSave = false, onSave }) {
@@ -1187,26 +2355,8 @@ window.__viewEmployeeById = function viewEmployeeById(employeeId) {
     return;
   }
 
-  openActionModal({
-    title: "Employee Details",
-    hideSave: true,
-    bodyHtml: `
-      <div style="display:grid;gap:10px;font-size:13.5px">
-        <div><b>Name:</b> ${employee.firstName} ${employee.lastName}</div>
-        <div><b>Employee Code:</b> ${employee.employeeCode}</div>
-        <div><b>Department:</b> ${employee.department}</div>
-        <div><b>Designation:</b> ${employee.designation}</div>
-        <div><b>Employment Type:</b> ${employee.employmentType ?? "Full-Time"}</div>
-        <div><b>Status:</b> ${formatLabel(employee.status)}</div>
-        <div><b>Email:</b> ${employee.email}</div>
-        <div><b>Line Manager:</b> ${employee.manager ? `${employee.manager.firstName} ${employee.manager.lastName} (${employee.manager.employeeCode})` : "Not assigned"}</div>
-        <div><b>IBAN:</b> ${employee.iban ?? "Not set"}</div>
-        <div><b>Bank Name:</b> ${employee.bankName ?? "Not set"}</div>
-        <div><b>WPS Enabled:</b> ${employee.wpsEnabled ? "Yes" : "No"}</div>
-        <div><b>Labour Card:</b> ${employee.labourCardNumber ?? "Not set"}</div>
-      </div>
-    `,
-  });
+  window.__closeEmployeeActionsMenu?.();
+  openEmployeeViewModal(employee);
 };
 
 window.__editEmployee = function editEmployee(employeeId) {
@@ -1224,14 +2374,60 @@ window.__editEmployee = function editEmployee(employeeId) {
   managerSearchTerm = "";
 
   document.getElementById("emp-full-name").value = `${employee.firstName} ${employee.lastName}`.trim();
-  document.getElementById("emp-code").value = employee.employeeCode ?? "";
+  const empCodeInput = document.getElementById("emp-code");
+  if (empCodeInput) {
+    empCodeInput.value = employee.employeeCode ?? "";
+    empCodeInput.setAttribute("readonly", "readonly");
+  }
+  document.getElementById("emp-legacy-id").value = employee.legacyEmpId ?? "";
   document.getElementById("emp-dob").value = toDateInputValue(employee.dateOfBirth);
+  document.getElementById("emp-gender").value = employee.gender ?? document.getElementById("emp-gender").value;
+  document.getElementById("emp-marital-status").value = employee.maritalStatus ?? document.getElementById("emp-marital-status").value;
   document.getElementById("emp-mobile").value = employee.phone ?? "";
   document.getElementById("emp-email").value = employee.email ?? "";
   document.getElementById("emp-designation").value = employee.designation ?? "";
   document.getElementById("emp-join-date").value = toDateInputValue(employee.dateOfJoining);
   updateEmploymentStatusBadge();
   document.getElementById("emp-basic-salary").value = String(Math.round(employee.basicSalary ?? 0));
+  document.getElementById("emp-gross-salary").value = employee.grossSalary != null ? String(employee.grossSalary) : "";
+  document.getElementById("emp-ctc-month").value = employee.ctcMonth != null ? String(employee.ctcMonth) : "";
+  document.getElementById("emp-ctc-year").value = employee.ctcYear != null ? String(employee.ctcYear) : "";
+  document.getElementById("emp-housing").value = employee.housingAllowance != null ? String(employee.housingAllowance) : "";
+  document.getElementById("emp-transport").value = employee.transportAllowance != null ? String(employee.transportAllowance) : "";
+  document.getElementById("emp-category").value = employee.category ?? "";
+  document.getElementById("emp-sub-category").value = employee.subCategory ?? "";
+  document.getElementById("emp-grade").value = employee.grade ?? "";
+  document.getElementById("emp-employee-type").value = employee.employeeType ?? "";
+  document.getElementById("emp-business-unit").value = employee.businessUnit ?? "";
+  document.getElementById("emp-division").value = employee.division ?? "";
+  document.getElementById("emp-work-location").value = employee.workLocation ?? "";
+  document.getElementById("emp-work-country").value = employee.workCountry ?? "";
+  document.getElementById("emp-payroll-type").value = employee.payrollType ?? "";
+  document.getElementById("emp-payroll-status").value = employee.payrollStatus ?? "";
+  document.getElementById("emp-payroll-division").value = employee.payrollDivision ?? "";
+  document.getElementById("emp-joining-month").value = employee.joiningMonth ?? "";
+  document.getElementById("emp-probation-status").value = employee.probationStatus ?? "";
+  document.getElementById("emp-probation-completion").value = toDateInputValue(employee.probationCompletionDate);
+  document.getElementById("emp-conveyance").value = employee.conveyanceAllowance != null ? String(employee.conveyanceAllowance) : "";
+  document.getElementById("emp-fixed-ot").value = employee.fixedOtAllowance != null ? String(employee.fixedOtAllowance) : "";
+  document.getElementById("emp-food").value = employee.foodAllowance != null ? String(employee.foodAllowance) : "";
+  document.getElementById("emp-other-allow").value = employee.otherAllowance != null ? String(employee.otherAllowance) : "";
+  document.getElementById("emp-overseas").value = employee.overseasAllowance != null ? String(employee.overseasAllowance) : "";
+  document.getElementById("emp-performance").value = employee.performanceAllowance != null ? String(employee.performanceAllowance) : "";
+  document.getElementById("emp-petrol").value = employee.petrolAllowance != null ? String(employee.petrolAllowance) : "";
+  document.getElementById("emp-risk").value = employee.riskAllowance != null ? String(employee.riskAllowance) : "";
+  document.getElementById("emp-social-insurance").value = employee.socialInsurance != null ? String(employee.socialInsurance) : "";
+  document.getElementById("emp-telephone").value = employee.telephoneAllowance != null ? String(employee.telephoneAllowance) : "";
+  document.getElementById("emp-vehicle").value = employee.vehicleAllowance != null ? String(employee.vehicleAllowance) : "";
+  document.getElementById("emp-kids-education").value = employee.kidsEducationAllowance != null ? String(employee.kidsEducationAllowance) : "";
+  document.getElementById("emp-ot-eligible").value = employee.otEligible ?? "";
+  document.getElementById("emp-ot-rule").value = employee.otRuleNormal != null ? String(employee.otRuleNormal) : "";
+  document.getElementById("emp-net-currency").value = employee.netPayCurrency ?? "";
+  document.getElementById("emp-visa-type").value = employee.visaType ?? "";
+  document.getElementById("emp-visa-sponsor").value = employee.visaSponsor ?? "";
+  document.getElementById("emp-hod-name").value = employee.hodName ?? "";
+  document.getElementById("emp-hod-email").value = employee.hodEmail ?? "";
+  document.getElementById("emp-comments").value = employee.comments ?? "";
   document.getElementById("emp-emirates-id").value = employee.emiratesId ?? "";
   document.getElementById("emp-passport").value = employee.passportNumber ?? "";
   document.getElementById("emp-iban").value = employee.iban ?? "";
@@ -1425,6 +2621,7 @@ window.filterTable = function filterTableLive(input, tableId) {
 
 function formatLeaveStatus(status) {
   if (status === "PENDING_L1") return "Pending L1";
+  if (status === "PENDING_ACTING") return "Awaiting Acting Acceptance";
   if (status === "PENDING_L2") return "Pending L2";
   if (status === "APPROVED") return "Approved";
   if (status === "REJECTED") return "Rejected";
@@ -1433,82 +2630,180 @@ function formatLeaveStatus(status) {
 
 function leaveStatusBadge(status) {
   if (status === "APPROVED") return "badge-green";
-  if (status === "PENDING_L1" || status === "PENDING_L2") return "badge-amber";
+  if (status === "PENDING_L1" || status === "PENDING_L2" || status === "PENDING_ACTING") return "badge-amber";
   if (status === "REJECTED") return "badge-coral";
   return "badge-blue";
 }
 
 async function approveLeaveRequest(id, stage, name) {
   try {
-    await api(`/leave/requests/${id}/${stage}-approve`, { method: "POST" });
-    notify(`Leave approved for ${name}`);
+    const result = await api(`/leave/requests/${id}/${stage}-approve`, { method: "POST" });
+    let message = `Leave approved for ${name}`;
+    if (stage === "l2" && result?.airTicket?.eligible && result?.airTicket?.fare != null) {
+      message += ` · Air ticket allowance AED ${Number(result.airTicket.fare).toLocaleString()} drafted`;
+      if (result.airTicket.adjustmentReference) {
+        message += ` (${result.airTicket.adjustmentReference})`;
+      }
+    } else if (stage === "l2" && result?.airTicket?.reason) {
+      message += ` · No air ticket: ${result.airTicket.reason}`;
+    }
+    notify(message);
     await loadLeaveRequests();
   } catch (error) {
     notify(error.message);
   }
 }
 
+async function acceptActingLeave(id, name) {
+  try {
+    await api(`/leave/requests/${id}/acting-accept`, { method: "POST" });
+    notify(`Acting assignment accepted for ${name}'s leave`);
+    await loadLeaveRequests();
+  } catch (error) {
+    notify(error.message);
+  }
+}
+
+async function rejectActingLeave(id, name) {
+  const reason = window.prompt(`Reject acting assignment for ${name}? Enter reason (min 3 characters):`);
+  if (!reason || reason.trim().length < 3) {
+    if (reason !== null) notify("Rejection reason must be at least 3 characters");
+    return;
+  }
+  try {
+    await api(`/leave/requests/${id}/acting-reject`, {
+      method: "POST",
+      body: JSON.stringify({ reason: reason.trim() }),
+    });
+    notify(`Acting assignment rejected for ${name}`);
+    await loadLeaveRequests();
+  } catch (error) {
+    notify(error.message);
+  }
+}
+
+window.__acceptActingLeave = acceptActingLeave;
+window.__rejectActingLeave = rejectActingLeave;
+
 function renderLeavePending(requests) {
-  const tbody = document.querySelector("#leave-pending table tbody");
-  const table = document.querySelector("#leave-pending table");
+  const tbody = document.querySelector("#leave-pending-table tbody");
+  const table = document.getElementById("leave-pending-table");
+  const mobileList = document.getElementById("leave-pending-mobile");
   if (!tbody || !table) return;
 
+  const pending = requests.filter((request) =>
+    ["PENDING_L1", "PENDING_ACTING", "PENDING_L2"].includes(request.status),
+  );
+
   const headerCells = table.querySelectorAll("thead th");
-  if (headerCells.length >= 8) {
+  const showAirTicketColumn =
+    elevatedRoles.has(me?.role)
+    || pending.some((request) => canViewAirTicketForEmployee(request.employeeId));
+  if (headerCells.length >= 9) {
+    if (headerCells[6]) headerCells[6].style.display = showAirTicketColumn ? "" : "none";
     if (me?.role === "MANAGER") {
-      headerCells[6].textContent = "L1 (You)";
-      headerCells[7].textContent = "L2";
+      headerCells[7].textContent = "L1 / Acting";
+      headerCells[8].textContent = "L2";
     } else if (l2Roles.has(me?.role)) {
-      headerCells[6].textContent = "L1";
-      headerCells[7].textContent = "L2 (You)";
+      headerCells[7].textContent = "L1 / Acting";
+      headerCells[8].textContent = "L2 (You)";
     } else {
-      headerCells[6].textContent = "L1";
-      headerCells[7].textContent = "L2";
+      headerCells[7].textContent = "L1 / Acting";
+      headerCells[8].textContent = "L2";
     }
   }
 
-  tbody.innerHTML = requests
-    .map((request) => {
+  if (!pending.length) {
+    tbody.innerHTML = `<tr><td colspan="9" class="text-muted">No pending leave requests.</td></tr>`;
+    if (mobileList) mobileList.innerHTML = `<div class="mobile-empty">No pending leave requests.</div>`;
+    return;
+  }
+
+  const rendered = pending.map((request) => {
       const name = `${request.employee?.firstName ?? ""} ${request.employee?.lastName ?? ""}`.trim();
       const leaveType = request.leaveType?.name ?? "Leave";
       const start = new Date(request.startDate).toLocaleDateString("en-GB", { month: "short", day: "numeric" });
       const end = new Date(request.endDate).toLocaleDateString("en-GB", { month: "short", day: "numeric" });
-      const l1Status = request.l1ApprovedBy
-        ? `<span class="badge badge-green">✓ Approved</span>`
-        : request.status === "PENDING_L1"
-          ? hasRole(Array.from(l1Roles))
-            ? `<button class="btn btn-accent btn-sm" onclick="window.__approveLeave('${request.id}','l1','${name}')">Approve L1</button>`
-            : `<span class="badge badge-amber">Pending</span>`
-          : `<span class="text-muted">—</span>`;
+      const actingName = request.actingApprover
+        ? `${request.actingApprover.firstName ?? ""} ${request.actingApprover.lastName ?? ""}`.trim()
+        : "—";
+      const actingBadge = request.managerOnLeave && request.assignedL1Approver?.isActing
+        ? ' <span class="badge badge-amber">Acting approver</span>'
+        : "";
+
+      let l1Status = `<span class="text-muted">—</span>`;
+      if (request.status === "PENDING_ACTING") {
+        l1Status = request.canAcceptActing
+          ? `<div class="flex gap-8" style="flex-wrap:wrap"><button class="btn btn-accent btn-sm" onclick="window.__acceptActingLeave('${request.id}','${escapeAttr(name)}')">Accept Acting Role</button><button class="btn btn-danger btn-sm" onclick="window.__rejectActingLeave('${request.id}','${escapeAttr(name)}')">Reject</button></div>`
+          : `<span class="badge badge-amber">Awaiting ${escapeAttr(actingName)}</span>`;
+      } else if (request.l1ApprovedBy) {
+        l1Status = `<span class="badge badge-green">✓ Approved</span>${actingBadge}`;
+      } else if (request.status === "PENDING_L1") {
+        l1Status = request.canApproveL1
+          ? `<button class="btn btn-accent btn-sm" onclick="window.__approveLeave('${request.id}','l1','${escapeAttr(name)}')">Approve L1</button>${actingBadge}`
+          : `<span class="badge badge-amber">Pending${actingBadge}</span>`;
+      }
 
       const l2Status = request.status === "PENDING_L2" && hasRole(Array.from(l2Roles))
-        ? `<button class="btn btn-accent btn-sm" onclick="window.__approveLeave('${request.id}','l2','${name}')">Approve L2</button>`
-        : request.status === "PENDING_L1"
-          ? `<span class="text-muted">Awaiting L1</span>`
-          : request.status === "APPROVED"
-            ? `<span class="badge badge-green">Approved</span>`
-            : request.status === "REJECTED"
-              ? `<span class="badge badge-coral">Rejected</span>`
-              : `<span class="badge badge-amber">Pending</span>`;
+        ? `<button class="btn btn-accent btn-sm" onclick="window.__approveLeave('${request.id}','l2','${escapeAttr(name)}')">Approve L2</button>`
+        : request.status === "PENDING_ACTING"
+          ? `<span class="text-muted">After acting acceptance</span>`
+          : request.status === "PENDING_L1"
+            ? `<span class="text-muted">Awaiting L1</span>`
+            : `<span class="badge badge-amber">Pending</span>`;
 
-      return `
+      const showAirTicket = canViewAirTicketForEmployee(request.employeeId);
+      const airTicketCell = showAirTicket ? formatAirTicketSummary(request) : `<span class="text-muted">—</span>`;
+      const reason = request.reason ?? request.remark ?? "—";
+
+      const tableRow = `
         <tr>
-          <td><b>${name || request.employeeId}</b></td>
-          <td><span class="badge badge-blue">${leaveType}</span></td>
+          <td><b>${escapeAttr(name || request.employeeId)}</b>${request.employee?.role === "MANAGER" ? ' <span class="badge badge-blue">Manager</span>' : ""}</td>
+          <td><span class="badge badge-blue">${escapeAttr(leaveType)}</span></td>
           <td>${start}</td>
           <td>${end}</td>
           <td>${request.days}</td>
-          <td>${request.reason}</td>
+          <td>${escapeAttr(reason)}</td>
+          <td${showAirTicketColumn ? "" : ' style="display:none"'}>${showAirTicket ? airTicketCell : `<span class="text-muted">—</span>`}</td>
           <td><div class="flex gap-8">${l1Status}</div></td>
           <td><div class="flex gap-8">${l2Status}</div></td>
         </tr>
       `;
-    })
-    .join("");
+
+      const mobileCard = `
+        <article class="record-card">
+          <div class="record-card-head">
+            <div class="record-card-head-main">
+              <div class="record-card-name">${escapeAttr(name || request.employeeId)}</div>
+              <div class="record-card-badges">
+                <span class="badge badge-blue">${escapeAttr(leaveType)}</span>
+                <span class="badge ${leaveStatusBadge(request.status)}">${escapeAttr(formatLeaveStatus(request.status))}</span>
+              </div>
+            </div>
+          </div>
+          <div class="record-card-grid">
+            <div class="record-card-field"><span class="record-card-label">From</span><span class="record-card-value">${start}</span></div>
+            <div class="record-card-field"><span class="record-card-label">To</span><span class="record-card-value">${end}</span></div>
+            <div class="record-card-field"><span class="record-card-label">Days</span><span class="record-card-value">${request.days}</span></div>
+            <div class="record-card-field"><span class="record-card-label">Reason</span><span class="record-card-value">${escapeAttr(reason)}</span></div>
+          </div>
+          <div class="record-card-actions" style="flex-direction:column;align-items:stretch;border-top:none;padding-top:0">
+            <div>${l1Status}</div>
+            <div>${l2Status}</div>
+          </div>
+        </article>
+      `;
+
+      return { tableRow, mobileCard };
+    });
+
+  tbody.innerHTML = rendered.map((row) => row.tableRow).join("");
+  if (mobileList) mobileList.innerHTML = rendered.map((row) => row.mobileCard).join("");
 }
 
 function renderMyLeaveHistory(requests) {
   const tbody = document.querySelector("#leave-my-table tbody");
+  const mobileList = document.getElementById("leave-my-mobile");
   if (!tbody) return;
 
   const myId = me?.employee?.id;
@@ -1517,12 +2812,12 @@ function renderMyLeaveHistory(requests) {
     .sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
 
   if (!myRequests.length) {
-    tbody.innerHTML = `<tr><td colspan="8" class="text-muted">No leave requests found.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="12" class="text-muted">No leave requests found.</td></tr>`;
+    if (mobileList) mobileList.innerHTML = `<div class="mobile-empty">No leave requests found.</div>`;
     return;
   }
 
-  tbody.innerHTML = myRequests
-    .map((request) => {
+  const rendered = myRequests.map((request) => {
       const leaveType = request.leaveType?.name ?? "Leave";
       const start = new Date(request.startDate).toLocaleDateString("en-GB", { month: "short", day: "numeric", year: "numeric" });
       const end = new Date(request.endDate).toLocaleDateString("en-GB", { month: "short", day: "numeric", year: "numeric" });
@@ -1532,21 +2827,437 @@ function renderMyLeaveHistory(requests) {
       const l2 = request.l2ApprovedBy
         ? `${request.l2ApprovedBy.firstName} ${request.l2ApprovedBy.lastName}`
         : "—";
+      const remark = request.remark || request.reason || "—";
 
-      return `
+      const actingName = request.actingApprover
+        ? `${request.actingApprover.firstName ?? ""} ${request.actingApprover.lastName ?? ""}`.trim()
+        : "—";
+      const actingLine =
+        request.status === "PENDING_ACTING"
+          ? `<div class="text-muted" style="font-size:12px">Acting: ${escapeAttr(actingName)} (pending acceptance)</div>`
+          : request.actingApprover && request.actingAcceptedAt
+            ? `<div class="text-muted" style="font-size:12px">Acting: ${escapeAttr(actingName)}</div>`
+            : "";
+
+      const tableRow = `
         <tr>
-          <td><span class="badge badge-blue">${leaveType}</span></td>
+          <td><span class="badge badge-blue">${leaveType}</span>${actingLine}</td>
           <td>${start}</td>
           <td>${end}</td>
           <td>${request.days}</td>
+          <td>${formatLeaveHistoryDate(request.rejoiningDate)}</td>
+          <td>${escapeAttr(request.statusAsOn ?? "—")}</td>
+          <td>${request.extendedDays ?? 0}</td>
           <td><span class="badge ${leaveStatusBadge(request.status)}">${formatLeaveStatus(request.status)}</span></td>
+          <td>${formatAirTicketSummary(request)}</td>
           <td>${l1}</td>
           <td>${l2}</td>
-          <td>${escapeAttr(request.reason ?? "—")}</td>
+          <td>${escapeAttr(remark)}</td>
         </tr>
       `;
-    })
+
+      const mobileCard = `
+        <article class="record-card">
+          <div class="record-card-head">
+            <div class="record-card-head-main">
+              <div class="record-card-name">${escapeAttr(leaveType)}</div>
+              <div class="record-card-badges">
+                <span class="badge ${leaveStatusBadge(request.status)}">${escapeAttr(formatLeaveStatus(request.status))}</span>
+              </div>
+            </div>
+          </div>
+          <div class="record-card-grid">
+            <div class="record-card-field"><span class="record-card-label">From</span><span class="record-card-value">${start}</span></div>
+            <div class="record-card-field"><span class="record-card-label">To</span><span class="record-card-value">${end}</span></div>
+            <div class="record-card-field"><span class="record-card-label">Days</span><span class="record-card-value">${request.days}</span></div>
+            <div class="record-card-field"><span class="record-card-label">Rejoin</span><span class="record-card-value">${escapeAttr(formatLeaveHistoryDate(request.rejoiningDate))}</span></div>
+          </div>
+          ${remark !== "—" ? `<div class="record-card-sub">${escapeAttr(remark)}</div>` : ""}
+        </article>
+      `;
+
+      return { tableRow, mobileCard };
+    });
+
+  tbody.innerHTML = rendered.map((row) => row.tableRow).join("");
+  if (mobileList) mobileList.innerHTML = rendered.map((row) => row.mobileCard).join("");
+}
+
+function canPickLeaveHistoryEmployee() {
+  return elevatedRoles.has(me?.role) || me?.role === "MANAGER";
+}
+
+function leaveHistoryEmployeeOptions() {
+  const loggedInEmployeeId = me?.employee?.id ?? "";
+  if (elevatedRoles.has(me?.role)) return allEmployees;
+  if (me?.role === "MANAGER" && me?.employee?.department) {
+    return allEmployees.filter(
+      (employee) => employee.department === me.employee.department || employee.id === loggedInEmployeeId,
+    );
+  }
+  return allEmployees.filter((employee) => employee.id === loggedInEmployeeId);
+}
+
+function defaultLeaveHistoryRange() {
+  const today = new Date();
+  const from = new Date(today.getFullYear(), 0, 1);
+  return { from: toDateKey(from), to: toDateKey(today) };
+}
+
+function setLeaveHistoryRange(from, to) {
+  const fromInput = document.getElementById("leave-history-from");
+  const toInput = document.getElementById("leave-history-to");
+  if (fromInput) fromInput.value = from;
+  if (toInput) {
+    toInput.value = to;
+    toInput.min = from;
+  }
+  if (fromInput) fromInput.max = to;
+}
+
+function canExportLeaveReport() {
+  return elevatedRoles.has(me?.role) || me?.role === "MANAGER";
+}
+
+function populateLeaveHistoryDepartmentSelect() {
+  const wrap = document.getElementById("leave-history-dept-wrap");
+  const select = document.getElementById("leave-history-dept");
+  if (!wrap || !select) return;
+
+  const canFilter = elevatedRoles.has(me?.role);
+  wrap.style.display = canFilter ? "" : "none";
+  if (!canFilter) return;
+
+  const current = select.value;
+  const departments = [...new Set(allEmployees.map((employee) => employee.department).filter(Boolean))].sort();
+  select.innerHTML = `<option value="">All departments</option>` + departments
+    .map((department) => `<option value="${escapeAttr(department)}">${escapeAttr(department)}</option>`)
     .join("");
+  if (current && departments.includes(current)) {
+    select.value = current;
+  }
+}
+
+function syncLeaveHistoryExportControls() {
+  const canExport = canExportLeaveReport();
+  document.getElementById("leave-export-xlsx-btn")?.style.setProperty("display", canExport ? "" : "none");
+  document.getElementById("leave-export-pdf-btn")?.style.setProperty("display", canExport ? "" : "none");
+}
+
+async function downloadLeaveReportFile(format) {
+  const from = document.getElementById("leave-history-from")?.value;
+  const to = document.getElementById("leave-history-to")?.value;
+  if (!from || !to) {
+    notify("Select both from and to dates.");
+    return;
+  }
+  if (from > to) {
+    notify("From date must be on or before to date.");
+    return;
+  }
+
+  const params = new URLSearchParams({ from, to });
+  const employeeId = document.getElementById("leave-history-emp")?.value;
+  const department = document.getElementById("leave-history-dept")?.value;
+  if (employeeId && canPickLeaveHistoryEmployee()) {
+    params.set("employeeId", employeeId);
+  }
+  if (department && elevatedRoles.has(me?.role)) {
+    params.set("department", department);
+  }
+
+  const headers = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const response = await fetch(`${API_BASE}/reports/leave/${format}?${params.toString()}`, {
+    headers,
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.message || "Failed to generate leave report");
+  }
+
+  const blob = await response.blob();
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const match = disposition.match(/filename="([^"]+)"/);
+  const fileName = match?.[1] ?? `Leave_Report_${from}_${to}.${format}`;
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+window.__downloadLeaveReport = async function downloadLeaveReport(format) {
+  const xlsxBtn = document.getElementById("leave-export-xlsx-btn");
+  const pdfBtn = document.getElementById("leave-export-pdf-btn");
+  const activeBtn = format === "pdf" ? pdfBtn : xlsxBtn;
+  const original = activeBtn?.innerHTML;
+  try {
+    if (activeBtn) {
+      activeBtn.disabled = true;
+      activeBtn.innerHTML = "Generating…";
+    }
+    await downloadLeaveReportFile(format);
+    notify(`Leave report downloaded (${format.toUpperCase()})`);
+  } catch (error) {
+    notify(error.message);
+  } finally {
+    if (xlsxBtn) {
+      xlsxBtn.disabled = false;
+      if (format === "xlsx") xlsxBtn.innerHTML = original ?? "⬇ Excel";
+    }
+    if (pdfBtn) {
+      pdfBtn.disabled = false;
+      if (format === "pdf") pdfBtn.innerHTML = original ?? "⬇ PDF";
+    }
+  }
+};
+
+function populateLeaveHistoryEmployeeSelect() {
+  const wrap = document.getElementById("leave-history-emp-wrap");
+  const select = document.getElementById("leave-history-emp");
+  if (!wrap || !select) return;
+
+  const canPick = canPickLeaveHistoryEmployee();
+  wrap.style.display = canPick ? "" : "none";
+  if (!canPick) return;
+
+  const current = select.value;
+  const employees = leaveHistoryEmployeeOptions();
+  const defaultLabel = elevatedRoles.has(me?.role) ? "All employees" : "My leave history";
+  select.innerHTML = `<option value="">${defaultLabel}</option>` + employees
+    .map((employee) => `<option value="${employee.id}">${employee.firstName} ${employee.lastName} (${employee.employeeCode})</option>`)
+    .join("");
+  if (current && employees.some((employee) => employee.id === current)) {
+    select.value = current;
+  }
+}
+
+function formatLeaveHistoryDate(value) {
+  if (!value) return "—";
+  return new Date(value).toLocaleDateString("en-GB", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function renderLeaveHistoryTable(requests) {
+  const tbody = document.getElementById("leave-history-body");
+  const mobileList = document.getElementById("leave-history-mobile");
+  const summary = document.getElementById("leave-history-summary");
+  const showEmployeeCol = canPickLeaveHistoryEmployee();
+  const employeeHeader = document.querySelector("#leave-history-table thead th:nth-child(2)");
+  if (employeeHeader) employeeHeader.style.display = showEmployeeCol ? "" : "none";
+
+  if (!tbody) return;
+
+  const sorted = [...(requests ?? [])].sort(
+    (a, b) => new Date(b.createdAt ?? b.startDate).getTime() - new Date(a.createdAt ?? a.startDate).getTime(),
+  );
+
+  if (!sorted.length) {
+    tbody.innerHTML = `<tr><td colspan="15" class="text-muted">No leave records found for this date range.</td></tr>`;
+    if (mobileList) mobileList.innerHTML = `<div class="mobile-empty">No leave records found for this date range.</div>`;
+    if (summary) summary.textContent = "";
+    return;
+  }
+
+  const totalDays = sorted.reduce((sum, request) => sum + Number(request.days ?? 0), 0);
+  const approvedDays = sorted
+    .filter((request) => request.status === "APPROVED")
+    .reduce((sum, request) => sum + Number(request.days ?? 0), 0);
+  if (summary) {
+    summary.textContent = `${sorted.length} record${sorted.length === 1 ? "" : "s"} · ${totalDays} day${totalDays === 1 ? "" : "s"} total · ${approvedDays} approved day${approvedDays === 1 ? "" : "s"}`;
+  }
+
+  const rendered = sorted.map((request) => {
+    const leaveType = request.leaveType?.name ?? "Leave";
+    const employeeName = request.employee
+      ? `${request.employee.firstName ?? ""} ${request.employee.lastName ?? ""}`.trim()
+      : "—";
+    const l1 = request.l1ApprovedBy
+      ? `${request.l1ApprovedBy.firstName} ${request.l1ApprovedBy.lastName}`
+      : "—";
+    const l2 = request.l2ApprovedBy
+      ? `${request.l2ApprovedBy.firstName} ${request.l2ApprovedBy.lastName}`
+      : "—";
+    const remark = request.remark || request.reason || "—";
+    const applied = formatLeaveHistoryDate(request.createdAt);
+    const start = formatLeaveHistoryDate(request.startDate);
+    const end = formatLeaveHistoryDate(request.endDate);
+    const rejoin = formatLeaveHistoryDate(request.rejoiningDate);
+    const statusLabel = formatLeaveStatus(request.status);
+    const statusBadge = leaveStatusBadge(request.status);
+
+    const tableRow = `
+      <tr>
+        <td>${applied}</td>
+        <td${showEmployeeCol ? "" : ' style="display:none"'}>${escapeAttr(employeeName)}</td>
+        <td><span class="badge badge-blue">${escapeAttr(leaveType)}</span></td>
+        <td>${start}</td>
+        <td>${end}</td>
+        <td>${request.days}</td>
+        <td>${rejoin}</td>
+        <td>${escapeAttr(request.statusAsOn ?? "—")}</td>
+        <td>${request.extendedDays ?? 0}</td>
+        <td>${request.leaveBalanceSnapshot ?? "—"}</td>
+        <td>${request.currentLeaveBalanceSnapshot ?? "—"}</td>
+        <td><span class="badge ${statusBadge}">${escapeAttr(statusLabel)}</span></td>
+        <td>${escapeAttr(l1)}</td>
+        <td>${escapeAttr(l2)}</td>
+        <td>${escapeAttr(remark)}</td>
+      </tr>`;
+
+    const mobileCard = `
+      <article class="record-card">
+        <div class="record-card-head">
+          <div class="record-card-head-main">
+            <div class="record-card-name">${escapeAttr(showEmployeeCol ? employeeName : leaveType)}</div>
+            ${showEmployeeCol ? `<div class="record-card-sub">${escapeAttr(leaveType)}</div>` : ""}
+            <div class="record-card-badges">
+              <span class="badge badge-blue">${escapeAttr(leaveType)}</span>
+              <span class="badge ${statusBadge}">${escapeAttr(statusLabel)}</span>
+            </div>
+          </div>
+        </div>
+        <div class="record-card-grid">
+          <div class="record-card-field"><span class="record-card-label">Applied</span><span class="record-card-value">${applied}</span></div>
+          <div class="record-card-field"><span class="record-card-label">From</span><span class="record-card-value">${start}</span></div>
+          <div class="record-card-field"><span class="record-card-label">To</span><span class="record-card-value">${end}</span></div>
+          <div class="record-card-field"><span class="record-card-label">Days</span><span class="record-card-value">${request.days}</span></div>
+          <div class="record-card-field"><span class="record-card-label">Rejoin</span><span class="record-card-value">${escapeAttr(rejoin)}</span></div>
+        </div>
+        ${remark !== "—" ? `<div class="record-card-sub">${escapeAttr(remark)}</div>` : ""}
+      </article>`;
+
+    return { tableRow, mobileCard };
+  });
+
+  tbody.innerHTML = rendered.map((row) => row.tableRow).join("");
+  if (mobileList) mobileList.innerHTML = rendered.map((row) => row.mobileCard).join("");
+}
+
+window.__initLeaveHistoryTab = function initLeaveHistoryTab() {
+  populateLeaveHistoryEmployeeSelect();
+  populateLeaveHistoryDepartmentSelect();
+  syncLeaveHistoryExportControls();
+  const fromInput = document.getElementById("leave-history-from");
+  const toInput = document.getElementById("leave-history-to");
+  if (!fromInput?.value || !toInput?.value) {
+    const range = defaultLeaveHistoryRange();
+    setLeaveHistoryRange(range.from, range.to);
+  }
+  window.__loadLeaveHistory?.();
+};
+
+window.__resetLeaveHistoryRange = function resetLeaveHistoryRange() {
+  const range = defaultLeaveHistoryRange();
+  setLeaveHistoryRange(range.from, range.to);
+  const select = document.getElementById("leave-history-emp");
+  if (select) select.value = "";
+  const tbody = document.getElementById("leave-history-body");
+  const mobileList = document.getElementById("leave-history-mobile");
+  if (tbody) {
+    tbody.innerHTML = `<tr><td colspan="15" class="text-muted">Select a date range and click Search.</td></tr>`;
+  }
+  if (mobileList) {
+    mobileList.innerHTML = `<div class="mobile-empty">Select a date range and click Search.</div>`;
+  }
+  const summary = document.getElementById("leave-history-summary");
+  if (summary) summary.textContent = "";
+};
+
+window.__loadLeaveHistory = async function loadLeaveHistory() {
+  const from = document.getElementById("leave-history-from")?.value;
+  const to = document.getElementById("leave-history-to")?.value;
+  if (!from || !to) {
+    notify("Select both from and to dates.");
+    return;
+  }
+  if (from > to) {
+    notify("From date must be on or before to date.");
+    return;
+  }
+
+  const params = new URLSearchParams({ fromDate: from, toDate: to });
+  const employeeId = document.getElementById("leave-history-emp")?.value;
+  if (employeeId && canPickLeaveHistoryEmployee()) {
+    params.set("employeeId", employeeId);
+  } else if (!elevatedRoles.has(me?.role)) {
+    params.set("mine", "true");
+  }
+
+  const tbody = document.getElementById("leave-history-body");
+  const mobileList = document.getElementById("leave-history-mobile");
+  if (tbody) {
+    tbody.innerHTML = `<tr><td colspan="15" class="text-muted">Loading leave history…</td></tr>`;
+  }
+  if (mobileList) {
+    mobileList.innerHTML = `<div class="mobile-empty">Loading leave history…</div>`;
+  }
+
+  try {
+    const requests = await api(`/leave/requests?${params.toString()}`);
+    let rows = Array.isArray(requests) ? requests : [];
+    const department = document.getElementById("leave-history-dept")?.value;
+    if (department && elevatedRoles.has(me?.role)) {
+      rows = rows.filter((request) => request.employee?.department === department);
+    }
+    renderLeaveHistoryTable(rows);
+  } catch (error) {
+    if (tbody) {
+      tbody.innerHTML = `<tr><td colspan="15" class="text-muted">Failed to load leave history.</td></tr>`;
+    }
+    if (mobileList) {
+      mobileList.innerHTML = `<div class="mobile-empty">Failed to load leave history.</div>`;
+    }
+    notify(error.message);
+  }
+};
+
+function applyLeaveHistoryPreset(preset) {
+  const today = new Date();
+  let from;
+  let to = new Date(today);
+
+  if (preset === "this-month") {
+    from = new Date(today.getFullYear(), today.getMonth(), 1);
+  } else if (preset === "last-3-months") {
+    from = new Date(today.getFullYear(), today.getMonth() - 2, 1);
+  } else if (preset === "this-year") {
+    from = new Date(today.getFullYear(), 0, 1);
+  } else if (preset === "last-year") {
+    from = new Date(today.getFullYear() - 1, 0, 1);
+    to = new Date(today.getFullYear() - 1, 11, 31);
+  } else {
+    return;
+  }
+
+  setLeaveHistoryRange(toDateKey(from), toDateKey(to));
+  window.__loadLeaveHistory?.();
+}
+
+function wireLeaveHistoryTab() {
+  document.getElementById("leave-history-from")?.addEventListener("change", (event) => {
+    const toInput = document.getElementById("leave-history-to");
+    if (toInput) toInput.min = event.target.value;
+    if (toInput?.value && toInput.value < event.target.value) {
+      toInput.value = event.target.value;
+    }
+  });
+  document.getElementById("leave-history-to")?.addEventListener("change", (event) => {
+    const fromInput = document.getElementById("leave-history-from");
+    if (fromInput) fromInput.max = event.target.value;
+  });
+  document.querySelectorAll("[data-leave-range]").forEach((button) => {
+    button.addEventListener("click", () => {
+      applyLeaveHistoryPreset(button.getAttribute("data-leave-range"));
+    });
+  });
+  document.getElementById("leave-history-dept")?.addEventListener("change", () => {
+    window.__loadLeaveHistory?.();
+  });
 }
 
 async function loadLeaveRequests() {
@@ -1567,10 +3278,19 @@ async function loadLeaveRequests() {
         const currentUserIsL2Approver = request.l2ApprovedById === myEmployeeId;
 
         // L1 approved: notify requester + admin-powered roles (not L1 approver)
+        if (request.status === "PENDING_ACTING" && currentUserIsRequester) {
+          pushNotification({
+            title: "Awaiting acting manager acceptance",
+            desc: `${leaveTypeName} will move to HR only after your assigned acting manager accepts.`,
+            tone: "info",
+            icon: "bi-person-badge",
+          });
+        }
+
         if (request.status === "PENDING_L2") {
           if (currentUserIsRequester && !currentUserIsL1Approver) {
             pushNotification({
-              title: "Manager approved your leave",
+              title: request.employee?.role === "MANAGER" ? "Acting manager accepted your leave" : "Manager approved your leave",
               desc: `${leaveTypeName} is now pending L2 approval.`,
               tone: "info",
               icon: "bi-person-check",
@@ -1627,10 +3347,14 @@ async function loadLeaveRequests() {
   }
   renderLeavePending(requests);
   renderMyLeaveHistory(requests);
-  const pendingCount = requests.filter((item) => item.status === "PENDING_L1" || item.status === "PENDING_L2").length;
+  const pendingCount = requests.filter((item) =>
+    ["PENDING_L1", "PENDING_ACTING", "PENDING_L2"].includes(item.status),
+  ).length;
   const pendingTab = document.querySelector("button[onclick*='leave-pending']");
   if (pendingTab) {
     pendingTab.textContent = `Pending Approvals (${pendingCount})`;
+    const hasActingDuties = requests.some((item) => item.canAcceptActing || item.canApproveL1);
+    pendingTab.style.display = isIndividualContributor(me?.role) && !hasActingDuties ? "none" : "";
   }
   renderDashboardInsights();
   renderNotifications();
@@ -1661,6 +3385,19 @@ function populateEmployeeSelectors() {
     }
   }
   leaveEmployeeSelect.dispatchEvent(new Event("change"));
+  refreshActingManagerOptions(leaveEmployeeSelect.value || "").catch(() => null);
+  populateLeaveHistoryEmployeeSelect();
+}
+
+function formatLeaveTypeOption(type) {
+  if (type.balanceMode === "MATURITY") {
+    return `${type.name} (accrues ${type.yearlyAllocation} days/yr, max ${type.maxCarryForward})`;
+  }
+  if (type.balanceMode === "NONE") {
+    return `${type.name} (unlimited)`;
+  }
+  const payLabel = type.payRate === "HALF" ? "half pay" : type.payRate === "NONE" ? "no pay" : "full pay";
+  return `${type.name} (${type.yearlyAllocation} days/yr · ${payLabel})`;
 }
 
 function populateLeaveTypes() {
@@ -1669,8 +3406,60 @@ function populateLeaveTypes() {
   if (!leaveTypeSelect) return;
 
   leaveTypeSelect.innerHTML = `<option value="">Select leave type…</option>` + leaveTypes
-    .map((type) => `<option value="${type.id}">${type.name} (${type.yearlyAllocation} days/yr)</option>`)
+    .map((type) => `<option value="${type.id}">${escapeAttr(formatLeaveTypeOption(type))}</option>`)
     .join("");
+}
+
+function findLeaveEntitlement(entitlements, leaveTypeId) {
+  return (entitlements?.entitlements ?? []).find((item) => item.leaveTypeId === leaveTypeId) ?? null;
+}
+
+function findAnnualLeaveEntitlement(entitlements) {
+  return (entitlements?.entitlements ?? []).find((item) => item.code === "AL") ?? null;
+}
+
+function setAnnualLeaveBalanceExpanded(expanded) {
+  const toggle = document.getElementById("leave-annual-balance-toggle");
+  const panel = document.getElementById("leave-annual-balance-panel");
+  if (!toggle || !panel) return;
+  toggle.classList.toggle("open", expanded);
+  panel.hidden = !expanded;
+  toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+}
+
+function renderAnnualLeaveBalance(entitlementsState) {
+  const wrap = document.getElementById("leave-annual-balance-wrap");
+  const earnedEl = document.getElementById("leave-al-earned");
+  const usedEl = document.getElementById("leave-al-used");
+  const pendingEl = document.getElementById("leave-al-pending");
+  const availableEl = document.getElementById("leave-al-available");
+  const noteEl = document.getElementById("leave-annual-balance-note");
+  const annual = findAnnualLeaveEntitlement(entitlementsState);
+
+  if (!wrap) return;
+
+  if (!annual) {
+    wrap.style.display = "none";
+    setAnnualLeaveBalanceExpanded(false);
+    return;
+  }
+
+  wrap.style.display = "";
+  setAnnualLeaveBalanceExpanded(false);
+
+  const earned = Number(annual.entitledDays ?? 0);
+  const used = Number(annual.usedDays ?? 0);
+  const pending = Number(annual.pendingDays ?? 0);
+  const available = Number(annual.availableDays ?? 0);
+  const worked = Number(annual.daysWorked ?? 0);
+
+  if (earnedEl) earnedEl.textContent = earned.toFixed(2);
+  if (usedEl) usedEl.textContent = used.toFixed(2);
+  if (pendingEl) pendingEl.textContent = pending.toFixed(2);
+  if (availableEl) availableEl.textContent = available.toFixed(2);
+  if (noteEl) {
+    noteEl.textContent = `Annual leave accrues daily from your join date (${worked} day${worked === 1 ? "" : "s"} of service). Balance as on ${new Date(entitlementsState?.asOf ?? Date.now()).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}.`;
+  }
 }
 
 function getRequestedLeaveDays(startDate, endDate) {
@@ -1680,6 +3469,56 @@ function getRequestedLeaveDays(startDate, endDate) {
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) return 0;
   const dayMs = 24 * 60 * 60 * 1000;
   return Math.max(1, Math.round((end.getTime() - start.getTime()) / dayMs) + 1);
+}
+
+async function refreshActingManagerOptions(employeeId) {
+  const group = document.getElementById("leave-acting-manager-group");
+  const select = document.getElementById("leave-acting-manager-select");
+  const helpEl = document.getElementById("leave-acting-manager-help");
+  if (!group || !select) return;
+
+  const employee = employeeId ? getEmployeeById(employeeId) : null;
+  if (!employee) {
+    group.style.display = "none";
+    select.required = false;
+    select.innerHTML = `<option value="">Select department colleague…</option>`;
+    return;
+  }
+
+  group.style.display = "";
+  select.required = true;
+  const voidOption = canVoidActingColleague(employee.role)
+    ? `<option value="${ACTING_VOID_VALUE}">Void — no acting colleague</option>`
+    : "";
+
+  if (helpEl) {
+    if (employee.role === "MANAGER") {
+      helpEl.textContent =
+        "Pick a department colleague to cover your role. They must accept before your leave moves to HR approval, and will approve team leave requests while you are away.";
+    } else if (canVoidActingColleague(employee.role)) {
+      helpEl.textContent =
+        "Pick a department colleague to cover your duties while you are away, or choose Void if no handover is needed. If assigned, they must accept before your leave goes to your line manager.";
+    } else {
+      helpEl.textContent =
+        "Pick a department colleague to cover your duties while you are away. They must accept before your leave goes to your line manager.";
+    }
+  }
+
+  select.innerHTML = `<option value="">Select department colleague…</option>${voidOption}`;
+
+  try {
+    const candidates = await api(`/leave/acting-candidates/${employeeId}`);
+    select.innerHTML =
+      `<option value="">Select department colleague…</option>${voidOption}` +
+      (Array.isArray(candidates) ? candidates : [])
+        .map(
+          (candidate) =>
+            `<option value="${candidate.id}">${escapeAttr(candidate.name)} (${escapeAttr(candidate.employeeCode ?? "—")})${candidate.designation ? ` · ${escapeAttr(candidate.designation)}` : ""}</option>`,
+        )
+        .join("");
+  } catch (_error) {
+    select.innerHTML = `<option value="">Unable to load colleagues</option>${voidOption}`;
+  }
 }
 
 function wireLeaveApplyForm() {
@@ -1695,7 +3534,8 @@ function wireLeaveApplyForm() {
   const availableChip = document.getElementById("leave-available-chip");
   const workedChip = document.getElementById("leave-worked-chip");
   const selectedDaysText = document.getElementById("leave-selected-days-text");
-  let maturityState = null;
+  const airTicketPreviewEl = document.getElementById("leave-air-ticket-preview");
+  let entitlementsState = null;
   let isOverBalance = false;
   const todayIso = new Date().toISOString().slice(0, 10);
 
@@ -1722,33 +3562,17 @@ function wireLeaveApplyForm() {
   const renderMaturityInfo = () => {
     const requestedDays = getRequestedLeaveDays(dateInputs[0]?.value, dateInputs[1]?.value);
     const selectedLeaveType = leaveTypes.find((item) => item.id === selects[1]?.value);
-    const isPaidLeave = selectedLeaveType ? Boolean(selectedLeaveType.paidLeave) : true;
-    if (!maturityState) {
-      if (earnedChip) earnedChip.textContent = "Earned: 0.00";
-      if (usedChip) usedChip.textContent = "Used: 0.00";
-      if (availableChip) availableChip.textContent = "Available: 0.00";
-      if (workedChip) workedChip.textContent = "Days worked: 0";
-      if (selectedDaysText) {
-        selectedDaysText.textContent = "Selected days: 0.00";
-        selectedDaysText.style.color = "";
-        selectedDaysText.style.fontWeight = "";
-      }
-      isOverBalance = false;
-      syncSubmitState();
-      return;
-    }
-    const availableDays = Math.min(60, Number(maturityState.availableDays ?? 0));
-    const maturedDays = Math.min(60, Number(maturityState.maturedDays ?? 0));
-    const usedDays = Number(maturityState.usedDays ?? 0);
-    const daysWorked = Number(maturityState.daysWorked ?? 0);
-    if (earnedChip) earnedChip.textContent = `Earned: ${maturedDays.toFixed(2)}`;
-    if (usedChip) usedChip.textContent = `Used: ${usedDays.toFixed(2)}`;
-    if (availableChip) availableChip.textContent = `Available: ${availableDays.toFixed(2)}`;
-    if (workedChip) workedChip.textContent = `Days worked: ${daysWorked}`;
+    const entitlement = selectedLeaveType
+      ? findLeaveEntitlement(entitlementsState, selectedLeaveType.id)
+      : null;
 
-    if (!isPaidLeave) {
+    if (!entitlementsState || !selectedLeaveType) {
+      if (earnedChip) earnedChip.textContent = "Entitled: —";
+      if (usedChip) usedChip.textContent = "Used: —";
+      if (availableChip) availableChip.textContent = "Available: —";
+      if (workedChip) workedChip.textContent = selectedLeaveType?.balanceMode === "MATURITY" ? "Service days: —" : "Pending: —";
       if (selectedDaysText) {
-        selectedDaysText.textContent = `Selected days: ${requestedDays.toFixed(2)}`;
+        selectedDaysText.textContent = "Select employee and leave type to view balance.";
         selectedDaysText.style.color = "";
         selectedDaysText.style.fontWeight = "";
       }
@@ -1756,30 +3580,95 @@ function wireLeaveApplyForm() {
       syncSubmitState();
       return;
     }
+
+    const isUnlimited = selectedLeaveType.balanceMode === "NONE";
+    const entitledDays = entitlement?.entitledDays;
+    const usedDays = Number(entitlement?.usedDays ?? 0);
+    const pendingDays = Number(entitlement?.pendingDays ?? 0);
+    const availableDays = isUnlimited ? null : Number(entitlement?.availableDays ?? 0);
+
+    if (earnedChip) {
+      earnedChip.textContent = isUnlimited
+        ? "Entitled: Unlimited"
+        : `Entitled: ${selectedLeaveType.balanceMode === "MATURITY" ? Number(entitledDays ?? 0).toFixed(2) : Number(entitledDays ?? 0)}`;
+    }
+    if (usedChip) usedChip.textContent = `Used: ${usedDays.toFixed(2)}`;
+    if (availableChip) {
+      availableChip.textContent = isUnlimited
+        ? "Available: Unlimited"
+        : `Available: ${availableDays.toFixed(2)}`;
+    }
+    if (workedChip) {
+      workedChip.textContent = selectedLeaveType.balanceMode === "MATURITY"
+        ? `Service days: ${Number(entitlement?.daysWorked ?? 0)}`
+        : `Pending: ${pendingDays.toFixed(2)}`;
+    }
+
+    if (isUnlimited) {
+      if (selectedDaysText) {
+        selectedDaysText.textContent = `Selected days: ${requestedDays.toFixed(2)} · No balance limit for ${selectedLeaveType.name}.`;
+        selectedDaysText.style.color = "";
+        selectedDaysText.style.fontWeight = "";
+      }
+      isOverBalance = false;
+      syncSubmitState();
+      return;
+    }
+
     isOverBalance = requestedDays > 0 && requestedDays > availableDays;
     const availableAfterRequest = availableDays - requestedDays;
     if (selectedDaysText) {
       selectedDaysText.textContent = requestedDays
         ? `Selected days: ${requestedDays.toFixed(2)} • Remaining balance: ${Math.max(0, availableAfterRequest).toFixed(2)}`
-        : "Selected days: 0.00";
+        : `${selectedLeaveType.name} balance: ${availableDays.toFixed(2)} day(s) available.`;
       selectedDaysText.style.color = isOverBalance ? "#ef4444" : "";
       selectedDaysText.style.fontWeight = isOverBalance ? "700" : "";
     }
     syncSubmitState();
+    refreshAirTicketPreview().catch(() => null);
+  };
+
+  const refreshAirTicketPreview = async () => {
+    if (!airTicketPreviewEl) return;
+    const employeeId = selects[0]?.value;
+    const leaveTypeId = selects[1]?.value;
+    const requestedDays = getRequestedLeaveDays(dateInputs[0]?.value, dateInputs[1]?.value);
+    if (!employeeId || !leaveTypeId || !requestedDays || !canViewAirTicketForEmployee(employeeId)) {
+      airTicketPreviewEl.textContent = "";
+      return;
+    }
+    try {
+      const preview = await api(
+        `/leave/air-ticket-preview?employeeId=${encodeURIComponent(employeeId)}&leaveTypeId=${encodeURIComponent(leaveTypeId)}&days=${encodeURIComponent(String(requestedDays))}`,
+      );
+      if (preview?.eligible && preview?.fare != null) {
+        airTicketPreviewEl.innerHTML = `✈️ Estimated air ticket on approval: <b>AED ${Number(preview.fare).toLocaleString()}</b> (${escapeAttr(preview.country ?? "")}, ${escapeAttr((preview.roleBand ?? "staff").toLowerCase())})`;
+        airTicketPreviewEl.style.color = "var(--accent)";
+      } else {
+        airTicketPreviewEl.textContent = preview?.reason
+          ? `Air ticket: ${preview.reason}`
+          : "";
+        airTicketPreviewEl.style.color = "";
+      }
+    } catch (_error) {
+      airTicketPreviewEl.textContent = "";
+    }
   };
 
   const refreshMaturityInfo = async () => {
     const employeeId = selects[0]?.value;
     if (!employeeId) {
-      maturityState = null;
+      entitlementsState = null;
+      renderAnnualLeaveBalance(null);
       renderMaturityInfo();
       return;
     }
     try {
-      maturityState = await api(`/leave/maturity/${employeeId}`);
+      entitlementsState = await api(`/leave/entitlements/${employeeId}`);
     } catch (_error) {
-      maturityState = null;
+      entitlementsState = null;
     }
+    renderAnnualLeaveBalance(entitlementsState);
     renderMaturityInfo();
   };
 
@@ -1811,9 +3700,41 @@ function wireLeaveApplyForm() {
         notify("Invalid leave date range");
         return;
       }
+      if (days > 90) {
+        notify("Leave cannot exceed 90 days per request");
+        return;
+      }
+      if (isOverBalance) {
+        notify("Insufficient leave balance for the selected dates");
+        return;
+      }
+
+      const selectedLeaveType = leaveTypes.find((item) => item.id === leaveTypeId);
+      if (selectedLeaveType?.balanceMode !== "NONE") {
+        try {
+          entitlementsState = await api(`/leave/entitlements/${employeeId}`);
+        } catch (_error) {
+          notify("Unable to verify leave balance. Please try again.");
+          return;
+        }
+        const entitlement = findLeaveEntitlement(entitlementsState, leaveTypeId);
+        if (!entitlement) {
+          notify("Unable to verify leave balance. Please try again.");
+          return;
+        }
+        const availableDays = Number(entitlement.availableDays ?? 0);
+        if (days > availableDays) {
+          const label = selectedLeaveType.balanceMode === "MATURITY"
+            ? "matured annual leave"
+            : `${selectedLeaveType.name} balance`;
+          notify(`Insufficient ${label}. Available: ${availableDays.toFixed(2)} day(s). Requested: ${days.toFixed(2)} day(s).`);
+          return;
+        }
+      }
+
       const hasOverlap = leaveRequestsCache.some((request) => {
         if (request.employeeId !== employeeId) return false;
-        if (!["PENDING_L1", "PENDING_L2", "APPROVED"].includes(request.status)) return false;
+        if (!["PENDING_L1", "PENDING_ACTING", "PENDING_L2", "APPROVED"].includes(request.status)) return false;
         const existingStart = new Date(request.startDate);
         const existingEnd = new Date(request.endDate);
         if (Number.isNaN(existingStart.getTime()) || Number.isNaN(existingEnd.getTime())) return false;
@@ -1823,10 +3744,16 @@ function wireLeaveApplyForm() {
         notify("Leave already exists in selected time frame");
         return;
       }
-      const selectedLeaveType = leaveTypes.find((item) => item.id === leaveTypeId);
-      const isPaidLeave = selectedLeaveType ? Boolean(selectedLeaveType.paidLeave) : true;
-      if (isPaidLeave && maturityState && days > Math.min(60, Number(maturityState.availableDays ?? 0))) {
-        notify(`Insufficient matured leave. Available: ${Math.min(60, Number(maturityState.availableDays ?? 0)).toFixed(2)} day(s).`);
+
+      const applicant = getEmployeeById(employeeId);
+      const actingSelection = document.getElementById("leave-acting-manager-select")?.value || "";
+      const actingVoid = actingSelection === ACTING_VOID_VALUE;
+      if (!actingSelection) {
+        notify("Please assign an acting colleague before applying for leave");
+        return;
+      }
+      if (actingVoid && !canVoidActingColleague(applicant?.role)) {
+        notify("Only Labour and Staff can skip acting colleague assignment");
         return;
       }
 
@@ -1839,20 +3766,29 @@ function wireLeaveApplyForm() {
           endDate: end.toISOString(),
           days,
           reason: reasonText || "",
+          actingVoid: actingVoid || undefined,
+          actingApproverId: actingVoid ? undefined : actingSelection,
         }),
       });
 
-      notify("Leave request submitted successfully");
+      notify(
+        actingVoid
+          ? "Leave submitted — awaiting line manager approval"
+          : "Leave submitted — awaiting acting colleague acceptance",
+      );
       selects[0].value = "";
       selects[1].value = "";
       reason.value = "";
       dateInputs[0].value = "";
       dateInputs[1].value = "";
+      const actingSelect = document.getElementById("leave-acting-manager-select");
+      if (actingSelect) actingSelect.value = "";
       if (!elevatedRoles.has(me?.role) && me?.employee?.id) {
         selects[0].value = me.employee.id;
       } else if (!selects[0].value && selects[0].options.length === 2) {
         selects[0].selectedIndex = 1;
       }
+      await refreshActingManagerOptions(selects[0]?.value || "");
       await refreshMaturityInfo();
       await loadLeaveRequests();
     } catch (error) {
@@ -1861,17 +3797,29 @@ function wireLeaveApplyForm() {
   };
 
   selects[0]?.addEventListener("change", () => {
+    refreshActingManagerOptions(selects[0]?.value || "").catch(() => null);
     refreshMaturityInfo().catch(() => null);
+    refreshAirTicketPreview().catch(() => null);
+  });
+  document.getElementById("leave-annual-balance-toggle")?.addEventListener("click", () => {
+    const panel = document.getElementById("leave-annual-balance-panel");
+    setAnnualLeaveBalanceExpanded(Boolean(panel?.hidden));
   });
   dateInputs.forEach((input) => {
     input.addEventListener("change", () => {
       syncDateBounds();
       renderMaturityInfo();
+      refreshAirTicketPreview().catch(() => null);
     });
   });
-  selects[1]?.addEventListener("change", renderMaturityInfo);
+  selects[1]?.addEventListener("change", () => {
+    renderMaturityInfo();
+    refreshAirTicketPreview().catch(() => null);
+  });
   syncDateBounds();
+  refreshActingManagerOptions(selects[0]?.value || "").catch(() => null);
   refreshMaturityInfo().catch(() => null);
+  window.__refreshLeaveApplyBalance = () => refreshMaturityInfo().catch(() => null);
 }
 
 function wireLeaveBalanceLookup() {
@@ -1924,6 +3872,65 @@ function wireLeaveBalanceLookup() {
   });
 }
 
+function renderLeaveBalanceTypes(entitlements) {
+  const tbody = document.getElementById("leave-balance-types-body");
+  const mobileList = document.getElementById("leave-balance-types-mobile");
+  const rows = Array.isArray(entitlements) ? entitlements : [];
+  if (!tbody) return;
+
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="6" class="text-muted">No leave entitlements found.</td></tr>`;
+    if (mobileList) mobileList.innerHTML = `<div class="mobile-empty">No leave entitlements found.</div>`;
+    return;
+  }
+
+  const rendered = rows.map((item) => {
+    const payLabel = item.payRate === "HALF" ? "Half pay" : item.payRate === "NONE" ? "No pay" : "Full pay";
+    const payBadge = item.payRate === "NONE" ? "badge-coral" : item.payRate === "HALF" ? "badge-amber" : "badge-green";
+    const entitledLabel = item.balanceMode === "NONE"
+      ? "Unlimited"
+      : item.balanceMode === "MATURITY"
+        ? Number(item.entitledDays ?? 0).toFixed(2)
+        : String(item.entitledDays ?? 0);
+    const availableLabel = item.balanceMode === "NONE"
+      ? "Unlimited"
+      : Number(item.availableDays ?? 0).toFixed(2);
+    const used = Number(item.usedDays ?? 0).toFixed(2);
+    const pending = Number(item.pendingDays ?? 0).toFixed(2);
+
+    const tableRow = `
+      <tr>
+        <td>${escapeAttr(item.name)}</td>
+        <td>${escapeAttr(entitledLabel)}</td>
+        <td>${used}</td>
+        <td>${pending}</td>
+        <td>${escapeAttr(availableLabel)}</td>
+        <td><span class="badge ${payBadge}">${escapeAttr(payLabel)}</span></td>
+      </tr>`;
+
+    const mobileCard = `
+      <article class="record-card">
+        <div class="record-card-head">
+          <div class="record-card-head-main">
+            <div class="record-card-name">${escapeAttr(item.name)}</div>
+            <div class="record-card-badges"><span class="badge ${payBadge}">${escapeAttr(payLabel)}</span></div>
+          </div>
+        </div>
+        <div class="record-card-grid">
+          <div class="record-card-field"><span class="record-card-label">Entitlement</span><span class="record-card-value">${escapeAttr(entitledLabel)}</span></div>
+          <div class="record-card-field"><span class="record-card-label">Used</span><span class="record-card-value">${used}</span></div>
+          <div class="record-card-field"><span class="record-card-label">Pending</span><span class="record-card-value">${pending}</span></div>
+          <div class="record-card-field"><span class="record-card-label">Available</span><span class="record-card-value">${escapeAttr(availableLabel)}</span></div>
+        </div>
+      </article>`;
+
+    return { tableRow, mobileCard };
+  });
+
+  tbody.innerHTML = rendered.map((row) => row.tableRow).join("");
+  if (mobileList) mobileList.innerHTML = rendered.map((row) => row.mobileCard).join("");
+}
+
 window.__selectLeaveBalanceEmployee = async function selectLeaveBalanceEmployee(employeeId) {
   const employee = allEmployees.find((item) => item.id === employeeId);
   const resultsBox = document.getElementById("leave-balance-results");
@@ -1942,11 +3949,12 @@ window.__selectLeaveBalanceEmployee = async function selectLeaveBalanceEmployee(
   if (searchInput) searchInput.value = name;
 
   try {
-    const data = await api(`/leave/maturity/${employeeId}`);
-    const earned = Math.min(60, Number(data.maturedDays ?? 0));
-    const used = Number(data.usedDays ?? 0);
-    const available = Math.min(60, Number(data.availableDays ?? 0));
-    const worked = Number(data.daysWorked ?? 0);
+    const data = await api(`/leave/entitlements/${employeeId}`);
+    const annual = (data.entitlements ?? []).find((item) => item.code === "AL") ?? data.entitlements?.[0];
+    const earned = Number(annual?.entitledDays ?? 0);
+    const used = Number(annual?.usedDays ?? 0);
+    const available = Number(annual?.availableDays ?? 0);
+    const worked = Number(annual?.daysWorked ?? 0);
 
     const avatar = document.getElementById("leave-balance-avatar");
     const nameEl = document.getElementById("leave-balance-name");
@@ -1967,8 +3975,9 @@ window.__selectLeaveBalanceEmployee = async function selectLeaveBalanceEmployee(
     if (usedEl) usedEl.textContent = used.toFixed(2);
     if (availableEl) availableEl.textContent = available.toFixed(2);
     if (noteEl) {
-      noteEl.textContent = `Daily maturity ${Number(data.dailyRate ?? 0).toFixed(4)} • Max cap ${data.yearlyCap ?? 60} days • As on ${new Date(data.asOf ?? Date.now()).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}.`;
+      noteEl.textContent = `Annual leave accrues daily (30 days/year, max 60). Other leave types reset each calendar year. As on ${new Date(data.asOf ?? Date.now()).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}.`;
     }
+    renderLeaveBalanceTypes(data.entitlements ?? []);
 
     if (detail) detail.style.display = "";
     if (empty) empty.style.display = "none";
@@ -2279,15 +4288,22 @@ function getExitProceedAction(record) {
 
 function renderExitsTable() {
   const tbody = document.getElementById("exit-records-body");
+  const mobileList = document.getElementById("exit-records-mobile");
   if (!tbody) return;
   if (!exitRecordsCache.length) {
     tbody.innerHTML = `<tr><td colspan="6" class="text-muted">No exit records yet.</td></tr>`;
+    if (mobileList) mobileList.innerHTML = `<div class="mobile-empty">No exit records yet.</div>`;
     return;
   }
-  tbody.innerHTML = exitRecordsCache.map((record) => {
+
+  const rendered = exitRecordsCache.map((record) => {
     const emp = record.employee;
     const name = `${emp?.firstName ?? ""} ${emp?.lastName ?? ""}`.trim();
     const typeBadge = record.type === "TERMINATION" ? "badge-coral" : "badge-blue";
+    const statusBadge = exitStatusBadge(record.status);
+    const statusLabel = EXIT_STATUS_LABELS[record.status] ?? record.status;
+    const lwd = fmtDate(record.lastWorkingDate ?? record.requestedLastWorkingDay);
+    const submitted = fmtDate(record.createdAt);
     const canDelete = elevatedRoles.has(me?.role);
     const proceed = getExitProceedAction(record);
     const proceedBtn = proceed
@@ -2296,84 +4312,263 @@ function renderExitsTable() {
     const deleteBtn = canDelete
       ? `<button class="btn btn-danger btn-sm" onclick="window.__deleteExit('${record.id}')">Delete</button>`
       : "";
-    return `
+    const viewBtn = `<button class="btn btn-secondary btn-sm" onclick="window.__viewExit('${record.id}')">View</button>`;
+    const actions = [proceedBtn, viewBtn, deleteBtn].filter(Boolean).join("");
+
+    const tableRow = `
       <tr>
         <td>${escapeAttr(name)} (${escapeAttr(emp?.employeeCode ?? "—")})</td>
         <td><span class="badge ${typeBadge}">${formatLabel(record.type)}</span></td>
-        <td><span class="badge ${exitStatusBadge(record.status)}">${escapeAttr(EXIT_STATUS_LABELS[record.status] ?? record.status)}</span></td>
-        <td>${fmtDate(record.lastWorkingDate ?? record.requestedLastWorkingDay)}</td>
-        <td>${fmtDate(record.createdAt)}</td>
-        <td><div class="flex gap-8" style="flex-wrap:wrap">${proceedBtn}<button class="btn btn-secondary btn-sm" onclick="window.__viewExit('${record.id}')">View</button>${deleteBtn}</div></td>
+        <td><span class="badge ${statusBadge}">${escapeAttr(statusLabel)}</span></td>
+        <td>${lwd}</td>
+        <td>${submitted}</td>
+        <td><div class="flex gap-8" style="flex-wrap:wrap">${actions}</div></td>
       </tr>`;
-  }).join("");
+
+    const mobileCard = `
+      <article class="record-card">
+        <div class="record-card-head">
+          <div class="record-card-head-main">
+            <div class="record-card-name">${escapeAttr(name)}</div>
+            <div class="record-card-sub">${escapeAttr(emp?.employeeCode ?? "—")}${emp?.department ? ` · ${escapeAttr(emp.department)}` : ""}</div>
+            <div class="record-card-badges">
+              <span class="badge ${typeBadge}">${formatLabel(record.type)}</span>
+              <span class="badge ${statusBadge}">${escapeAttr(statusLabel)}</span>
+            </div>
+          </div>
+        </div>
+        <div class="record-card-grid">
+          <div class="record-card-field"><span class="record-card-label">Last Working Day</span><span class="record-card-value">${lwd}</span></div>
+          <div class="record-card-field"><span class="record-card-label">Submitted</span><span class="record-card-value">${submitted}</span></div>
+        </div>
+        ${actions ? `<div class="record-card-actions">${actions}</div>` : ""}
+      </article>`;
+
+    return { tableRow, mobileCard };
+  });
+
+  tbody.innerHTML = rendered.map((row) => row.tableRow).join("");
+  if (mobileList) mobileList.innerHTML = rendered.map((row) => row.mobileCard).join("");
+}
+
+const CLEARANCE_DEPARTMENT_LABELS = {
+  HOD: "H.O.D / Covering Employee",
+  IT: "IT Department",
+  FINANCE: "Finance & Accounts",
+  ADMIN: "Administration",
+  TRANSPORTATION: "Transportation",
+  HR: "HR Department",
+  PRO: "PR Department",
+};
+
+const CLEARANCE_DEPT_META = {
+  HOD: { icon: "bi-person-badge", tone: "tone-hod" },
+  IT: { icon: "bi-laptop", tone: "tone-it" },
+  FINANCE: { icon: "bi-cash-stack", tone: "tone-finance" },
+  ADMIN: { icon: "bi-building", tone: "tone-admin" },
+  TRANSPORTATION: { icon: "bi-truck", tone: "tone-transport" },
+  HR: { icon: "bi-people", tone: "tone-hr" },
+  PRO: { icon: "bi-file-earmark-check", tone: "tone-pro" },
+};
+
+function formatClearanceDepartment(department = "") {
+  return CLEARANCE_DEPARTMENT_LABELS[department] ?? department;
+}
+
+function clearanceDeptMeta(department) {
+  return CLEARANCE_DEPT_META[department] ?? { icon: "bi-folder-check", tone: "tone-admin" };
+}
+
+function clearanceInitials(name = "") {
+  const parts = String(name).trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "—";
+  return parts.slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("");
+}
+
+function renderClearanceProgressBar(done, total) {
+  const pct = total ? Math.round((done / total) * 100) : 0;
+  return `<div class="clearance-progress-track"><div class="clearance-progress-fill" style="width:${pct}%"></div></div>`;
+}
+
+const CLEARANCE_FINANCIAL_ITEM_KEYS = new Set(["LOAN", "ADVANCE", "IOU"]);
+
+function isFinancialClearanceItem(item) {
+  return CLEARANCE_FINANCIAL_ITEM_KEYS.has(item?.itemKey);
+}
+
+function renderClearanceAdjustmentMeta(item) {
+  const adj = item?.payrollAdjustment;
+  if (!adj && !item?.amount) return "";
+  const ref = adj?.referenceNumber ?? "—";
+  const amt = Number(adj?.amount ?? item?.amount ?? 0).toLocaleString("en-US");
+  const typeLabel = (adj?.type ?? item?.adjustmentType) === "ADDITION" ? "Addition" : "Deduction";
+  const status = adj?.status ? formatLabel(adj.status) : "Draft";
+  const dual = adj?.requiresDualApproval ? " · Dual approval required" : "";
+  return `<div class="clearance-financial-meta">
+    <span class="badge badge-blue">${escapeAttr(typeLabel)}</span>
+    <span>AED ${amt}</span>
+    <span class="text-muted">${escapeAttr(ref)} · ${escapeAttr(status)}${escapeAttr(dual)}</span>
+  </div>`;
+}
+
+function checklistItemResolved(status) {
+  return status === "COMPLETED" || status === "NOT_APPLICABLE";
+}
+
+function taskHasChecklist(task) {
+  return Array.isArray(task?.checklistItems) && task.checklistItems.length > 0;
+}
+
+function clearanceChecklistProgress(task) {
+  const items = Array.isArray(task?.checklistItems) ? task.checklistItems : [];
+  if (!items.length) return null;
+  const done = items.filter((item) => checklistItemResolved(item.status)).length;
+  return { done, total: items.length };
+}
+
+function checklistItemStatusLabel(status) {
+  if (status === "COMPLETED") return "Collected";
+  if (status === "NOT_APPLICABLE") return "N/A";
+  return "Pending";
+}
+
+function checklistItemBadge(status) {
+  if (status === "COMPLETED") return "badge-green";
+  if (status === "NOT_APPLICABLE") return "badge-blue";
+  return "badge-amber";
+}
+
+function clearanceAssigneeLabel(department) {
+  if (department === "HOD") return "Line manager / H.O.D";
+  if (department === "ADMIN" || department === "PRO" || department === "HR") return "HR / Admin";
+  return "Dept manager";
+}
+
+function groupClearanceByExit(tasks) {
+  const groups = new Map();
+  tasks.forEach((task) => {
+    const exitId = task.exitRecord?.id ?? "unknown";
+    if (!groups.has(exitId)) groups.set(exitId, { exit: task.exitRecord, tasks: [] });
+    groups.get(exitId).tasks.push(task);
+  });
+  return Array.from(groups.values());
+}
+
+function renderClearanceDeptCard(task, options = {}) {
+  const done = task.status === "COMPLETED";
+  const meta = clearanceDeptMeta(task.department);
+  const deptLabel = formatClearanceDepartment(task.department);
+  const mgr = task.assignedManager;
+  const mgrName = mgr ? `${mgr.firstName ?? ""} ${mgr.lastName ?? ""}`.trim() : "Unassigned";
+  const progress = taskHasChecklist(task) ? clearanceChecklistProgress(task) : null;
+  const canComplete = canCompleteClearanceTask(task);
+  const emp = task.exitRecord?.employee;
+  const empName = emp ? `${emp.firstName ?? ""} ${emp.lastName ?? ""}`.trim() : "Employee";
+
+  let actionHtml = "";
+  if (done) {
+    actionHtml = `<span class="badge badge-green">Cleared</span>`;
+  } else if (progress && canComplete) {
+    actionHtml = `<button class="btn btn-accent btn-sm" onclick="window.__openClearanceChecklist('${task.id}')"><i class="bi bi-list-check"></i> Open checklist (${progress.done}/${progress.total})</button>`;
+  } else if (progress) {
+    actionHtml = `<span class="badge badge-blue">${progress.done}/${progress.total} done</span>`;
+  } else if (canComplete) {
+    actionHtml = `<button class="btn btn-accent btn-sm" onclick="window.__openClearanceComplete('${task.id}','${escapeAttr(task.department)}','${escapeAttr(empName)}')"><i class="bi bi-check2-circle"></i> Sign off</button>`;
+  } else {
+    actionHtml = `<span class="text-muted" style="font-size:12px">Awaiting ${escapeAttr(clearanceAssigneeLabel(task.department).toLowerCase())}</span>`;
+  }
+
+  const progressHtml = progress
+    ? `<div style="margin-top:2px">${renderClearanceProgressBar(progress.done, progress.total)}<div class="text-muted" style="font-size:11px;margin-top:5px">${progress.done} of ${progress.total} items resolved</div></div>`
+    : "";
+
+  const noteHtml = done && task.remarks
+    ? `<div class="text-muted" style="font-size:11px;line-height:1.45;margin-top:2px">${escapeAttr(task.remarks.length > 120 ? `${task.remarks.slice(0, 120)}…` : task.remarks)}</div>`
+    : "";
+
+  return `<article class="clearance-dept-card ${done ? "is-done" : "is-pending"}">
+    <div class="clearance-dept-top">
+      <div class="clearance-dept-icon ${meta.tone}"><i class="bi ${meta.icon}"></i></div>
+      <div style="min-width:0;flex:1">
+        <div class="clearance-dept-title">${escapeAttr(deptLabel)}${task.urgent ? ' <span class="badge badge-coral">Urgent</span>' : ""}</div>
+        <div class="clearance-dept-sub">${escapeAttr(clearanceAssigneeLabel(task.department))}: ${escapeAttr(mgrName)}</div>
+      </div>
+    </div>
+    ${progressHtml}
+    ${noteHtml}
+    <div class="clearance-dept-actions">${actionHtml}${options.showViewExit && task.exitRecord?.id ? `<button class="btn btn-secondary btn-sm" onclick="window.__viewExit('${task.exitRecord.id}')">View exit</button>` : ""}</div>
+  </article>`;
+}
+
+function renderClearanceExitCard(group, { doneOnly = false } = {}) {
+  const emp = group.exit?.employee;
+  const name = `${emp?.firstName ?? ""} ${emp?.lastName ?? ""}`.trim() || "Employee";
+  const lwd = group.exit?.lastWorkingDate ?? group.exit?.requestedLastWorkingDay;
+  const exitType = group.exit?.type ?? "—";
+  const tasks = group.tasks;
+  const total = tasks.length;
+  const completed = tasks.filter((task) => task.status === "COMPLETED").length;
+  const pctLabel = `${completed}/${total} departments`;
+
+  return `<section class="clearance-exit-card">
+    <div class="clearance-exit-head">
+      <div class="clearance-exit-identity">
+        <div class="clearance-exit-avatar">${escapeAttr(clearanceInitials(name))}</div>
+        <div style="min-width:0">
+          <div class="clearance-exit-name">${escapeAttr(name)} <span class="text-muted">(${escapeAttr(emp?.employeeCode ?? "—")})</span></div>
+          <div class="clearance-exit-meta">${escapeAttr(formatLabel(exitType))} · LWD ${fmtDate(lwd)} · ${escapeAttr(emp?.department ?? "—")}</div>
+        </div>
+      </div>
+      <div class="clearance-exit-progress-wrap">
+        <div class="clearance-exit-progress-label">${pctLabel}</div>
+        ${renderClearanceProgressBar(completed, total)}
+      </div>
+    </div>
+    <div class="clearance-dept-grid">
+      ${tasks.map((task) => renderClearanceDeptCard(task, { showViewExit: !doneOnly })).join("")}
+    </div>
+  </section>`;
 }
 
 function canCompleteClearanceTask(task) {
   if (!task || task.status === "COMPLETED") return false;
-  if (task.department === "ADMIN" || task.department === "PRO") {
+  if (task.department === "ADMIN" || task.department === "PRO" || task.department === "HR") {
     return elevatedRoles.has(me?.role);
   }
   return me?.role === "MANAGER" && task.assignedManagerId === me?.employee?.id;
 }
 
+function renderClearanceBoardHtml(tasks) {
+  if (!tasks.length) {
+    return `<div class="clearance-empty"><i class="bi bi-clipboard-check"></i>No clearance departments yet.</div>`;
+  }
+  return `<div class="clearance-board">${tasks.map((task) => renderClearanceDeptCard(task)).join("")}</div>`;
+}
+
 function renderClearanceTables() {
-  const pendingBody = document.getElementById("clearance-pending-body");
-  const doneBody = document.getElementById("clearance-done-body");
-  const summary = document.getElementById("clearance-summary");
-  if (!pendingBody || !doneBody) return;
+  const pendingList = document.getElementById("clearance-pending-list");
+  const doneList = document.getElementById("clearance-done-list");
+  const kpiPending = document.getElementById("clearance-kpi-pending");
+  const kpiDone = document.getElementById("clearance-kpi-done");
+  const kpiExits = document.getElementById("clearance-kpi-exits");
+  if (!pendingList || !doneList) return;
 
   const pending = clearanceTasksCache.filter((t) => t.status !== "COMPLETED");
   const done = clearanceTasksCache.filter((t) => t.status === "COMPLETED");
+  const pendingGroups = groupClearanceByExit(pending);
+  const doneGroups = groupClearanceByExit(done);
 
-  if (summary) {
-    summary.textContent = `${pending.length} pending · ${done.length} completed`;
-  }
+  if (kpiPending) kpiPending.textContent = String(pending.length);
+  if (kpiDone) kpiDone.textContent = String(done.length);
+  if (kpiExits) kpiExits.textContent = String(new Set([...pending, ...done].map((t) => t.exitRecord?.id)).size);
 
-  if (!pending.length) {
-    pendingBody.innerHTML = `<tr><td colspan="7" class="text-muted">No pending clearance tasks.</td></tr>`;
-  } else {
-    pendingBody.innerHTML = pending.map((task) => {
-      const emp = task.exitRecord?.employee;
-      const name = `${emp?.firstName ?? ""} ${emp?.lastName ?? ""}`.trim();
-      const mgr = task.assignedManager;
-      const mgrName = mgr ? `${mgr.firstName ?? ""} ${mgr.lastName ?? ""}`.trim() : "—";
-      const lwd = task.exitRecord?.lastWorkingDate ?? task.exitRecord?.requestedLastWorkingDay;
-      const canComplete = canCompleteClearanceTask(task);
-      const action = canComplete
-        ? `<button class="btn btn-accent btn-sm" onclick="window.__openClearanceComplete('${task.id}','${escapeAttr(task.department)}','${escapeAttr(name)}')">Mark Done</button>`
-        : `<span class="text-muted" style="font-size:12px">${task.department === "ADMIN" || task.department === "PRO" ? "Awaiting HR / Admin" : "Awaiting manager"}</span>`;
-      return `
-        <tr>
-          <td>${escapeAttr(name)} (${escapeAttr(emp?.employeeCode ?? "—")})</td>
-          <td><span class="badge ${task.exitRecord?.type === "TERMINATION" ? "badge-coral" : "badge-blue"}">${escapeAttr(formatLabel(task.exitRecord?.type ?? "—"))}</span></td>
-          <td>${escapeAttr(task.department)}${task.urgent ? ' <span class="badge badge-coral">Urgent</span>' : ""}</td>
-          <td>${fmtDate(lwd)}</td>
-          <td>${escapeAttr(mgrName)}</td>
-          <td><span class="badge badge-amber">Pending</span></td>
-          <td>${action}</td>
-        </tr>`;
-    }).join("");
-  }
+  pendingList.innerHTML = pendingGroups.length
+    ? pendingGroups.map((group) => renderClearanceExitCard(group)).join("")
+    : `<div class="clearance-empty"><i class="bi bi-check2-circle"></i>You're all caught up — no pending clearance tasks.</div>`;
 
-  if (!done.length) {
-    doneBody.innerHTML = `<tr><td colspan="6" class="text-muted">No completed clearance yet.</td></tr>`;
-  } else {
-    doneBody.innerHTML = done.map((task) => {
-      const emp = task.exitRecord?.employee;
-      const name = `${emp?.firstName ?? ""} ${emp?.lastName ?? ""}`.trim();
-      const mgr = task.assignedManager;
-      const mgrName = mgr ? `${mgr.firstName ?? ""} ${mgr.lastName ?? ""}`.trim() : "—";
-      return `
-        <tr>
-          <td>${escapeAttr(name)} (${escapeAttr(emp?.employeeCode ?? "—")})</td>
-          <td><span class="badge ${task.exitRecord?.type === "TERMINATION" ? "badge-coral" : "badge-blue"}">${escapeAttr(formatLabel(task.exitRecord?.type ?? "—"))}</span></td>
-          <td>${escapeAttr(task.department)}</td>
-          <td>${fmtDate(task.completedAt)}</td>
-          <td>${escapeAttr(task.remarks ?? "—")}</td>
-          <td>${escapeAttr(mgrName)}</td>
-        </tr>`;
-    }).join("");
-  }
+  doneList.innerHTML = doneGroups.length
+    ? doneGroups.map((group) => renderClearanceExitCard(group, { doneOnly: true })).join("")
+    : `<div class="clearance-empty"><i class="bi bi-inbox"></i>No completed clearance yet.</div>`;
 }
 
 async function loadClearance() {
@@ -2385,7 +4580,7 @@ async function loadClearance() {
   } catch (error) {
     clearanceTasksCache = [];
     renderClearanceTables();
-    if (me?.role !== "EMPLOYEE" && me?.role !== "PRO") {
+    if (!isIndividualContributor(me?.role) && me?.role !== "PRO") {
       notify(error.message);
     }
   }
@@ -2413,7 +4608,18 @@ function readFileAsBase64(file) {
   });
 }
 
-async function uploadAttachment(inputId, category) {
+function buildUploadMeta(employeeId, extra = {}) {
+  const employee = employeeId ? getEmployeeById(employeeId) : null;
+  const employeeName = employee ? `${employee.firstName ?? ""} ${employee.lastName ?? ""}`.trim() : undefined;
+  return {
+    employeeId: employeeId || undefined,
+    employeeName: employeeName || undefined,
+    employeeCode: employee?.employeeCode || undefined,
+    ...extra,
+  };
+}
+
+async function uploadAttachment(inputId, category, meta = {}) {
   const input = document.getElementById(inputId);
   const file = input?.files?.[0];
   if (!file) return undefined;
@@ -2423,26 +4629,172 @@ async function uploadAttachment(inputId, category) {
   const dataBase64 = await readFileAsBase64(file);
   const result = await api("/uploads", {
     method: "POST",
-    body: JSON.stringify({ fileName: file.name, mimeType: file.type, dataBase64, category }),
+    body: JSON.stringify({
+      fileName: file.name,
+      mimeType: file.type,
+      dataBase64,
+      category,
+      employeeId: meta.employeeId,
+      employeeName: meta.employeeName,
+      employeeCode: meta.employeeCode,
+      documentType: meta.documentType,
+      contextLabel: meta.contextLabel,
+    }),
   });
   return result?.url;
 }
 
+function resolveAttachmentUrl(url = "") {
+  if (!url) return "";
+  if (/^https?:\/\//i.test(url)) return url;
+  if (url.startsWith("/api/")) return url;
+  if (url.startsWith("/")) return `${API_BASE}${url}`;
+  return `${API_BASE}/${url}`;
+}
+
+function extractUploadId(url = "") {
+  const match = String(url).match(/\/uploads\/([^/?#]+)/);
+  return match?.[1] ?? null;
+}
+
+let docViewerObjectUrl = null;
+let docViewerExternalUrl = null;
+
+function parseAttachmentFileName(response, fallback = "Document") {
+  const header = response?.headers?.get?.("Content-Disposition") ?? "";
+  const encoded = header.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+  if (encoded) {
+    try {
+      return decodeURIComponent(encoded);
+    } catch {
+      return fallback;
+    }
+  }
+  return header.match(/filename="([^"]+)"/i)?.[1] ?? fallback;
+}
+
+function openDocumentViewerLoading(title = "Document") {
+  const modal = document.getElementById("doc-viewer-modal");
+  const titleEl = document.getElementById("doc-viewer-title");
+  const body = document.getElementById("doc-viewer-body");
+  if (titleEl) titleEl.textContent = title;
+  if (body) {
+    body.innerHTML = `<div class="doc-viewer-loading">Loading document…</div>`;
+  }
+  modal?.classList.add("open");
+}
+
+function renderDocumentViewerContent(body, { fileName, mimeType, srcUrl }) {
+  body.replaceChildren();
+  if (mimeType === "application/pdf") {
+    const frame = document.createElement("iframe");
+    frame.className = "doc-viewer-frame";
+    frame.src = srcUrl;
+    frame.title = fileName || "Document";
+    body.appendChild(frame);
+    return;
+  }
+  if (mimeType.startsWith("image/")) {
+    const img = document.createElement("img");
+    img.className = "doc-viewer-image";
+    img.src = srcUrl;
+    img.alt = fileName || "Document";
+    body.appendChild(img);
+    return;
+  }
+
+  const fallback = document.createElement("div");
+  fallback.className = "doc-viewer-fallback";
+  fallback.innerHTML = `<p>Preview is not available for this file type.</p>`;
+  const link = document.createElement("a");
+  link.className = "btn btn-primary btn-sm";
+  link.href = srcUrl;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  link.textContent = "Download file";
+  if (fileName) link.download = fileName;
+  fallback.appendChild(link);
+  body.appendChild(fallback);
+}
+
+function showDocumentViewer({ fileName, mimeType, srcUrl }) {
+  const modal = document.getElementById("doc-viewer-modal");
+  const titleEl = document.getElementById("doc-viewer-title");
+  const body = document.getElementById("doc-viewer-body");
+  const openTabBtn = document.getElementById("doc-viewer-open-tab");
+  if (!modal || !body) return;
+
+  docViewerExternalUrl = srcUrl;
+  if (titleEl) titleEl.textContent = fileName || "Document";
+  renderDocumentViewerContent(body, { fileName, mimeType, srcUrl });
+  if (openTabBtn) {
+    openTabBtn.onclick = () => {
+      if (docViewerExternalUrl) {
+        window.open(docViewerExternalUrl, "_blank", "noopener,noreferrer");
+      }
+    };
+  }
+  modal.classList.add("open");
+}
+
+window.__closeDocumentViewer = function closeDocumentViewer() {
+  if (docViewerObjectUrl) {
+    URL.revokeObjectURL(docViewerObjectUrl);
+    docViewerObjectUrl = null;
+  }
+  docViewerExternalUrl = null;
+  document.getElementById("doc-viewer-modal")?.classList.remove("open");
+  const body = document.getElementById("doc-viewer-body");
+  if (body) body.replaceChildren();
+};
+
 window.__viewAttachment = async function viewAttachment(url) {
   try {
-    const response = await fetch(`${API_BASE}${url.replace(/^\/api/, "")}`, {
+    openDocumentViewerLoading("Document");
+
+    let fileName = "Document";
+    let mimeType = "application/octet-stream";
+    let srcUrl = null;
+
+    const uploadId = extractUploadId(url);
+    if (uploadId) {
+      const info = await api(`/uploads/${uploadId}/open`);
+      fileName = info?.fileName || fileName;
+      mimeType = info?.mimeType || mimeType;
+      if (info?.mode === "redirect" && info.openUrl) {
+        showDocumentViewer({ fileName, mimeType, srcUrl: info.openUrl });
+        return;
+      }
+    }
+
+    const targetUrl = resolveAttachmentUrl(url);
+    const response = await fetch(targetUrl, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       cache: "no-store",
     });
-    if (!response.ok) throw new Error("Unable to open document");
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.message || "Unable to open document");
+    }
+
+    mimeType = response.headers.get("Content-Type")?.split(";")[0]?.trim() || mimeType;
+    fileName = parseAttachmentFileName(response, fileName);
     const blob = await response.blob();
-    const objectUrl = URL.createObjectURL(blob);
-    window.open(objectUrl, "_blank");
-    setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+    const typedBlob = blob.type ? blob : new Blob([blob], { type: mimeType });
+    if (docViewerObjectUrl) URL.revokeObjectURL(docViewerObjectUrl);
+    docViewerObjectUrl = URL.createObjectURL(typedBlob);
+    showDocumentViewer({ fileName, mimeType, srcUrl: docViewerObjectUrl });
   } catch (error) {
+    window.__closeDocumentViewer();
     notify(error.message);
   }
 };
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && document.getElementById("doc-viewer-modal")?.classList.contains("open")) {
+    window.__closeDocumentViewer();
+  }
+});
 
 window.__submitResignation = async function submitResignation() {
   try {
@@ -2461,7 +4813,11 @@ window.__submitResignation = async function submitResignation() {
       notify("Please confirm the resignation declaration");
       return;
     }
-    const supportingDocUrl = await uploadAttachment("exit-doc-file", "RESIGNATION");
+    const supportingDocUrl = await uploadAttachment(
+      "exit-doc-file",
+      "RESIGNATION",
+      buildUploadMeta(employeeId, { documentType: "RESIGNATION" }),
+    );
     await api("/exits/resignation", {
       method: "POST",
       body: JSON.stringify({
@@ -2498,7 +4854,11 @@ window.__initiateTermination = async function initiateTermination() {
       notify("Please select employee, notice start date and last working date");
       return;
     }
-    const supportingDocUrl = await uploadAttachment("term-doc-file", "TERMINATION");
+    const supportingDocUrl = await uploadAttachment(
+      "term-doc-file",
+      "TERMINATION",
+      buildUploadMeta(employeeId, { documentType: "TERMINATION" }),
+    );
     await api("/exits/termination", {
       method: "POST",
       body: JSON.stringify({
@@ -2552,33 +4912,35 @@ function renderExitDetailHtml(record) {
       ${record.negotiationNotes ? `<div style="margin-top:6px"><b>Negotiation notes:</b> ${escapeAttr(record.negotiationNotes)}</div>` : ""}
     </div>`;
 
-  const clearance = (record.clearanceTasks ?? []).map((task) => {
-    const done = task.status === "COMPLETED";
-    const manager = task.assignedManager;
-    const managerName = manager ? `${manager.firstName ?? ""} ${manager.lastName ?? ""}`.trim() : "—";
-    const assigneeLabel = task.department === "ADMIN" || task.department === "PRO" ? "HR / Admin" : "Dept manager";
-    return `<div style="padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">
-      <div class="flex-between">
-        <span>${escapeAttr(task.department)}${task.urgent ? ' <span class="badge badge-coral">Urgent</span>' : ""}</span>
-        <span class="badge ${done ? "badge-green" : "badge-amber"}">${done ? "Cleared" : "Pending"}</span>
-      </div>
-      <div class="text-muted" style="font-size:12px;margin-top:4px">${assigneeLabel}: ${escapeAttr(managerName)}</div>
-      ${done && task.remarks ? `<div style="margin-top:4px;font-size:12px"><b>Note:</b> ${escapeAttr(task.remarks)}</div>` : ""}
-      ${!done && canCompleteClearanceTask(task)
-        ? `<div style="margin-top:6px"><button class="btn btn-accent btn-sm" onclick="closeActionModal();window.__goClearancePage()">Clear on Clearance page</button></div>`
-        : ""}
-    </div>`;
-  }).join("");
+  const clearanceTasks = record.clearanceTasks ?? [];
+  const clearanceTotal = clearanceTasks.length;
+  const clearanceDone = clearanceTasks.filter((t) => t.status === "COMPLETED").length;
+  const clearanceSection = clearanceTotal
+    ? `<div>
+        <div class="flex-between" style="gap:12px;flex-wrap:wrap;margin-bottom:10px">
+          <div class="section-title" style="font-size:13px;margin:0">Department Clearance</div>
+          <div style="min-width:120px;text-align:right">
+            <div class="text-muted" style="font-size:11px;margin-bottom:4px">${clearanceDone}/${clearanceTotal} departments cleared</div>
+            ${renderClearanceProgressBar(clearanceDone, clearanceTotal)}
+          </div>
+        </div>
+        ${renderClearanceBoardHtml(clearanceTasks)}
+        <div style="margin-top:10px"><button class="btn btn-secondary btn-sm" onclick="closeActionModal();window.__goClearancePage()"><i class="bi bi-box-arrow-up-right"></i> Open Clearance page</button></div>
+      </div>`
+    : "";
 
   const s = record.finalSettlement;
+  const settlementCurrency = emp?.netPayCurrency;
+  const settlementMoney = (value) => formatProfileMoney(value, settlementCurrency);
+  const settlementCode = formatCurrencyLabel(settlementCurrency);
   const settlementHtml = s ? `
     <div class="stats-grid" style="margin-top:8px">
-      <div class="stat-card"><div class="stat-label">Gratuity (EOSB)</div><div class="stat-value" style="color:#4DB6AC">${Number(s.gratuity).toLocaleString("en-US")}</div></div>
-      <div class="stat-card"><div class="stat-label">Leave Encashment</div><div class="stat-value" style="color:#64B5F6">${Number(s.leaveEncashment).toLocaleString("en-US")}</div></div>
-      <div class="stat-card"><div class="stat-label">Deductions</div><div class="stat-value" style="color:#FF8A65">${Number(s.deductions).toLocaleString("en-US")}</div></div>
-      <div class="stat-card"><div class="stat-label">Net Settlement (AED)</div><div class="stat-value" style="color:#FFD54F">${Number(s.netSettlement).toLocaleString("en-US")}</div></div>
+      <div class="stat-card"><div class="stat-label">Gratuity (EOSB)</div><div class="stat-value tone-teal">${escapeAttr(settlementMoney(s.gratuity))}</div></div>
+      <div class="stat-card"><div class="stat-label">Leave Encashment</div><div class="stat-value tone-accent">${escapeAttr(settlementMoney(s.leaveEncashment))}</div></div>
+      <div class="stat-card"><div class="stat-label">Deductions</div><div class="stat-value tone-danger">${escapeAttr(settlementMoney(s.deductions))}</div></div>
+      <div class="stat-card"><div class="stat-label">Net Settlement${settlementCode ? ` (${settlementCode})` : ""}</div><div class="stat-value tone-gold">${escapeAttr(settlementMoney(s.netSettlement))}</div></div>
     </div>
-    <div class="text-muted" style="font-size:12px;margin-top:6px">Years of service: ${Number(s.yearsOfService).toFixed(2)} • Unpaid salary: AED ${Number(s.unpaidSalary).toLocaleString("en-US")} • Other additions: AED ${Number(s.otherAdditions).toLocaleString("en-US")}</div>
+    <div class="text-muted" style="font-size:12px;margin-top:6px">Years of service: ${Number(s.yearsOfService).toFixed(2)} • Unpaid salary: ${escapeAttr(settlementMoney(s.unpaidSalary))} • Other additions: ${escapeAttr(settlementMoney(s.otherAdditions))}</div>
   ` : "";
 
   // Stage-specific actions
@@ -2670,7 +5032,7 @@ function renderExitDetailHtml(record) {
       ${record.supportingDocUrl ? `<div><button class="btn btn-secondary btn-sm" onclick="window.__viewAttachment('${escapeAttr(record.supportingDocUrl)}')"><i class="bi bi-paperclip"></i> View Supporting Document</button></div>` : ""}
       ${rejectionHtml}
       ${timeline ? `<div><div class="section-title" style="font-size:13px">Progress</div><ul class="emp-tooltip-list" style="padding-left:16px;list-style:disc">${timeline}</ul></div>` : ""}
-      ${clearance ? `<div><div class="section-title" style="font-size:13px">Clearance Checklist</div>${clearance}</div>` : ""}
+      ${clearanceSection ? clearanceSection : ""}
       ${settlementHtml ? `<div><div class="section-title" style="font-size:13px">Final Settlement</div>${settlementHtml}</div>` : ""}
       ${(actions || rejectBtn) ? `<div><div class="section-title" style="font-size:13px">Actions</div><div class="flex gap-8" style="flex-wrap:wrap">${actions}${rejectBtn}</div></div>` : ""}
     </div>`;
@@ -2815,7 +5177,7 @@ window.__goClearancePage = function goClearancePage() {
 
 window.__openClearanceComplete = function openClearanceComplete(taskId, department, employeeName) {
   openActionModal({
-    title: `Complete ${department} Clearance`,
+    title: `Complete ${formatClearanceDepartment(department)} Clearance`,
     saveLabel: "Mark Done",
     bodyHtml: `
       <div style="display:grid;gap:10px">
@@ -2831,6 +5193,151 @@ window.__openClearanceComplete = function openClearanceComplete(taskId, departme
     },
   });
 };
+
+function findClearanceTask(taskId) {
+  const fromCache = clearanceTasksCache.find((task) => task.id === taskId);
+  if (fromCache) return fromCache;
+  for (const record of exitRecordsCache) {
+    const match = (record.clearanceTasks ?? []).find((task) => task.id === taskId);
+    if (match) return match;
+  }
+  return null;
+}
+
+async function refreshAfterChecklistUpdate(exitId) {
+  await loadClearance();
+  await loadExits();
+  if (exitId) await refreshExitModal(exitId);
+}
+
+window.__updateChecklistItem = async function updateChecklistItem(itemId, taskId, status, note, options = {}) {
+  try {
+    const remarks = note?.trim() || undefined;
+    const body = { status, remarks };
+    if (options.amount != null) body.amount = Number(options.amount);
+    if (options.adjustmentType) body.adjustmentType = options.adjustmentType;
+
+    const result = await api(`/exits/clearance/checklist/${itemId}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
+    const adj = result?.item?.payrollAdjustment;
+    if (adj?.referenceNumber) {
+      notify(`Checklist updated — pay adjustment ${adj.referenceNumber} created (${formatLabel(adj.status)})`);
+    } else {
+      notify(`Checklist item updated (${checklistItemStatusLabel(status)})`);
+    }
+    if (result?.task) {
+      const cacheTask = clearanceTasksCache.find((task) => task.id === taskId);
+      if (cacheTask) Object.assign(cacheTask, result.task);
+    }
+    await refreshAfterChecklistUpdate(result?.exit?.id);
+    const modal = document.getElementById("emp-action-modal");
+    if (modal && taskId) window.__openClearanceChecklist(taskId);
+  } catch (error) {
+    notify(error.message);
+  }
+};
+
+window.__completeFinancialChecklistItem = function completeFinancialChecklistItem(itemId, taskId, status) {
+  const amount = Number(document.getElementById(`check-amount-${itemId}`)?.value ?? 0);
+  const adjustmentType = document.getElementById(`check-adj-type-${itemId}`)?.value ?? "DEDUCTION";
+  const note = document.getElementById(`check-note-${itemId}`)?.value ?? "";
+  if (status === "COMPLETED" && (!amount || amount <= 0)) {
+    notify("Enter the amount (AED) to record as a pay adjustment");
+    return;
+  }
+  window.__updateChecklistItem(itemId, taskId, status, note, { amount, adjustmentType });
+};
+
+window.__openClearanceChecklist = function openClearanceChecklist(taskId) {
+  const task = findClearanceTask(taskId);
+  if (!task) {
+    notify("Clearance task not found");
+    return;
+  }
+  const emp = task.exitRecord?.employee;
+  const employeeName = emp ? `${emp.firstName ?? ""} ${emp.lastName ?? ""}`.trim() : "Employee";
+  const items = task.checklistItems ?? [];
+  const progress = clearanceChecklistProgress(task);
+  const deptLabel = formatClearanceDepartment(task.department);
+  const meta = clearanceDeptMeta(task.department);
+  const canEdit = canCompleteClearanceTask(task);
+  const rows = items
+    .map((item) => {
+      const resolved = checklistItemResolved(item.status);
+      const financial = isFinancialClearanceItem(item);
+      const statusClass = item.status === "COMPLETED" ? "is-collected" : item.status === "NOT_APPLICABLE" ? "is-na" : "";
+      const noteField = !resolved && canEdit
+        ? `<input type="text" class="clearance-check-note" id="check-note-${item.id}" placeholder="Optional note…">`
+        : item.remarks
+          ? `<div class="text-muted" style="font-size:12px;line-height:1.45">${escapeAttr(item.remarks)}</div>`
+          : "";
+      const financialFields = financial && !resolved && canEdit
+        ? `<div class="clearance-financial-fields">
+            <input type="number" class="clearance-check-amount" id="check-amount-${item.id}" min="0.01" step="0.01" placeholder="Amount (AED)">
+            <select id="check-adj-type-${item.id}">
+              <option value="DEDUCTION">Deduction</option>
+              ${item.itemKey === "IOU" ? '<option value="ADDITION">Addition (credit)</option>' : ""}
+            </select>
+          </div>`
+        : "";
+      const actions = !canEdit
+        ? ""
+        : resolved
+          ? `<div class="clearance-check-actions"><button class="btn btn-secondary btn-sm" onclick="window.__updateChecklistItem('${item.id}','${task.id}','PENDING')"><i class="bi bi-arrow-counterclockwise"></i> Reopen</button></div>`
+          : financial
+            ? `<div class="clearance-check-actions">
+                <button class="btn btn-accent btn-sm" onclick="window.__completeFinancialChecklistItem('${item.id}','${task.id}','COMPLETED')"><i class="bi bi-cash-stack"></i> Record &amp; Collect</button>
+                <button class="btn btn-secondary btn-sm" onclick="window.__updateChecklistItem('${item.id}','${task.id}','NOT_APPLICABLE', document.getElementById('check-note-${item.id}')?.value)">N/A</button>
+              </div>`
+            : `<div class="clearance-check-actions">
+                <button class="btn btn-accent btn-sm" onclick="window.__updateChecklistItem('${item.id}','${task.id}','COMPLETED', document.getElementById('check-note-${item.id}')?.value)"><i class="bi bi-check2"></i> Collected</button>
+                <button class="btn btn-secondary btn-sm" onclick="window.__updateChecklistItem('${item.id}','${task.id}','NOT_APPLICABLE', document.getElementById('check-note-${item.id}')?.value)">N/A</button>
+              </div>`;
+      return `<article class="clearance-check-item ${statusClass}${financial ? " is-financial" : ""}">
+        <div class="clearance-check-item-top">
+          <div style="min-width:0;flex:1">
+            <div class="clearance-check-item-title">${escapeAttr(item.label)}${financial ? ' <span class="badge badge-blue" style="margin-left:6px">Payroll</span>' : ""}</div>
+            ${financial && !resolved && canEdit ? `<div class="text-muted" style="font-size:12px;margin:4px 0 8px">Enter amount — creates a pay adjustment draft for final settlement payroll.</div>` : ""}
+            ${renderClearanceAdjustmentMeta(item)}
+            ${financialFields}
+            ${noteField}
+          </div>
+          <span class="badge ${checklistItemBadge(item.status)}">${checklistItemStatusLabel(item.status)}</span>
+        </div>
+        ${actions}
+      </article>`;
+    })
+    .join("");
+
+  openActionModal({
+    title: `${deptLabel}${progress ? ` · ${progress.done}/${progress.total}` : ""}`,
+    hideSave: true,
+    bodyHtml: `
+      <div class="clearance-checklist-shell">
+        <div class="clearance-checklist-head">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+            <div class="clearance-dept-icon ${meta.tone}"><i class="bi ${meta.icon}"></i></div>
+            <div>
+              <div style="font-weight:700">${escapeAttr(deptLabel)}</div>
+              <div class="text-muted" style="font-size:12px;margin-top:2px">Employee: <b>${escapeAttr(employeeName)}</b> (${escapeAttr(emp?.employeeCode ?? "—")})</div>
+            </div>
+          </div>
+          ${progress ? renderClearanceProgressBar(progress.done, progress.total) : ""}
+          <div class="text-muted" style="font-size:12px;margin-top:8px;line-height:1.5">Mark each item as <b>Collected</b> or <b>N/A</b>. Finance items (Loan, Advance, IOU) require an amount and create a <b>pay adjustment</b> for payroll.</div>
+        </div>
+        <div class="clearance-checklist-items">
+          ${rows || `<div class="clearance-empty"><i class="bi bi-list-check"></i>No checklist items found.</div>`}
+        </div>
+      </div>`,
+  });
+};
+
+// Legacy aliases
+window.__completeItChecklistItem = (itemId, taskId, note) => window.__updateChecklistItem(itemId, taskId, "COMPLETED", note);
+window.__reopenItChecklistItem = (itemId, taskId) => window.__updateChecklistItem(itemId, taskId, "PENDING");
+window.__openItClearanceChecklist = window.__openClearanceChecklist;
 
 window.__exitSettlement = async function exitSettlement(exitId) {
   try {
@@ -2896,7 +5403,35 @@ const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Se
 function adjStatusBadge(status) {
   if (status === "PROCESSED" || status === "APPROVED") return "badge-green";
   if (status === "REJECTED") return "badge-coral";
+  if (status === "PENDING_L2") return "badge-blue";
   return "badge-amber";
+}
+
+function formatAdjustmentStatus(adj) {
+  if (adj.status === "PENDING_L2") return "Pending Final Approval";
+  if (adj.status === "DRAFT" && adj.requiresDualApproval) return "Draft (Dual Approval)";
+  return formatLabel(adj.status);
+}
+
+function canHrApproveAdjustment() {
+  return elevatedRoles.has(me?.role);
+}
+
+function canFinalApproveAdjustment() {
+  return me?.role === "SUPER_ADMIN" || me?.role === "CEO";
+}
+
+function updateAdjustmentDualNote() {
+  const amount = Number(document.getElementById("adj-amount")?.value ?? 0);
+  const note = document.getElementById("adj-dual-threshold-note");
+  if (!note) return;
+  if (amount >= adjustmentDualThreshold) {
+    note.style.display = "";
+    note.textContent = `Amount is at or above AED ${adjustmentDualThreshold.toLocaleString("en-US")}. This adjustment will require HR approval, then CEO / Super Admin final approval.`;
+  } else {
+    note.style.display = "none";
+    note.textContent = "";
+  }
 }
 
 function isFinanceManagerUser() {
@@ -2939,7 +5474,7 @@ function populateLoanEmpSelect() {
   const selfLabel = document.getElementById("loan-self-label");
   const role = me?.role;
 
-  if (role === "EMPLOYEE" || role === "PRO") {
+  if (isIndividualContributor(role) || role === "PRO") {
     if (wrap) wrap.style.display = "none";
     if (selfLabel) {
       selfLabel.style.display = "";
@@ -2991,8 +5526,11 @@ async function loadAdjustmentMeta() {
     adjustmentCategories = Array.isArray(meta?.categories) ? meta.categories : [];
     adjustmentDualThreshold = Number(meta?.dualApprovalThreshold ?? 5000);
     populateAdjustmentCategoryOptions();
+    updateAdjustmentDualNote();
     const note = document.getElementById("loan-threshold-note");
-    if (note) note.textContent = "Requests go to Finance for approval (with note), then HR/Admin final approval.";
+    if (note) {
+      note.textContent = `Loans/advances at or above AED ${adjustmentDualThreshold.toLocaleString("en-US")} are flagged for dual approval. All requests still go Finance → HR before activation.`;
+    }
   } catch (_error) {
     adjustmentCategories = [];
   }
@@ -3000,35 +5538,77 @@ async function loadAdjustmentMeta() {
 
 function renderAdjustmentsTable() {
   const tbody = document.getElementById("adj-list-body");
+  const mobileList = document.getElementById("adj-list-mobile");
   if (!tbody) return;
   if (!adjustmentsCache.length) {
     tbody.innerHTML = `<tr><td colspan="8" class="text-muted">No adjustments found.</td></tr>`;
+    if (mobileList) mobileList.innerHTML = `<div class="mobile-empty">No adjustments found.</div>`;
     return;
   }
-  const canApprove = elevatedRoles.has(me?.role);
+  const canHr = canHrApproveAdjustment();
+  const canFinal = canFinalApproveAdjustment();
   const catLabel = (code) => adjustmentCategories.find((c) => c.code === code)?.label ?? formatLabel(code);
-  tbody.innerHTML = adjustmentsCache.map((adj) => {
+  const rendered = adjustmentsCache.map((adj) => {
     const emp = adj.employee;
     const name = `${emp?.firstName ?? ""} ${emp?.lastName ?? ""}`.trim();
     const typeBadge = adj.type === "ADDITION" ? "badge-green" : "badge-coral";
+    const dualBadge = adj.requiresDualApproval
+      ? `<span class="badge badge-blue" style="margin-left:6px" title="Requires dual approval">Dual</span>`
+      : "";
     let action = `<span class="text-muted">—</span>`;
-    if (canApprove && adj.status === "DRAFT") {
-      action = `<div class="flex gap-8"><button class="btn btn-accent btn-sm" onclick="window.__approveAdjustment('${adj.id}')">Approve</button><button class="btn btn-danger btn-sm" onclick="window.__rejectAdjustment('${adj.id}')">Reject</button></div>`;
-    } else if (canApprove && adj.status === "APPROVED") {
+    if (canHr && adj.status === "DRAFT") {
+      const label = adj.requiresDualApproval ? "Approve (HR)" : "Approve";
+      action = `<div class="flex gap-8"><button class="btn btn-accent btn-sm" onclick="window.__approveAdjustment('${adj.id}')">${label}</button><button class="btn btn-danger btn-sm" onclick="window.__rejectAdjustment('${adj.id}')">Reject</button></div>`;
+    } else if (canFinal && adj.status === "PENDING_L2") {
+      action = `<div class="flex gap-8"><button class="btn btn-accent btn-sm" onclick="window.__approveAdjustment('${adj.id}')">Final Approve</button><button class="btn btn-danger btn-sm" onclick="window.__rejectAdjustment('${adj.id}')">Reject</button></div>`;
+    } else if (adj.status === "PENDING_L2") {
+      action = `<span class="text-muted" style="font-size:12px">Awaiting CEO / Super Admin</span>`;
+    } else if (canHr && adj.status === "APPROVED") {
       action = `<button class="btn btn-danger btn-sm" onclick="window.__rejectAdjustment('${adj.id}')">Reject</button>`;
     }
-    return `
+    const monthLabel = `${MONTH_NAMES[(adj.effectiveMonth ?? 1) - 1]} ${adj.effectiveYear}`;
+    const amountLabel = `AED ${Number(adj.amount).toLocaleString("en-US")}`;
+    const statusBadge = adjStatusBadge(adj.status);
+    const statusLabel = formatAdjustmentStatus(adj);
+
+    const tableRow = `
       <tr>
         <td>${escapeAttr(adj.referenceNumber)}</td>
         <td>${escapeAttr(name)}</td>
-        <td><span class="badge ${typeBadge}">${formatLabel(adj.type)}</span></td>
+        <td><span class="badge ${typeBadge}">${formatLabel(adj.type)}</span>${dualBadge}</td>
         <td>${escapeAttr(catLabel(adj.category))}</td>
-        <td>AED ${Number(adj.amount).toLocaleString("en-US")}</td>
-        <td>${MONTH_NAMES[(adj.effectiveMonth ?? 1) - 1]} ${adj.effectiveYear}</td>
-        <td><span class="badge ${adjStatusBadge(adj.status)}">${formatLabel(adj.status)}</span></td>
+        <td>${amountLabel}</td>
+        <td>${monthLabel}</td>
+        <td><span class="badge ${statusBadge}">${escapeAttr(statusLabel)}</span></td>
         <td>${action}</td>
       </tr>`;
-  }).join("");
+
+    const mobileCard = `
+      <article class="record-card">
+        <div class="record-card-head">
+          <div class="record-card-head-main">
+            <div class="record-card-name">${escapeAttr(adj.referenceNumber)}</div>
+            <div class="record-card-sub">${escapeAttr(name)}${emp?.employeeCode ? ` · ${escapeAttr(emp.employeeCode)}` : ""}</div>
+            <div class="record-card-badges">
+              <span class="badge ${typeBadge}">${formatLabel(adj.type)}</span>
+              <span class="badge ${statusBadge}">${escapeAttr(statusLabel)}</span>
+              ${adj.requiresDualApproval ? `<span class="badge badge-blue">Dual</span>` : ""}
+            </div>
+          </div>
+        </div>
+        <div class="record-card-grid">
+          <div class="record-card-field"><span class="record-card-label">Category</span><span class="record-card-value">${escapeAttr(catLabel(adj.category))}</span></div>
+          <div class="record-card-field"><span class="record-card-label">Amount</span><span class="record-card-value">${amountLabel}</span></div>
+          <div class="record-card-field"><span class="record-card-label">Effective Month</span><span class="record-card-value">${monthLabel}</span></div>
+        </div>
+        ${action.includes("btn") || action.includes("Awaiting") ? `<div class="record-card-actions">${action}</div>` : ""}
+      </article>`;
+
+    return { tableRow, mobileCard };
+  });
+
+  tbody.innerHTML = rendered.map((row) => row.tableRow).join("");
+  if (mobileList) mobileList.innerHTML = rendered.map((row) => row.mobileCard).join("");
 }
 
 function loanStatusBadge(status) {
@@ -3040,6 +5620,7 @@ function loanStatusBadge(status) {
 
 function renderLoansTable() {
   const tbody = document.getElementById("adj-loans-body");
+  const mobileList = document.getElementById("adj-loans-mobile");
   const summary = document.getElementById("loan-list-summary");
   if (!tbody) return;
 
@@ -3060,11 +5641,14 @@ function renderLoansTable() {
       : `${filtered.length} in history · ${pendingAll} still pending`;
   }
 
+  const emptyMessage = loanListTab === "pending" ? "No pending loan/advance requests." : "No loan/advance history yet.";
   if (!filtered.length) {
-    tbody.innerHTML = `<tr><td colspan="8" class="text-muted">${loanListTab === "pending" ? "No pending loan/advance requests." : "No loan/advance history yet."}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" class="text-muted">${emptyMessage}</td></tr>`;
+    if (mobileList) mobileList.innerHTML = `<div class="mobile-empty">${emptyMessage}</div>`;
     return;
   }
-  tbody.innerHTML = filtered.map((loan) => {
+
+  const rendered = filtered.map((loan) => {
     const emp = loan.employee;
     const name = `${emp?.firstName ?? ""} ${emp?.lastName ?? ""}`.trim();
     const outstanding = Number(loan.outstandingAmount ?? Math.max(0, loan.totalAmount - loan.recoveredAmount));
@@ -3086,18 +5670,53 @@ function renderLoansTable() {
     } else if (loan.status === "REJECTED") {
       action = `<span class="text-muted" style="font-size:12px">Rejected</span>`;
     }
-    return `
+
+    const totalLabel = `AED ${Number(loan.totalAmount).toLocaleString("en-US")}`;
+    const recoveredLabel = `AED ${Number(loan.recoveredAmount).toLocaleString("en-US")}`;
+    const outstandingLabel = `AED ${outstanding.toLocaleString("en-US")}`;
+    const statusBadge = loanStatusBadge(loan.status);
+    const statusLabel = formatLabel(loan.status);
+
+    const tableRow = `
       <tr>
         <td>${escapeAttr(name)}</td>
         <td><span class="badge badge-blue">${formatLabel(loan.type)}</span></td>
-        <td>AED ${Number(loan.totalAmount).toLocaleString("en-US")}</td>
-        <td>AED ${Number(loan.recoveredAmount).toLocaleString("en-US")}</td>
-        <td>AED ${outstanding.toLocaleString("en-US")}</td>
-        <td><span class="badge ${loanStatusBadge(loan.status)}">${escapeAttr(formatLabel(loan.status))}</span></td>
+        <td>${totalLabel}</td>
+        <td>${recoveredLabel}</td>
+        <td>${outstandingLabel}</td>
+        <td><span class="badge ${statusBadge}">${escapeAttr(statusLabel)}</span></td>
         <td>${docCell}</td>
         <td>${action}</td>
       </tr>`;
-  }).join("");
+
+    const mobileCard = `
+      <article class="record-card">
+        <div class="record-card-head">
+          <div class="record-card-head-main">
+            <div class="record-card-name">${escapeAttr(name)}</div>
+            <div class="record-card-sub">${escapeAttr(emp?.employeeCode ?? "—")}${emp?.department ? ` · ${escapeAttr(emp.department)}` : ""}</div>
+            <div class="record-card-badges">
+              <span class="badge badge-blue">${formatLabel(loan.type)}</span>
+              <span class="badge ${statusBadge}">${escapeAttr(statusLabel)}</span>
+            </div>
+          </div>
+        </div>
+        <div class="record-card-grid">
+          <div class="record-card-field"><span class="record-card-label">Total</span><span class="record-card-value">${totalLabel}</span></div>
+          <div class="record-card-field"><span class="record-card-label">Recovered</span><span class="record-card-value">${recoveredLabel}</span></div>
+          <div class="record-card-field"><span class="record-card-label">Outstanding</span><span class="record-card-value">${outstandingLabel}</span></div>
+        </div>
+        <div class="record-card-actions">
+          ${loan.supportingDocUrl ? docCell : ""}
+          ${action}
+        </div>
+      </article>`;
+
+    return { tableRow, mobileCard };
+  });
+
+  tbody.innerHTML = rendered.map((row) => row.tableRow).join("");
+  if (mobileList) mobileList.innerHTML = rendered.map((row) => row.mobileCard).join("");
 }
 
 async function loadAdjustments() {
@@ -3138,7 +5757,11 @@ window.__submitAdjustment = async function submitAdjustment() {
       notify("Reason must be at least 20 characters");
       return;
     }
-    const supportingDocUrl = await uploadAttachment("adj-doc-file", "ADJUSTMENT");
+    const supportingDocUrl = await uploadAttachment(
+      "adj-doc-file",
+      "ADJUSTMENT",
+      buildUploadMeta(employeeId, { documentType: category }),
+    );
     await api("/adjustments", {
       method: "POST",
       body: JSON.stringify({
@@ -3155,7 +5778,10 @@ window.__submitAdjustment = async function submitAdjustment() {
         recurrenceEndYear: recurring ? recurEndParts?.year : undefined,
       }),
     });
-    notify("Adjustment created (pending approval)");
+    const dualMsg = amount >= adjustmentDualThreshold
+      ? "Adjustment created. HR approval, then CEO / Super Admin final approval required."
+      : "Adjustment created (pending HR approval)";
+    notify(dualMsg);
     document.getElementById("adj-amount").value = "";
     document.getElementById("adj-reason").value = "";
     const adjFile = document.getElementById("adj-doc-file");
@@ -3170,8 +5796,8 @@ window.__submitAdjustment = async function submitAdjustment() {
 
 window.__approveAdjustment = async function approveAdjustment(id) {
   try {
-    await api(`/adjustments/${id}/approve`, { method: "POST", body: JSON.stringify({}) });
-    notify("Adjustment approved");
+    const result = await api(`/adjustments/${id}/approve`, { method: "POST", body: JSON.stringify({}) });
+    notify(result?.message ?? "Adjustment approved");
     await loadAdjustments();
   } catch (error) {
     notify(error.message);
@@ -3215,7 +5841,7 @@ window.__submitLoan = async function submitLoan() {
   try {
     const role = me?.role;
     let employeeId = document.getElementById("loan-emp-select")?.value;
-    if (role === "EMPLOYEE" || role === "PRO") {
+    if (isIndividualContributor(role) || role === "PRO") {
       employeeId = me?.employee?.id;
     }
     const type = document.getElementById("loan-type")?.value;
@@ -3231,7 +5857,11 @@ window.__submitLoan = async function submitLoan() {
       notify("Reason must be at least 10 characters");
       return;
     }
-    const supportingDocUrl = await uploadAttachment("loan-doc-file", "LOAN");
+    const supportingDocUrl = await uploadAttachment(
+      "loan-doc-file",
+      "LOAN",
+      buildUploadMeta(employeeId, { documentType: type }),
+    );
     await api("/adjustments/loans", {
       method: "POST",
       body: JSON.stringify({
@@ -3331,6 +5961,7 @@ window.__rejectLoan = async function rejectLoan(id) {
 function wireAdjustmentForms() {
   const typeSelect = document.getElementById("adj-type");
   typeSelect?.addEventListener("change", populateAdjustmentCategoryOptions);
+  document.getElementById("adj-amount")?.addEventListener("input", updateAdjustmentDualNote);
   const recurringSelect = document.getElementById("adj-recurring");
   recurringSelect?.addEventListener("change", () => {
     const wrap = document.getElementById("adj-recur-end-wrap");
@@ -3347,7 +5978,19 @@ let proDocsCache = [];
 let proTasksCache = [];
 let proDocTypes = [];
 let editingProDocId = null;
-const DOCUMENT_EXPIRY_ALERT_DAYS = 30;
+let documentExpiryAlertMonths = 6;
+
+function documentExpiryAlertLabel() {
+  return documentExpiryAlertMonths === 1 ? "1 month" : `${documentExpiryAlertMonths} months`;
+}
+
+function documentExpiryAlertTitle(count) {
+  return `${count} Document(s) Expiring Within ${documentExpiryAlertLabel()}`;
+}
+
+function documentExpiryWindowLabel() {
+  return `Within ${documentExpiryAlertLabel()} expiry window`;
+}
 
 function canSearchEmployeeDocuments() {
   return elevatedRoles.has(me?.role) || me?.role === "PRO" || me?.role === "CEO";
@@ -3355,7 +5998,7 @@ function canSearchEmployeeDocuments() {
 
 function getExpiringDocuments(docs = proDocsCache) {
   let list = (docs ?? []).filter((doc) => doc.computedStatus === "EXPIRING" || doc.computedStatus === "EXPIRED");
-  if (me?.role === "EMPLOYEE" || me?.role === "MANAGER") {
+  if (isIndividualContributor(me?.role) || me?.role === "MANAGER") {
     list = list.filter((doc) => doc.employeeId === me?.employee?.id);
   }
   return list;
@@ -3414,46 +6057,130 @@ async function loadProMeta() {
   try {
     const meta = await api("/pro/doc-types");
     proDocTypes = Array.isArray(meta?.docTypes) ? meta.docTypes : [];
+    if (Number.isFinite(meta?.alertMonths) && meta.alertMonths > 0) {
+      documentExpiryAlertMonths = meta.alertMonths;
+    }
     populateProDocTypeSelects();
   } catch (_error) {
     proDocTypes = [];
   }
 }
 
+function proTaskMatchesSearch(task, query) {
+  if (!query) return true;
+  const emp = task.employee;
+  const name = `${emp?.firstName ?? ""} ${emp?.lastName ?? ""}`.trim();
+  const haystack = [
+    task.referenceNumber,
+    name,
+    emp?.employeeCode,
+    emp?.department,
+    task.taskType,
+    task.status,
+    proStatusLabel(task.status),
+    formatLabel(task.taskType),
+    task.governmentRef,
+    task.feeAmount != null ? String(task.feeAmount) : "",
+    task.autoCreated ? "auto" : "",
+  ].join(" ").toLowerCase();
+  return haystack.includes(query);
+}
+
+function proDocMatchesSearch(doc, query) {
+  if (!query) return true;
+  const emp = doc.employee;
+  const name = `${emp?.firstName ?? ""} ${emp?.lastName ?? ""}`.trim();
+  const haystack = [
+    name,
+    emp?.employeeCode,
+    emp?.department,
+    doc.docType,
+    formatDocTypeLabel(doc.docType),
+    doc.documentNumber,
+    doc.issuingAuthority,
+    doc.computedStatus,
+    formatLabel(doc.computedStatus),
+    doc.notes,
+  ].join(" ").toLowerCase();
+  return haystack.includes(query);
+}
+
 function renderProDocsTable() {
   const tbody = document.getElementById("pro-docs-body");
+  const mobileList = document.getElementById("pro-docs-mobile");
   if (!tbody) return;
+  const query = (document.getElementById("pro-docs-search")?.value ?? "").trim().toLowerCase();
+  const filtered = proDocsCache.filter((doc) => proDocMatchesSearch(doc, query));
   if (!proDocsCache.length) {
     tbody.innerHTML = `<tr><td colspan="7" class="text-muted">No documents registered.</td></tr>`;
+    if (mobileList) mobileList.innerHTML = `<div class="mobile-empty">No documents registered.</div>`;
+    return;
+  }
+  if (!filtered.length) {
+    tbody.innerHTML = `<tr><td colspan="7" class="text-muted">No documents match your search.</td></tr>`;
+    if (mobileList) mobileList.innerHTML = `<div class="mobile-empty">No documents match your search.</div>`;
     return;
   }
   const canManage = canManageProUi();
-  tbody.innerHTML = proDocsCache.map((doc) => {
+  const rendered = filtered.map((doc) => {
     const emp = doc.employee;
     const name = `${emp?.firstName ?? ""} ${emp?.lastName ?? ""}`.trim();
+    const docType = formatDocTypeLabel(doc.docType);
+    const status = formatLabel(doc.computedStatus);
+    const badge = proDocStatusBadge(doc.computedStatus);
     let action = `<span class="text-muted">—</span>`;
+    let mobileActions = "";
     if (canManage) {
       const parts = [];
+      const mobileParts = [];
       if (doc.fileUrl) {
         parts.push(`<button class="btn btn-secondary btn-sm" onclick="window.__viewAttachment('${escapeAttr(doc.fileUrl)}')">View</button>`);
+        mobileParts.push(`<button class="btn btn-secondary btn-sm" onclick="window.__viewAttachment('${escapeAttr(doc.fileUrl)}')">View</button>`);
       }
       parts.push(`<button class="btn btn-secondary btn-sm" onclick="window.__editProDocument('${doc.id}')">Edit</button>`);
       parts.push(`<button class="btn btn-danger btn-sm" onclick="window.__deleteProDocument('${doc.id}')">Delete</button>`);
+      mobileParts.push(`<button class="btn btn-secondary btn-sm" onclick="window.__editProDocument('${doc.id}')">Edit</button>`);
+      mobileParts.push(`<button class="btn btn-danger btn-sm" onclick="window.__deleteProDocument('${doc.id}')">Delete</button>`);
       action = `<div class="flex gap-8" style="flex-wrap:wrap">${parts.join("")}</div>`;
+      mobileActions = mobileParts.join("");
     } else if (doc.fileUrl) {
       action = `<button class="btn btn-secondary btn-sm" onclick="window.__viewAttachment('${escapeAttr(doc.fileUrl)}')">View</button>`;
+      mobileActions = action;
     }
-    return `
+
+    const tableRow = `
       <tr>
         <td>${escapeAttr(name)}</td>
-        <td>${escapeAttr(formatDocTypeLabel(doc.docType))}</td>
+        <td>${escapeAttr(docType)}</td>
         <td>${escapeAttr(doc.documentNumber ?? "—")}</td>
         <td>${escapeAttr(doc.issuingAuthority ?? "—")}</td>
         <td>${fmtDate(doc.expiryDate)}</td>
-        <td><span class="badge ${proDocStatusBadge(doc.computedStatus)}">${formatLabel(doc.computedStatus)}</span></td>
+        <td><span class="badge ${badge}">${escapeAttr(status)}</span></td>
         <td>${action}</td>
       </tr>`;
-  }).join("");
+
+    const mobileCard = `
+      <article class="record-card">
+        <div class="record-card-head">
+          <div class="record-card-head-main">
+            <div class="record-card-name">${escapeAttr(docType)}</div>
+            <div class="record-card-sub">${escapeAttr(name)}${emp?.employeeCode ? ` · ${escapeAttr(emp.employeeCode)}` : ""}</div>
+            <div class="record-card-badges"><span class="badge ${badge}">${escapeAttr(status)}</span></div>
+          </div>
+        </div>
+        <div class="record-card-grid">
+          <div class="record-card-field"><span class="record-card-label">Number</span><span class="record-card-value">${escapeAttr(doc.documentNumber ?? "—")}</span></div>
+          <div class="record-card-field"><span class="record-card-label">Authority</span><span class="record-card-value">${escapeAttr(doc.issuingAuthority ?? "—")}</span></div>
+          <div class="record-card-field"><span class="record-card-label">Expiry</span><span class="record-card-value">${fmtDate(doc.expiryDate)}</span></div>
+        </div>
+        ${mobileActions ? `<div class="record-card-actions">${mobileActions}</div>` : ""}
+      </article>`;
+
+    return { tableRow, mobileCard };
+  });
+
+  tbody.innerHTML = rendered.map((row) => row.tableRow).join("");
+  if (mobileList) mobileList.innerHTML = rendered.map((row) => row.mobileCard).join("");
 }
 
 function proStatusLabel(status) {
@@ -3478,38 +6205,88 @@ function proStatusLabel(status) {
   return labels[status] ?? formatLabel(status);
 }
 
+function isProTaskTerminal(task) {
+  if (!task || task.status === "ABORTED") return true;
+  const flow = Array.isArray(task.flow) ? task.flow : [];
+  if (!flow.length) return false;
+  return task.status === flow[flow.length - 1];
+}
+
 function renderProTasksTable() {
   const tbody = document.getElementById("pro-tasks-body");
+  const mobileList = document.getElementById("pro-tasks-mobile");
   if (!tbody) return;
+  const query = (document.getElementById("pro-tasks-search")?.value ?? "").trim().toLowerCase();
+  const filtered = proTasksCache.filter((task) => proTaskMatchesSearch(task, query));
   if (!proTasksCache.length) {
     tbody.innerHTML = `<tr><td colspan="6" class="text-muted">No PRO tasks.</td></tr>`;
+    if (mobileList) mobileList.innerHTML = `<div class="mobile-empty">No PRO tasks.</div>`;
+    return;
+  }
+  if (!filtered.length) {
+    tbody.innerHTML = `<tr><td colspan="6" class="text-muted">No tasks match your search.</td></tr>`;
+    if (mobileList) mobileList.innerHTML = `<div class="mobile-empty">No tasks match your search.</div>`;
     return;
   }
   const canManage = canManageProUi();
-  tbody.innerHTML = proTasksCache.map((task) => {
+  const stageSelectStyle = "min-width:150px;padding:6px 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text)";
+  const mobileStageSelectStyle = `${stageSelectStyle};width:100%`;
+
+  const rendered = filtered.map((task) => {
     const emp = task.employee;
     const name = `${emp?.firstName ?? ""} ${emp?.lastName ?? ""}`.trim();
     const flow = Array.isArray(task.flow) ? task.flow : [];
-    const terminal = ["ABORTED"].includes(task.status);
+    const terminal = isProTaskTerminal(task);
+    const taskType = formatLabel(task.taskType);
+    const stageLabel = proStatusLabel(task.status);
+    const stageBadge = task.status === "COMPLETED" ? "badge-green" : task.status === "VISA_PROCESSING" ? "badge-amber" : "badge-blue";
+    const govFee = [task.governmentRef, task.feeAmount ? `AED ${Number(task.feeAmount).toLocaleString("en-US")}` : null].filter(Boolean).join(" · ") || "—";
+    const autoBadge = task.autoCreated ? ' <span class="badge badge-amber">Auto</span>' : "";
+
     let action = `<span class="text-muted">—</span>`;
+    let mobileAction = "";
     if (canManage && !terminal && flow.length) {
       const options = flow.map((stage) =>
         `<option value="${stage}" ${stage === task.status ? "selected" : ""}>${escapeAttr(proStatusLabel(stage))}</option>`,
       ).join("");
-      action = `<select class="pro-stage-select" onchange="window.__setProTaskStage('${task.id}', this.value, this)" style="min-width:150px;padding:6px 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text)">${options}</select>`;
+      action = `<select class="pro-stage-select" onchange="window.__setProTaskStage('${task.id}', this.value, this)" style="${stageSelectStyle}">${options}</select>`;
+      mobileAction = `<select class="pro-stage-select" onchange="window.__setProTaskStage('${task.id}', this.value, this)" style="${mobileStageSelectStyle}">${options}</select>`;
     }
-    const govFee = [task.governmentRef, task.feeAmount ? `AED ${Number(task.feeAmount).toLocaleString("en-US")}` : null].filter(Boolean).join(" · ") || "—";
-    const stageBadge = task.status === "COMPLETED" ? "badge-green" : task.status === "VISA_PROCESSING" ? "badge-amber" : "badge-blue";
-    return `
+
+    const tableRow = `
       <tr>
-        <td>${escapeAttr(task.referenceNumber)}${task.autoCreated ? ' <span class="badge badge-amber">Auto</span>' : ""}</td>
+        <td>${escapeAttr(task.referenceNumber)}${autoBadge}</td>
         <td>${escapeAttr(name)}</td>
-        <td>${escapeAttr(formatLabel(task.taskType))}</td>
-        <td><span class="badge ${stageBadge}">${escapeAttr(proStatusLabel(task.status))}</span></td>
+        <td>${escapeAttr(taskType)}</td>
+        <td><span class="badge ${stageBadge}">${escapeAttr(stageLabel)}</span></td>
         <td>${escapeAttr(govFee)}</td>
         <td>${action}</td>
       </tr>`;
-  }).join("");
+
+    const mobileCard = `
+      <article class="record-card">
+        <div class="record-card-head">
+          <div class="record-card-head-main">
+            <div class="record-card-name">${escapeAttr(task.referenceNumber)}</div>
+            <div class="record-card-sub">${escapeAttr(name)}${emp?.employeeCode ? ` · ${escapeAttr(emp.employeeCode)}` : ""}</div>
+            <div class="record-card-badges">
+              ${task.autoCreated ? '<span class="badge badge-amber">Auto</span>' : ""}
+              <span class="badge badge-blue">${escapeAttr(taskType)}</span>
+              <span class="badge ${stageBadge}">${escapeAttr(stageLabel)}</span>
+            </div>
+          </div>
+        </div>
+        <div class="record-card-grid">
+          <div class="record-card-field"><span class="record-card-label">Gov. Ref / Fee</span><span class="record-card-value">${escapeAttr(govFee)}</span></div>
+        </div>
+        ${mobileAction ? `<div class="record-card-actions" style="flex-direction:column;align-items:stretch;border-top:none;padding-top:0"><label class="record-card-label" style="margin-bottom:4px">Change Stage</label>${mobileAction}</div>` : ""}
+      </article>`;
+
+    return { tableRow, mobileCard };
+  });
+
+  tbody.innerHTML = rendered.map((row) => row.tableRow).join("");
+  if (mobileList) mobileList.innerHTML = rendered.map((row) => row.mobileCard).join("");
 }
 
 function refreshEmployeeDashboardDocStat() {
@@ -3519,7 +6296,7 @@ function refreshEmployeeDashboardDocStat() {
   const statSubs = document.querySelectorAll("#view-dashboard .stats-grid .stat-sub");
   if (statValues[3]) statValues[3].textContent = String(expiringDocCount);
   if (statSubs[3]) {
-    statSubs[3].textContent = expiringDocCount ? "Within 30-day expiry window" : "All documents up to date";
+    statSubs[3].textContent = expiringDocCount ? documentExpiryWindowLabel() : "All documents up to date";
   }
 }
 
@@ -3540,26 +6317,59 @@ async function loadPro() {
 
 function renderEmployeeDocumentsTable(docs) {
   const tbody = document.getElementById("documents-table-body");
+  const mobileList = document.getElementById("documents-mobile-list");
   if (!tbody) return;
+  const emptyMsg = "No documents registered for this employee yet.";
   if (!docs.length) {
-    tbody.innerHTML = `<tr><td colspan="7" class="text-muted">No documents registered for this employee yet.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" class="text-muted">${emptyMsg}</td></tr>`;
+    if (mobileList) mobileList.innerHTML = `<div class="mobile-empty">${emptyMsg}</div>`;
     return;
   }
-  tbody.innerHTML = docs.map((doc) => {
+
+  const rendered = docs.map((doc) => {
+    const docType = formatDocTypeLabel(doc.docType);
+    const status = formatLabel(doc.computedStatus ?? "VALID");
+    const badge = proDocStatusBadge(doc.computedStatus);
     const fileCell = doc.fileUrl
       ? `<button class="btn btn-secondary btn-sm" onclick="window.__viewAttachment('${escapeAttr(doc.fileUrl)}')">View</button>`
       : `<span class="text-muted">—</span>`;
-    return `
+    const fileAction = doc.fileUrl
+      ? `<button class="btn btn-secondary btn-sm" onclick="window.__viewAttachment('${escapeAttr(doc.fileUrl)}')">View File</button>`
+      : "";
+
+    const tableRow = `
       <tr>
-        <td>${escapeAttr(formatDocTypeLabel(doc.docType))}</td>
+        <td>${escapeAttr(docType)}</td>
         <td>${escapeAttr(doc.documentNumber ?? "—")}</td>
         <td>${escapeAttr(doc.issuingAuthority ?? "—")}</td>
         <td>${fmtDate(doc.issueDate)}</td>
         <td>${fmtDate(doc.expiryDate)}</td>
-        <td><span class="badge ${proDocStatusBadge(doc.computedStatus)}">${escapeAttr(formatLabel(doc.computedStatus ?? "VALID"))}</span></td>
+        <td><span class="badge ${badge}">${escapeAttr(status)}</span></td>
         <td>${fileCell}</td>
       </tr>`;
-  }).join("");
+
+    const mobileCard = `
+      <article class="record-card">
+        <div class="record-card-head">
+          <div class="record-card-head-main">
+            <div class="record-card-name">${escapeAttr(docType)}</div>
+            <div class="record-card-badges"><span class="badge ${badge}">${escapeAttr(status)}</span></div>
+          </div>
+        </div>
+        <div class="record-card-grid">
+          <div class="record-card-field"><span class="record-card-label">Number</span><span class="record-card-value">${escapeAttr(doc.documentNumber ?? "—")}</span></div>
+          <div class="record-card-field"><span class="record-card-label">Authority</span><span class="record-card-value">${escapeAttr(doc.issuingAuthority ?? "—")}</span></div>
+          <div class="record-card-field"><span class="record-card-label">Issue Date</span><span class="record-card-value">${fmtDate(doc.issueDate)}</span></div>
+          <div class="record-card-field"><span class="record-card-label">Expiry</span><span class="record-card-value">${fmtDate(doc.expiryDate)}</span></div>
+        </div>
+        ${fileAction ? `<div class="record-card-actions">${fileAction}</div>` : ""}
+      </article>`;
+
+    return { tableRow, mobileCard };
+  });
+
+  tbody.innerHTML = rendered.map((row) => row.tableRow).join("");
+  if (mobileList) mobileList.innerHTML = rendered.map((row) => row.mobileCard).join("");
 }
 
 window.__selectDocumentsEmployee = async function selectDocumentsEmployee(employeeId, silent = false) {
@@ -3781,7 +6591,13 @@ window.__submitProDocument = async function submitProDocument() {
       notify("Please attach a document file (PDF, JPG or PNG)");
       return;
     }
-    const fileUrl = hasNewFile ? await uploadAttachment("pro-doc-file", "DOCUMENT") : undefined;
+    const fileUrl = hasNewFile
+      ? await uploadAttachment(
+          "pro-doc-file",
+          "DOCUMENT",
+          buildUploadMeta(employeeId, { documentType: docType }),
+        )
+      : undefined;
     const payload = {
       docType,
       documentNumber: document.getElementById("pro-doc-number")?.value.trim() || undefined,
@@ -3845,6 +6661,11 @@ window.__submitProTask = async function submitProTask() {
 window.__setProTaskStage = async function setProTaskStage(id, status, selectEl) {
   const task = proTasksCache.find((t) => t.id === id);
   if (!task || task.status === status) return;
+  if (isProTaskTerminal(task)) {
+    notify("Completed tasks cannot be changed");
+    if (selectEl) selectEl.value = task.status;
+    return;
+  }
   try {
     await api(`/pro/tasks/${id}/status`, {
       method: "PATCH",
@@ -3875,14 +6696,47 @@ function wireProForms() {
   const expiry = document.getElementById("pro-doc-expiry");
   if (expiry) expiry.min = todayIso;
   if (issue) issue.max = todayIso;
+  document.getElementById("pro-tasks-search")?.addEventListener("input", renderProTasksTable);
+  document.getElementById("pro-docs-search")?.addEventListener("input", renderProDocsTable);
   const addDocTabBtn = document.getElementById("pro-doc-new-tab-btn");
   addDocTabBtn?.addEventListener("click", () => {
     resetProDocumentForm();
   });
+
+  const canManagePro = elevatedRoles.has(me?.role) || me?.role === "PRO";
+  const importButton = document.getElementById("pro-import-btn");
+  const importFile = document.getElementById("pro-import-file");
+  if (importButton && importFile) {
+    importButton.style.display = canManagePro ? "" : "none";
+    importButton.onclick = () => importFile.click();
+    importFile.onchange = async (event) => {
+      const file = event.target.files?.[0];
+      event.target.value = "";
+      if (!file) return;
+      const includeCompanySheets = window.confirm(
+        "Include company entity sheets too?\n\nOK = Employee Master Data + Eurocon / Metalplast / Alubond ME sheets, etc.\nCancel = Employee Master Data sheet only.",
+      );
+      try {
+        await runExcelImportWithProgress({
+          path: "/import/pro",
+          file,
+          extra: { includeCompanySheets },
+          title: "Importing PRO data",
+          onComplete: async (result) => {
+            notify(summarizeProImportResult(result));
+            await loadPro();
+            await refreshEmployees();
+          },
+        });
+      } catch (error) {
+        notify(error.message);
+      }
+    };
+  }
 }
 
 function isEmployeeDashboard() {
-  return me?.role === "EMPLOYEE";
+  return isIndividualContributor(me?.role);
 }
 
 function applyEmployeeDashboardUi() {
@@ -3911,7 +6765,7 @@ function renderEmployeeDashboardSummary() {
     ["Reporting To", managerName],
   ];
   container.innerHTML = items.map(([label, value]) => `
-    <div style="background:rgba(21,101,192,0.08);border:1px solid var(--border-bright);border-radius:9px;padding:12px">
+    <div style="background:var(--highlight);border:1px solid var(--border-bright);border-radius:9px;padding:12px">
       <div class="text-muted" style="font-size:11px;margin-bottom:4px">${escapeAttr(label)}</div>
       <div style="font-weight:600">${escapeAttr(value)}</div>
     </div>
@@ -3932,7 +6786,7 @@ async function loadDashboard() {
     if (isEmployee) {
       statValues[0].textContent = formatLabel(me?.employee?.status ?? "ACTIVE");
       statValues[1].textContent = String(data.pendingLeaveApprovals ?? 0);
-      statValues[2].textContent = formatAed(payrollMonth?.netPay ?? 0).replace("AED ", "");
+      statValues[2].textContent = Math.round(Number(payrollMonth?.netPay ?? 0)).toLocaleString("en-US");
       statValues[3].textContent = String(expiringDocCount);
     } else {
       statValues[0].textContent = String(data.headcount ?? 0);
@@ -3948,7 +6802,8 @@ async function loadDashboard() {
     if (isEmployee) {
       statLabels[0].textContent = "Employment Status";
       statLabels[1].textContent = "Pending Leave Requests";
-      statLabels[2].textContent = "Net Pay (This Month)";
+      const payCode = formatCurrencyLabel(employeePayCurrency());
+      statLabels[2].textContent = payCode ? `Net Pay (${payCode})` : "Net Pay (This Month)";
       statLabels[3].textContent = "Documents Expiring";
     } else {
       statLabels[0].textContent = "Total Headcount";
@@ -3964,7 +6819,7 @@ async function loadDashboard() {
       statSubs[2].textContent = payrollMonth?.month && payrollMonth?.year
         ? new Date(payrollMonth.year, payrollMonth.month - 1, 1).toLocaleDateString("en-GB", { month: "long", year: "numeric" })
         : "Current pay cycle";
-      statSubs[3].textContent = expiringDocCount ? "Within 30-day expiry window" : "All documents up to date";
+      statSubs[3].textContent = expiringDocCount ? documentExpiryWindowLabel() : "All documents up to date";
     } else {
       const headcount = Number(data.headcount ?? 0);
       const onLeave = Number(data.onLeave ?? 0);
@@ -3974,8 +6829,22 @@ async function loadDashboard() {
     }
   }
   if (isEmployee) renderEmployeeDashboardSummary();
+  renderLateAttendanceDashboardBanner();
   renderDashboardInsights();
   renderNotifications();
+}
+
+function renderLateAttendanceDashboardBanner() {
+  const card = document.getElementById("dash-late-attendance-card");
+  const text = document.getElementById("dash-late-attendance-text");
+  if (!card || !text) return;
+  const late = dashboardCache?.lateAttendance;
+  if (!isEmployeeDashboard() || !late?.warningActive) {
+    card.style.display = "none";
+    return;
+  }
+  card.style.display = "";
+  text.innerHTML = `<b>Late check-in warning</b> You have checked in late ${late.monthlyLateCount} time(s) this month (allowed: ${late.threshold}). A warning email has been sent — please arrive on time.`;
 }
 
 function formatDashboardDate(value) {
@@ -3993,11 +6862,21 @@ function dashboardRequestDate(request) {
   return request.createdAt || request.updatedAt || request.submittedAt || request.startDate;
 }
 
-function formatAed(value, withSign = false) {
+function formatPayrollMoney(value, currency, withSign = false) {
   const rounded = Math.round(Number(value ?? 0));
   const abs = Math.abs(rounded).toLocaleString("en-US");
-  if (!withSign) return `AED ${abs}`;
-  return `${rounded < 0 ? "−" : ""}AED ${abs}`;
+  const code = formatCurrencyLabel(currency);
+  const prefix = code ? `${code} ` : "";
+  if (!withSign) return `${prefix}${abs}`;
+  return `${rounded < 0 ? "−" : ""}${prefix}${abs}`;
+}
+
+function employeePayCurrency() {
+  return me?.employee?.netPayCurrency;
+}
+
+function formatAed(value, withSign = false) {
+  return formatPayrollMoney(value, "AED", withSign);
 }
 
 function renderDashboardInsights() {
@@ -4062,6 +6941,7 @@ function renderDashboardInsights() {
   }
 
   const payrollMonth = dashboardCache?.payrollCurrentMonth;
+  const payslipCurrency = isEmployeeDashboard() ? employeePayCurrency() : "AED";
   if (payrollTitle && payrollMonth?.month && payrollMonth?.year) {
     const periodLabel = new Date(payrollMonth.year, payrollMonth.month - 1, 1)
       .toLocaleDateString("en-GB", { month: "long", year: "numeric" });
@@ -4071,17 +6951,17 @@ function renderDashboardInsights() {
   }
   if (payrollEarnings && payrollMonth) {
     payrollEarnings.innerHTML = `
-      <div class="payslip-row"><span>${isEmployeeDashboard() ? "Basic Salary" : "Basic Salaries"}</span><span>${formatAed(payrollMonth.basic)}</span></div>
-      <div class="payslip-row"><span>Housing Allowance</span><span>${formatAed(payrollMonth.housing)}</span></div>
-      <div class="payslip-row"><span>Transport</span><span>${formatAed(payrollMonth.transport)}</span></div>
-      <div class="payslip-row"><span>Overtime</span><span>${formatAed(payrollMonth.overtime)}</span></div>
-      <div class="payslip-row payslip-total"><span>Gross Total</span><span>${formatAed(payrollMonth.grossTotal)}</span></div>
+      <div class="payslip-row"><span>${isEmployeeDashboard() ? "Basic Salary" : "Basic Salaries"}</span><span>${formatPayrollMoney(payrollMonth.basic, payslipCurrency)}</span></div>
+      <div class="payslip-row"><span>Housing Allowance</span><span>${formatPayrollMoney(payrollMonth.housing, payslipCurrency)}</span></div>
+      <div class="payslip-row"><span>Transport</span><span>${formatPayrollMoney(payrollMonth.transport, payslipCurrency)}</span></div>
+      <div class="payslip-row"><span>Overtime</span><span>${formatPayrollMoney(payrollMonth.overtime, payslipCurrency)}</span></div>
+      <div class="payslip-row payslip-total"><span>Gross Total</span><span>${formatPayrollMoney(payrollMonth.grossTotal, payslipCurrency)}</span></div>
     `;
   }
   if (payrollDeductions && payrollMonth) {
     payrollDeductions.innerHTML = `
-      <div class="payslip-row"><span>Total Deductions</span><span style="color:var(--coral)">${formatAed(-Math.abs(payrollMonth.deductions), true)}</span></div>
-      <div class="payslip-row payslip-total"><span>Net Pay</span><span>${formatAed(payrollMonth.netPay)}</span></div>
+      <div class="payslip-row"><span>Total Deductions</span><span style="color:var(--coral)">${formatPayrollMoney(-Math.abs(payrollMonth.deductions), payslipCurrency, true)}</span></div>
+      <div class="payslip-row payslip-total"><span>Net Pay</span><span>${formatPayrollMoney(payrollMonth.netPay, payslipCurrency)}</span></div>
       <div style="margin-top:12px"><div class="badge badge-green" id="dash-wps-badge">Payroll snapshot ready</div></div>
     `;
   }
@@ -4090,7 +6970,14 @@ function renderDashboardInsights() {
     dynamicWpsBadge.textContent = payrollMonth?.netPay ? "WPS payroll snapshot generated" : "No payroll records for this period";
   }
   if (overtimeAmountEl) {
-    overtimeAmountEl.textContent = formatAed(payrollMonth?.overtime ?? 0).replace("AED ", "");
+    overtimeAmountEl.textContent = Math.round(Number(payrollMonth?.overtime ?? 0)).toLocaleString("en-US");
+  }
+  const overtimeLabelEl = document.getElementById("dash-overtime-label");
+  if (overtimeLabelEl && isEmployeeDashboard()) {
+    const code = formatCurrencyLabel(employeePayCurrency());
+    overtimeLabelEl.textContent = code ? `Overtime Payout (${code})` : "Overtime Payout";
+  } else if (overtimeLabelEl) {
+    overtimeLabelEl.textContent = "Overtime Payout (AED)";
   }
   if (overtimeEmployeesEl) {
     overtimeEmployeesEl.textContent = String(payrollMonth?.overtimeEmployees ?? 0);
@@ -4122,6 +7009,27 @@ function renderDashboardInsights() {
       icon: "bi-calendar-check",
       title: `${onLeave} Employee${onLeave === 1 ? "" : "s"} on Leave Today`,
       desc: "Coverage planning may be required.",
+    });
+  }
+  const lateToday = Number(dashboardCache?.lateJoinersToday ?? 0);
+  const lateOverThreshold = Number(dashboardCache?.employeesOverLateThreshold ?? 0);
+  if (!isEmployeeDashboard() && (lateToday > 0 || lateOverThreshold > 0)) {
+    alerts.push({
+      tone: "warn",
+      icon: "bi-alarm",
+      title: `${lateToday} Late Joiner${lateToday === 1 ? "" : "s"} Today`,
+      desc: lateOverThreshold
+        ? `${lateOverThreshold} employee${lateOverThreshold === 1 ? "" : "s"} exceeded the monthly late limit — review Attendance.`
+        : "Review late check-ins on the Attendance page.",
+    });
+  }
+  const employeeLate = dashboardCache?.lateAttendance;
+  if (isEmployeeDashboard() && employeeLate?.warningActive) {
+    alerts.push({
+      tone: "warn",
+      icon: "bi-alarm",
+      title: "Late check-in warning",
+      desc: `You have ${employeeLate.monthlyLateCount} late check-in(s) this month (limit: ${employeeLate.threshold}).`,
     });
   }
   if (isEmployeeDashboard() && me?.employee?.status === "ON_LEAVE") {
@@ -4164,7 +7072,7 @@ function renderDashboardInsights() {
     alerts.push({
       tone: "warn",
       icon: "bi-passport",
-      title: `${expiringDocs.length} Document(s) Within 30-Day Expiry Window`,
+      title: documentExpiryAlertTitle(expiringDocs.length),
       desc: expiredCount
         ? `${soonCount} expiring soon, ${expiredCount} expired — open Documents to review.`
         : "Passport, visa, Emirates ID and permits need renewal planning.",
@@ -4276,13 +7184,23 @@ function getCurrentLocation() {
   });
 }
 
+async function getCurrentLocationWithGeoTag() {
+  const location = await getCurrentLocation();
+  try {
+    const geo = await reverseGeocodeLocation(location.latitude, location.longitude);
+    return { ...location, geoTag: geo.geoTag, geoAddress: geo.geoAddress };
+  } catch {
+    return location;
+  }
+}
+
 function startAttendanceTracking() {
   if (attendanceTrackingTimer) {
     clearInterval(attendanceTrackingTimer);
   }
-  attendanceTrackingTimer = setInterval(async () => {
+  const sendAttendancePing = async () => {
     try {
-      const location = await getCurrentLocation();
+      const location = await getCurrentLocationWithGeoTag();
       await api("/attendance/ping", {
         method: "POST",
         body: JSON.stringify(location),
@@ -4291,7 +7209,9 @@ function startAttendanceTracking() {
     } catch (_error) {
       // Silent: location permissions can be denied intermittently.
     }
-  }, 30000);
+  };
+  sendAttendancePing();
+  attendanceTrackingTimer = setInterval(sendAttendancePing, ATTENDANCE_PING_INTERVAL_MS);
 }
 
 async function loadAttendanceStatus() {
@@ -4301,6 +7221,7 @@ async function loadAttendanceStatus() {
   const workMode = document.getElementById("att-work-mode");
   const officeName = document.getElementById("att-office-name");
   const lastLocation = document.getElementById("att-last-location");
+  const geoTagEl = document.getElementById("att-geo-tag");
   const geofenceState = document.getElementById("att-geofence-state");
   const policyNote = document.getElementById("att-policy-note");
   const checkInBtn = document.getElementById("att-check-in-btn");
@@ -4335,9 +7256,11 @@ async function loadAttendanceStatus() {
   updateHeaderLocationFromPing(ping);
   workMode.textContent = formatLabel(mode);
   officeName.textContent = office?.name ?? "Not assigned";
-  lastLocation.textContent = ping
-    ? `${Number(ping.latitude).toFixed(5)}, ${Number(ping.longitude).toFixed(5)}`
-    : "No live ping";
+  if (geoTagEl) {
+    geoTagEl.textContent = ping?.geoTag ?? "Resolving place name…";
+    geoTagEl.title = ping?.geoAddress ?? "";
+  }
+  lastLocation.textContent = ping ? formatPingLocation(ping) : "No live ping";
   geofenceState.textContent = ping?.insideGeofence === true
     ? "Inside office geofence"
     : ping?.insideGeofence === false
@@ -4345,8 +7268,25 @@ async function loadAttendanceStatus() {
       : "Not applicable";
 
   policyNote.textContent = mode === "OFFICE"
-    ? `Auto check-in/out active within ${office?.radiusMeters ?? 500}m geofence of assigned office.`
-    : "Check-in allowed from anywhere. Live location is tracked while online.";
+    ? `Auto check-in/out active within ${office?.radiusMeters ?? 500}m geofence of assigned office. Late check-ins after the configured end time are recorded.`
+    : "Check-in allowed from anywhere. Late check-ins after the configured end time are recorded.";
+
+  const lateWarning = document.getElementById("att-late-warning");
+  const lateWarningText = document.getElementById("att-late-warning-text");
+  const late = data?.lateAttendance;
+  if (lateWarning && lateWarningText) {
+    if (late?.warningActive) {
+      lateWarning.style.display = "";
+      lateWarningText.innerHTML = `<b>Late check-in warning</b> — ${late.monthlyLateCount} late check-in(s) this month (limit: ${late.threshold}).`;
+    } else if (late?.monthlyLateCount > 0) {
+      lateWarning.style.display = "";
+      lateWarning.className = "alert alert-info";
+      lateWarningText.innerHTML = `<b>Late check-in recorded</b> — ${late.monthlyLateCount} late check-in(s) this month (limit: ${late.threshold}).`;
+    } else {
+      lateWarning.style.display = "none";
+      lateWarning.className = "alert alert-warn";
+    }
+  }
 }
 
 function ensureAttendanceMap() {
@@ -4432,6 +7372,7 @@ function renderAttendanceMap(rows) {
       <div style="min-width:190px">
         <div><b>${escapeAttr(employeeName)}</b></div>
         <div>${escapeAttr(me?.employee?.employeeCode ?? "—")} • ${escapeAttr(formatLabel(attendanceCache?.employee?.workMode ?? "OFFICE"))}</div>
+        ${ping.geoTag ? `<div><i class="bi bi-geo-alt"></i> ${escapeAttr(ping.geoTag)}</div>` : ""}
         <div>Coords: ${Number(ping.latitude).toFixed(5)}, ${Number(ping.longitude).toFixed(5)}</div>
       </div>
     `);
@@ -4501,14 +7442,178 @@ function renderAttendanceMap(rows) {
   }
 }
 
+async function loadLateJoiners() {
+  const card = document.getElementById("att-late-joiners-card");
+  const tbody = document.getElementById("att-late-joiners-body");
+  const mobileList = document.getElementById("att-late-joiners-mobile");
+  const summary = document.getElementById("att-late-joiners-summary");
+  const monthLabelEl = document.getElementById("att-late-joiners-month-label");
+  const nextBtn = document.getElementById("att-late-joiners-next-btn");
+  const canView = elevatedRoles.has(me?.role) || me?.role === "MANAGER" || me?.role === "CEO";
+  if (card) card.style.display = canView ? "" : "none";
+  if (!canView || !tbody) return;
+
+  const monthKey = monthKeyFromDate(lateJoinersMonth);
+  const monthLabel = formatCalendarMonthLabel(lateJoinersMonth);
+  const viewingCurrentMonth = monthKey === monthKeyFromDate(new Date());
+  if (monthLabelEl) monthLabelEl.textContent = monthLabel;
+  if (nextBtn) nextBtn.disabled = viewingCurrentMonth;
+
+  try {
+    const data = await api(`/attendance/late-joiners?month=${encodeURIComponent(monthKey)}`);
+    const rows = Array.isArray(data?.employees) ? data.employees : [];
+    lateJoinersCache = rows;
+    if (summary) {
+      const todayPart = viewingCurrentMonth
+        ? `${data?.lateJoinersToday ?? 0} late joiner(s) today · `
+        : "";
+      summary.textContent = `${todayPart}${rows.length} employee(s) with late check-ins in ${monthLabel} (warning after ${data?.threshold ?? 2}). Click a row for details.`;
+    }
+    if (!rows.length) {
+      tbody.innerHTML = `<tr><td colspan="5" class="text-muted">No late check-ins recorded for ${escapeAttr(monthLabel)}.</td></tr>`;
+      if (mobileList) mobileList.innerHTML = `<div class="mobile-empty">No late check-ins recorded for ${escapeAttr(monthLabel)}.</div>`;
+      return;
+    }
+    tbody.innerHTML = rows.map((row) => {
+      const latest = row.latestCheckInAt
+        ? new Date(row.latestCheckInAt).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })
+        : "—";
+      const status = row.warningActive
+        ? `<span class="badge badge-coral">Over limit</span>`
+        : `<span class="badge badge-amber">Late</span>`;
+      return `
+        <tr class="late-joiner-row" data-late-employee-id="${escapeAttr(row.employeeId)}" style="cursor:pointer" title="View late check-in details">
+          <td>${escapeAttr(row.name ?? "—")} (${escapeAttr(row.employeeCode ?? "—")})</td>
+          <td>${escapeAttr(row.department ?? "—")}</td>
+          <td>${Number(row.lateCount ?? 0)}</td>
+          <td>${escapeAttr(latest)}</td>
+          <td>${status}</td>
+        </tr>
+      `;
+    }).join("");
+    if (mobileList) {
+      mobileList.innerHTML = rows.map((row) => {
+        const latest = row.latestCheckInAt
+          ? new Date(row.latestCheckInAt).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })
+          : "—";
+        const status = row.warningActive
+          ? `<span class="badge badge-coral">Over limit</span>`
+          : `<span class="badge badge-amber">Late</span>`;
+        return `
+          <article class="record-card record-card-tappable" data-late-employee-id="${escapeAttr(row.employeeId)}" role="button" tabindex="0">
+            <div class="record-card-head">
+              <div class="record-card-head-main">
+                <div class="record-card-name">${escapeAttr(row.name ?? "—")}</div>
+                <div class="record-card-sub">${escapeAttr(row.employeeCode ?? "—")} · ${escapeAttr(row.department ?? "—")}</div>
+                <div class="record-card-badges">${status}</div>
+              </div>
+            </div>
+            <div class="record-card-grid">
+              <div class="record-card-field"><span class="record-card-label">Late Count</span><span class="record-card-value">${Number(row.lateCount ?? 0)}</span></div>
+              <div class="record-card-field"><span class="record-card-label">Latest Late Check-in</span><span class="record-card-value">${escapeAttr(latest)}</span></div>
+            </div>
+          </article>
+        `;
+      }).join("");
+      mobileList.querySelectorAll("[data-late-employee-id]").forEach((card) => {
+        const open = () => showLateJoinerDetails(card.dataset.lateEmployeeId);
+        card.addEventListener("click", open);
+        card.addEventListener("keydown", (event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            open();
+          }
+        });
+      });
+    }
+    tbody.querySelectorAll("tr[data-late-employee-id]").forEach((tr) => {
+      tr.addEventListener("click", () => {
+        showLateJoinerDetails(tr.dataset.lateEmployeeId);
+      });
+    });
+  } catch (error) {
+    tbody.innerHTML = `<tr><td colspan="5" class="text-muted">${escapeAttr(error.message ?? "Failed to load late joiners")}</td></tr>`;
+    if (mobileList) mobileList.innerHTML = `<div class="mobile-empty">${escapeAttr(error.message ?? "Failed to load late joiners")}</div>`;
+  }
+}
+
+window.__lateJoinersPrevMonth = function lateJoinersPrevMonth() {
+  lateJoinersMonth = new Date(lateJoinersMonth.getFullYear(), lateJoinersMonth.getMonth() - 1, 1);
+  loadLateJoiners().catch((error) => notify(error.message));
+};
+
+window.__lateJoinersNextMonth = function lateJoinersNextMonth() {
+  const now = new Date();
+  const next = new Date(lateJoinersMonth.getFullYear(), lateJoinersMonth.getMonth() + 1, 1);
+  if (next.getFullYear() > now.getFullYear()
+    || (next.getFullYear() === now.getFullYear() && next.getMonth() > now.getMonth())) {
+    return;
+  }
+  lateJoinersMonth = next;
+  loadLateJoiners().catch((error) => notify(error.message));
+};
+
+function formatLateSessionClock(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleString("en-GB", { hour: "2-digit", minute: "2-digit" });
+}
+
+function showLateJoinerDetails(employeeId) {
+  const row = lateJoinersCache.find((item) => item.employeeId === employeeId);
+  const title = document.getElementById("att-late-detail-title");
+  const summary = document.getElementById("att-late-detail-summary");
+  const body = document.getElementById("att-late-detail-body");
+  if (!row || !title || !summary || !body) return;
+
+  const monthLabel = formatCalendarMonthLabel(lateJoinersMonth);
+  title.textContent = `${row.name ?? "Employee"} — Late Check-ins`;
+  summary.innerHTML = `
+    <strong>${escapeAttr(row.employeeCode ?? "—")}</strong>
+    · ${escapeAttr(row.department ?? "—")}
+    · ${escapeAttr(row.designation ?? "—")}
+    · ${Number(row.lateCount ?? 0)} late check-in(s) in ${escapeAttr(monthLabel)}
+    · ${row.warningActive ? '<span class="badge badge-coral">Over limit</span>' : '<span class="badge badge-amber">Late</span>'}
+  `;
+
+  const sessions = Array.isArray(row.sessions) ? [...row.sessions] : [];
+  sessions.sort((a, b) => new Date(b.checkInAt).getTime() - new Date(a.checkInAt).getTime());
+
+  if (!sessions.length) {
+    body.innerHTML = `<tr><td colspan="5" class="text-muted">No session details available.</td></tr>`;
+  } else {
+    body.innerHTML = sessions.map((session) => {
+      const checkIn = new Date(session.checkInAt);
+      const dateLabel = Number.isNaN(checkIn.getTime())
+        ? "—"
+        : checkIn.toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short", year: "numeric" });
+      return `
+        <tr>
+          <td>${escapeAttr(dateLabel)}</td>
+          <td>${escapeAttr(formatLateSessionClock(session.checkInAt))}</td>
+          <td>${session.checkOutAt ? escapeAttr(formatLateSessionClock(session.checkOutAt)) : "—"}</td>
+          <td>${escapeAttr(formatLabel(session.checkInMethod ?? "MANUAL"))}</td>
+          <td>${escapeAttr(session.officeName ?? "—")}</td>
+        </tr>
+      `;
+    }).join("");
+  }
+
+  openModal("att-late-detail-modal");
+}
+
+window.__showLateJoinerDetails = showLateJoinerDetails;
+
 async function loadOnlineAttendance() {
   const rows = await api("/attendance/online");
   const tbody = document.getElementById("att-online-body");
+  const mobileList = document.getElementById("att-online-mobile");
   if (!tbody) return;
   const list = Array.isArray(rows) ? rows : [];
   latestOnlineAttendanceRows = list;
   if (!list.length) {
     tbody.innerHTML = `<tr><td colspan="5" class="text-muted">No employees currently online.</td></tr>`;
+    if (mobileList) mobileList.innerHTML = `<div class="mobile-empty">No employees currently online.</div>`;
     renderAttendanceMap([]);
     renderSelectedOfficeDetailsMap();
     return;
@@ -4516,13 +7621,13 @@ async function loadOnlineAttendance() {
   tbody.innerHTML = list.map((row) => {
     const fullName = `${row.employee?.firstName ?? ""} ${row.employee?.lastName ?? ""}`.trim();
     const latestPing = row.latestPing;
-    const coords = latestPing ? `${Number(latestPing.latitude).toFixed(5)}, ${Number(latestPing.longitude).toFixed(5)}` : "—";
+    const coords = latestPing ? formatPingLocation(latestPing) : "—";
     const pingTime = latestPing
       ? new Date(latestPing.recordedAt).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })
       : "—";
     return `
       <tr>
-        <td>${escapeAttr(fullName)} (${escapeAttr(row.employee?.employeeCode ?? "—")})</td>
+        <td>${escapeAttr(fullName)} (${escapeAttr(row.employee?.employeeCode ?? "—")})${row.isLateCheckIn ? ' <span class="badge badge-amber">Late</span>' : ""}</td>
         <td>${escapeAttr(formatLabel(row.employee?.workMode ?? "OFFICE"))}</td>
         <td>${escapeAttr(row.office?.name ?? "Remote")}</td>
         <td>${coords}</td>
@@ -4530,6 +7635,36 @@ async function loadOnlineAttendance() {
       </tr>
     `;
   }).join("");
+  if (mobileList) {
+    mobileList.innerHTML = list.map((row) => {
+      const fullName = `${row.employee?.firstName ?? ""} ${row.employee?.lastName ?? ""}`.trim();
+      const latestPing = row.latestPing;
+      const geoTag = latestPing?.geoTag ?? (latestPing ? formatPingLocation(latestPing) : "—");
+      const pingTime = latestPing
+        ? new Date(latestPing.recordedAt).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })
+        : "—";
+      return `
+        <article class="record-card">
+          <div class="record-card-head">
+            <div class="record-card-head-main">
+              <div class="record-card-name">${escapeAttr(fullName || "Employee")}</div>
+              <div class="record-card-sub">${escapeAttr(row.employee?.employeeCode ?? "—")}</div>
+              <div class="record-card-badges">
+                <span class="badge badge-green">Online</span>
+                ${row.isLateCheckIn ? '<span class="badge badge-amber">Late</span>' : ""}
+              </div>
+            </div>
+          </div>
+          <div class="record-card-grid">
+            <div class="record-card-field"><span class="record-card-label">Mode</span><span class="record-card-value">${escapeAttr(formatLabel(row.employee?.workMode ?? "OFFICE"))}</span></div>
+            <div class="record-card-field"><span class="record-card-label">Office</span><span class="record-card-value">${escapeAttr(row.office?.name ?? "Remote")}</span></div>
+            <div class="record-card-field"><span class="record-card-label">Location</span><span class="record-card-value">${escapeAttr(geoTag ?? "—")}</span></div>
+            <div class="record-card-field"><span class="record-card-label">Last Ping</span><span class="record-card-value">${escapeAttr(pingTime)}</span></div>
+          </div>
+        </article>
+      `;
+    }).join("");
+  }
   renderAttendanceMap(list);
   renderSelectedOfficeDetailsMap();
 }
@@ -4637,10 +7772,232 @@ function renderCalendarGrid(monthDate, totalsMap) {
   grid.innerHTML = cells.join("");
 }
 
+function formatCalendarClockTime(value) {
+  return new Date(value).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+}
+
+function pingLocationLabel(ping) {
+  if (ping?.geoTag) return String(ping.geoTag);
+  if (Number.isFinite(Number(ping?.latitude)) && Number.isFinite(Number(ping?.longitude))) {
+    return `${Number(ping.latitude).toFixed(4)}, ${Number(ping.longitude).toFixed(4)}`;
+  }
+  return null;
+}
+
+function summarizePingLocations(pings) {
+  const labels = pings.map(pingLocationLabel).filter(Boolean);
+  if (!labels.length) return "";
+  const unique = [...new Set(labels)];
+  if (unique.length === 1) return unique[0];
+  if (unique.length === 2) return `${unique[0]} → ${unique[1]}`;
+  return `${unique[0]} → ${unique[unique.length - 1]} (${unique.length} places)`;
+}
+
+function formatLocationTrackedSummary(pings, rangeLabel) {
+  const count = pings.length;
+  const location = summarizePingLocations(pings);
+  const locationPart = location ? ` · ${location}` : "";
+  return `Location tracked · ${count} update${count === 1 ? "" : "s"} (${rangeLabel})${locationPart}`;
+}
+
+function groupRoutinePingBlocks(pings) {
+  const routinePings = pings
+    .filter((ping) => String(ping.eventType ?? "PING") === "PING")
+    .sort((a, b) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime());
+  if (!routinePings.length) return [];
+
+  const blocks = [];
+  let block = null;
+  for (const ping of routinePings) {
+    const timestamp = new Date(ping.recordedAt).getTime();
+    if (!block || timestamp - block.endMs > 45 * 60 * 1000) {
+      if (block) blocks.push(block);
+      block = {
+        startMs: timestamp,
+        endMs: timestamp,
+        startAt: ping.recordedAt,
+        endAt: ping.recordedAt,
+        count: 1,
+        outsideGeofence: ping.insideGeofence === false,
+        pings: [ping],
+      };
+    } else {
+      block.endMs = timestamp;
+      block.endAt = ping.recordedAt;
+      block.count += 1;
+      block.pings.push(ping);
+      if (ping.insideGeofence === false) block.outsideGeofence = true;
+    }
+  }
+  if (block) blocks.push(block);
+  return blocks;
+}
+
+function buildCalendarTimelineEvents(sessions, pings) {
+  const events = [];
+
+  sessions.forEach((session) => {
+    const checkInAt = session.checkInAt;
+    const checkOutAt = session.checkOutAt;
+    events.push({
+      at: checkInAt,
+      tone: "green",
+      text: `Checked in (${formatLabel(session.checkInMethod ?? "MANUAL")})`,
+      kind: "session",
+    });
+
+    const sessionEnd = checkOutAt ? new Date(checkOutAt).getTime() : Date.now();
+    const sessionStart = new Date(checkInAt).getTime();
+    const sessionPings = pings.filter((ping) => {
+      const ts = new Date(ping.recordedAt).getTime();
+      return ts >= sessionStart && ts <= sessionEnd;
+    });
+
+    sessionPings
+      .filter((ping) => CALENDAR_SIGNIFICANT_PING_TYPES.has(String(ping.eventType)))
+      .forEach((ping) => {
+        const label = ping.geoTag
+          ? `${formatLabel(String(ping.eventType))} · ${ping.geoTag}`
+          : formatLabel(String(ping.eventType));
+        events.push({
+          at: ping.recordedAt,
+          tone: ping.insideGeofence === false ? "amber" : "",
+          text: label,
+          kind: "alert",
+        });
+      });
+
+    const routinePings = sessionPings.filter((ping) => String(ping.eventType ?? "PING") === "PING");
+    if (routinePings.length && !calendarShowPingDetails) {
+      const start = routinePings[0].recordedAt;
+      const end = routinePings[routinePings.length - 1].recordedAt;
+      const startLabel = formatCalendarClockTime(start);
+      const endLabel = formatCalendarClockTime(end);
+      const rangeLabel = startLabel === endLabel ? startLabel : `${startLabel}–${endLabel}`;
+      events.push({
+        at: start,
+        tone: "",
+        text: formatLocationTrackedSummary(routinePings, rangeLabel),
+        kind: "summary",
+        isSummary: true,
+      });
+    } else if (calendarShowPingDetails) {
+      routinePings.forEach((ping) => {
+        const location = pingLocationLabel(ping);
+        const label = location ? `Ping · ${location}` : "Location ping";
+        events.push({
+          at: ping.recordedAt,
+          tone: ping.insideGeofence === false ? "amber" : "",
+          text: label,
+          kind: "ping",
+        });
+      });
+    }
+
+    if (checkOutAt) {
+      events.push({
+        at: checkOutAt,
+        tone: "amber",
+        text: `Checked out (${formatLabel(session.checkOutMethod ?? "MANUAL")})`,
+        kind: "session",
+      });
+    } else {
+      events.push({
+        at: new Date().toISOString(),
+        tone: "",
+        text: "Session still active (not checked out yet)",
+        kind: "session",
+      });
+    }
+  });
+
+  if (!sessions.length) {
+    pings
+      .filter((ping) => {
+        const type = String(ping.eventType ?? "PING");
+        if (calendarShowPingDetails && type === "PING") return true;
+        return CALENDAR_SIGNIFICANT_PING_TYPES.has(type) || CALENDAR_SESSION_BOUNDARY_PING_TYPES.has(type);
+      })
+      .forEach((ping) => {
+        const label = ping.geoTag
+          ? `${formatLabel(String(ping.eventType ?? "PING"))} · ${ping.geoTag}`
+          : formatLabel(String(ping.eventType ?? "PING"));
+        events.push({
+          at: ping.recordedAt,
+          tone: ping.insideGeofence === false ? "amber" : "",
+          text: label,
+          kind: ping.eventType === "PING" ? "ping" : "alert",
+        });
+      });
+
+    if (!calendarShowPingDetails) {
+      groupRoutinePingBlocks(pings).forEach((block) => {
+        const rangeLabel = formatCalendarClockTime(block.startAt) === formatCalendarClockTime(block.endAt)
+          ? formatCalendarClockTime(block.startAt)
+          : `${formatCalendarClockTime(block.startAt)}–${formatCalendarClockTime(block.endAt)}`;
+        events.push({
+          at: block.startAt,
+          tone: block.outsideGeofence ? "amber" : "",
+          text: formatLocationTrackedSummary(block.pings ?? [], rangeLabel),
+          kind: "summary",
+          isSummary: true,
+        });
+      });
+    }
+  }
+
+  return events.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+}
+
+function renderCalendarDayTimeline() {
+  const timeline = document.getElementById("cal-day-timeline");
+  const toggleBtn = document.getElementById("cal-timeline-toggle-pings");
+  if (!timeline || !calendarDayCache) return;
+
+  const { pings, sessions } = calendarDayCache;
+  const routinePingCount = pings.filter((ping) => String(ping.eventType ?? "PING") === "PING").length;
+  if (toggleBtn) {
+    toggleBtn.style.display = routinePingCount > 0 ? "" : "none";
+    toggleBtn.textContent = calendarShowPingDetails ? "Hide pings" : `Show all pings (${routinePingCount})`;
+  }
+
+  const events = buildCalendarTimelineEvents(sessions, pings);
+  if (!events.length) {
+    timeline.innerHTML = `<div class="text-muted">No check-in/check-out events for this date.</div>`;
+    return;
+  }
+
+  timeline.innerHTML = events.map((event, index) => {
+    const prev = index > 0 ? events[index - 1] : null;
+    const prevGapMinutes = prev
+      ? Math.max(0, Math.round((new Date(event.at).getTime() - new Date(prev.at).getTime()) / 60000))
+      : null;
+    const showGap = prevGapMinutes !== null
+      && prevGapMinutes >= 5
+      && !event.isSummary
+      && !prev?.isSummary;
+    const gapLine = showGap ? `<div class="tl-gap">+${prevGapMinutes} min gap</div>` : "";
+    const timeLabel = event.kind === "summary"
+      ? formatCalendarClockTime(event.at)
+      : new Date(event.at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+    return `
+      <div class="tl-item${event.isSummary ? " is-summary" : ""}">
+        <div class="tl-dot ${event.tone}"></div>
+        <div class="tl-date">${escapeAttr(timeLabel)}</div>
+        <div class="tl-text">${escapeAttr(event.text)}</div>
+        ${gapLine}
+      </div>`;
+  }).join("");
+}
+
+window.__toggleCalendarPingDetails = function toggleCalendarPingDetails() {
+  calendarShowPingDetails = !calendarShowPingDetails;
+  renderCalendarDayTimeline();
+};
+
 async function loadCalendarDayRoute(dateKey) {
   const title = document.getElementById("cal-selected-date");
   const summary = document.getElementById("cal-day-summary");
-  const timeline = document.getElementById("cal-day-timeline");
   if (title) {
     title.textContent = new Date(`${dateKey}T00:00:00`).toLocaleDateString("en-US", {
       weekday: "long",
@@ -4658,61 +8015,8 @@ async function loadCalendarDayRoute(dateKey) {
   const dayData = await api(`/attendance/calendar/day-route?date=${encodeURIComponent(dateKey)}${employeeIdQuery}`);
   const pings = Array.isArray(dayData?.pings) ? dayData.pings : [];
   const sessions = Array.isArray(dayData?.sessions) ? dayData.sessions : [];
-  if (timeline) {
-    const events = [];
-    sessions.forEach((session) => {
-      events.push({
-        at: session.checkInAt,
-        tone: "green",
-        text: `Checked in (${formatLabel(session.checkInMethod ?? "MANUAL")})`,
-      });
-      if (session.checkOutAt) {
-        events.push({
-          at: session.checkOutAt,
-          tone: "amber",
-          text: `Checked out (${formatLabel(session.checkOutMethod ?? "MANUAL")})`,
-        });
-      } else {
-        events.push({
-          at: new Date().toISOString(),
-          tone: "",
-          text: "Session still active (not checked out yet)",
-        });
-      }
-    });
-    pings
-      .filter((ping) => ["CHECK_IN_BLOCKED_OUTSIDE_GEOFENCE", "MANUAL_LOGOUT_LOCK"].includes(String(ping.eventType)))
-      .forEach((ping) => {
-        events.push({
-          at: ping.recordedAt,
-          tone: "amber",
-          text: formatLabel(String(ping.eventType ?? "PING")),
-        });
-      });
-
-    events.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
-    if (!events.length) {
-      timeline.innerHTML = `<div class="text-muted">No check-in/check-out events for this date.</div>`;
-    } else {
-      timeline.innerHTML = events.map((event, index) => {
-        const prev = index > 0 ? events[index - 1] : null;
-        const prevGapMinutes = prev
-          ? Math.max(0, Math.round((new Date(event.at).getTime() - new Date(prev.at).getTime()) / 60000))
-          : null;
-        const gapLine = prevGapMinutes === null
-          ? ""
-          : `<div class="tl-date">+${prevGapMinutes} min since previous</div>`;
-        return `
-        <div class="tl-item">
-          <div class="tl-dot ${event.tone}"></div>
-          <div class="tl-date">${escapeAttr(new Date(event.at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))}</div>
-          <div class="tl-text">${escapeAttr(event.text)}</div>
-          ${gapLine}
-        </div>
-      `;
-      }).join("");
-    }
-  }
+  calendarDayCache = { dateKey, pings, sessions };
+  renderCalendarDayTimeline();
 
   ensureCalendarMap();
   if (!calendarMap) return;
@@ -4735,11 +8039,26 @@ async function loadCalendarDayRoute(dateKey) {
     return;
   }
 
+  const routeColor = getComputedStyle(document.documentElement).getPropertyValue("--map-route-color").trim() || "#fafafa";
   const polyline = window.L.polyline(points, {
-    color: "#3b82f6",
+    color: routeColor,
     weight: 4,
     opacity: 0.85,
   }).addTo(calendarMap);
+  const pingMarkers = pings
+    .filter((ping) => Number.isFinite(Number(ping.latitude)) && Number.isFinite(Number(ping.longitude)))
+    .map((ping) => window.L.circleMarker([Number(ping.latitude), Number(ping.longitude)], {
+      radius: 4,
+      color: routeColor,
+      fillColor: getComputedStyle(document.documentElement).getPropertyValue("--blue-bright").trim() || "#a3a3a3",
+      fillOpacity: 0.85,
+    }).bindPopup(`
+      <div style="font-size:12px;line-height:1.45">
+        <div><b>${escapeAttr(formatLabel(String(ping.eventType ?? "PING")))}</b></div>
+        ${ping.geoTag ? `<div>${escapeAttr(ping.geoTag)}</div>` : ""}
+        <div>${escapeAttr(new Date(ping.recordedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }))}</div>
+      </div>
+    `));
   const startMarker = window.L.circleMarker(points[0], {
     radius: 6,
     color: "#10b981",
@@ -4752,7 +8071,7 @@ async function loadCalendarDayRoute(dateKey) {
     fillColor: "#ef4444",
     fillOpacity: 0.9,
   }).addTo(calendarMap).bindTooltip("End");
-  calendarRouteLayer = window.L.featureGroup([polyline, startMarker, endMarker]).addTo(calendarMap);
+  calendarRouteLayer = window.L.featureGroup([polyline, ...pingMarkers, startMarker, endMarker]).addTo(calendarMap);
   calendarMap.fitBounds(polyline.getBounds(), { padding: [24, 24], maxZoom: 17 });
   setTimeout(() => calendarMap?.invalidateSize(), 100);
   if (summary) {
@@ -5225,16 +8544,18 @@ window.__attendanceCheckIn = async function attendanceCheckIn() {
       }
       faceVerificationToken = await verifyFaceFlow();
     }
-    const location = await getCurrentLocation();
-    await api("/attendance/check-in", {
+    const location = await getCurrentLocationWithGeoTag();
+    const result = await api("/attendance/check-in", {
       method: "POST",
       body: JSON.stringify({
         ...location,
         faceVerificationToken,
       }),
     });
-    await Promise.all([loadAttendanceStatus(), loadOnlineAttendance()]);
-    notify("Checked in successfully");
+    await Promise.all([loadAttendanceStatus(), loadOnlineAttendance(), loadDashboard()]);
+    notify(result?.lateCheckIn
+      ? `Checked in late (${result?.lateAttendance?.monthlyLateCount ?? 1} this month)`
+      : "Checked in successfully");
   } catch (error) {
     await Promise.all([loadAttendanceStatus(), loadOnlineAttendance()]).catch(() => null);
     notify(error.message);
@@ -5252,7 +8573,7 @@ window.__attendanceCheckOut = async function attendanceCheckOut() {
       }
       faceVerificationToken = await verifyFaceFlow();
     }
-    const location = await getCurrentLocation().catch(() => null);
+    const location = await getCurrentLocationWithGeoTag().catch(() => null);
     await api("/attendance/check-out", {
       method: "POST",
       body: JSON.stringify({
@@ -5270,7 +8591,7 @@ window.__attendanceCheckOut = async function attendanceCheckOut() {
 
 window.__attendanceRefresh = async function attendanceRefresh() {
   try {
-    await Promise.all([loadAttendanceStatus(), loadOnlineAttendance(), loadFaceStatus()]);
+    await Promise.all([loadAttendanceStatus(), loadOnlineAttendance(), loadFaceStatus(), loadLateJoiners()]);
     notify("Attendance refreshed");
   } catch (error) {
     notify(error.message);
@@ -5723,6 +9044,7 @@ function formatProfileDate(value) {
 function loadProfile() {
   if (!me?.employee) return;
   const employee = me.employee;
+  const money = (value) => formatProfileMoney(value, employee.netPayCurrency);
   const textMap = {
     "profile-name": `${employee.firstName ?? ""} ${employee.lastName ?? ""}`.trim() || "—",
     "profile-code": employee.employeeCode ?? "—",
@@ -5739,9 +9061,9 @@ function loadProfile() {
     "profile-emirates": employee.emiratesId ?? "—",
     "profile-passport": employee.passportNumber ?? "—",
     "profile-labour-card": employee.labourCardNumber ?? "—",
-    "profile-basic-salary": String(Math.round(employee.basicSalary ?? 0)),
-    "profile-housing": String(Math.round(employee.housingAllowance ?? 0)),
-    "profile-transport": String(Math.round(employee.transportAllowance ?? 0)),
+    "profile-basic-salary": money(employee.basicSalary),
+    "profile-housing": money(employee.housingAllowance),
+    "profile-transport": money(employee.transportAllowance),
     "profile-bank": employee.bankName ?? "—",
     "profile-iban": employee.iban ?? "—",
     "profile-wps": employee.wpsEnabled ? "Yes" : "No",
@@ -5757,6 +9079,7 @@ function loadProfile() {
 }
 
 window.addEventListener("resize", () => {
+  refreshMobileSidebarNav();
   if (attendanceMap) {
     setTimeout(() => attendanceMap.invalidateSize(), 100);
   }
@@ -5787,6 +9110,399 @@ window.addEventListener("scroll", () => window.__closeEmployeeActionsMenu?.(), t
 window.addEventListener("resize", () => window.__closeEmployeeActionsMenu?.());
 
 window.__approveLeave = approveLeaveRequest;
+
+const MASTER_VIEW_LABELS = {
+  dashboard: "Dashboard",
+  employees: "Employees",
+  leave: "Leave",
+  exits: "Exits",
+  clearance: "Clearance",
+  payadjust: "Pay Adjustments",
+  pro: "PRO",
+  documents: "Documents",
+  attendance: "Attendance",
+  calendar: "Calendar",
+  offices: "Offices",
+  masterdata: "Master Data",
+  profile: "Profile",
+  settings: "Settings",
+};
+
+function toTimeInputValue(value = "") {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(String(value).trim());
+  if (!match) return "";
+  return `${String(match[1]).padStart(2, "0")}:${match[2]}`;
+}
+
+function fromTimeInputValue(value = "") {
+  if (!value) return "";
+  const [hours, minutes] = value.split(":");
+  return `${String(hours).padStart(2, "0")}:${minutes}`;
+}
+
+function setMasterDataTableMessage(message) {
+  const html = `<tr><td colspan="8" class="text-muted">${escapeAttr(message)}</td></tr>`;
+  ["md-leave-types-body", "md-roles-body"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = html;
+  });
+}
+
+function renderMasterDataForms() {
+  if (!masterDataCache) return;
+  const { attendance, leave, leaveTypes, roles, settings, airTicket } = masterDataCache;
+  if (!attendance || !leave) {
+    setMasterDataTableMessage("Master data response was incomplete.");
+    return;
+  }
+
+  const checkInStart = document.getElementById("md-check-in-start");
+  const checkInEnd = document.getElementById("md-check-in-end");
+  const autoCheckOut = document.getElementById("md-auto-check-out");
+  const timezone = document.getElementById("md-timezone");
+  const annualDays = document.getElementById("md-annual-days");
+  const maturityCap = document.getElementById("md-maturity-cap");
+  const maturityNote = document.getElementById("md-maturity-rate-note");
+  const dualThreshold = document.getElementById("md-dual-threshold");
+
+  if (checkInStart) checkInStart.value = toTimeInputValue(attendance.checkInStart);
+  if (checkInEnd) checkInEnd.value = toTimeInputValue(attendance.checkInEnd);
+  if (autoCheckOut) autoCheckOut.value = toTimeInputValue(attendance.autoCheckOut);
+  if (timezone) timezone.value = attendance.timezone ?? "Asia/Dubai";
+  if (annualDays) annualDays.value = leave.annualYearlyDays;
+  if (maturityCap) maturityCap.value = leave.maturityMaxCap;
+  if (maturityNote) {
+    maturityNote.textContent =
+      `Daily accrual rate: ${Number(leave.maturityDailyRate ?? 0).toFixed(4)} day(s) per day worked.`;
+  }
+  const thresholdSetting = Array.isArray(settings)
+    ? settings.find((item) => item.key === "payroll.dualApprovalThreshold")
+    : null;
+  if (dualThreshold) dualThreshold.value = Number(thresholdSetting?.value ?? 5000);
+
+  const airEnabled = document.getElementById("md-air-enabled");
+  const airMinDays = document.getElementById("md-air-min-days");
+  const airLeaveCodes = document.getElementById("md-air-leave-codes");
+  const airBody = document.getElementById("md-air-ticket-body");
+  if (airEnabled) airEnabled.value = airTicket?.enabled === false ? "false" : "true";
+  if (airMinDays) airMinDays.value = Number(airTicket?.minDays ?? 30);
+  if (airLeaveCodes) {
+    airLeaveCodes.value = Array.isArray(airTicket?.eligibleLeaveCodes)
+      ? airTicket.eligibleLeaveCodes.join(", ")
+      : "AL";
+  }
+  if (airBody) {
+    const fares = Array.isArray(airTicket?.fares) ? airTicket.fares : [];
+    airBody.innerHTML = fares.length
+      ? fares.map((row, index) => `
+        <tr data-air-row="${index}">
+          <td><input type="text" class="md-air-country" value="${escapeAttr(row.country ?? "")}" style="width:100%"></td>
+          <td><input type="number" class="md-air-manager" min="0" step="50" value="${Number(row.manager ?? 0)}" style="width:100%"></td>
+          <td><input type="number" class="md-air-staff" min="0" step="50" value="${Number(row.staff ?? 0)}" style="width:100%"></td>
+          <td><input type="number" class="md-air-labour" min="0" step="50" value="${Number(row.labour ?? 0)}" style="width:100%"></td>
+        </tr>`).join("")
+      : `<tr><td colspan="4" class="text-muted">No fare rows configured.</td></tr>`;
+  }
+
+  const leaveBody = document.getElementById("md-leave-types-body");
+  if (leaveBody) {
+    leaveBody.innerHTML = leaveTypes.length
+      ? leaveTypes.map((type) => `
+        <tr>
+          <td>${escapeAttr(type.name)}</td>
+          <td>${escapeAttr(type.code)}</td>
+          <td>${type.yearlyAllocation}</td>
+          <td>${escapeAttr(formatLabel(type.balanceMode))}</td>
+          <td>${escapeAttr(formatLabel(type.payRate))}</td>
+          <td>${type.requiresAttachment ? "Yes" : "No"}</td>
+          <td><span class="badge ${type.active ? "badge-green" : "badge-coral"}">${type.active ? "Active" : "Inactive"}</span></td>
+          <td><button class="btn btn-secondary btn-sm" onclick="window.__editLeaveType('${escapeAttr(type.id)}')">Edit</button></td>
+        </tr>`).join("")
+      : `<tr><td colspan="8" class="text-muted">No leave types configured.</td></tr>`;
+  }
+
+  const rolesBody = document.getElementById("md-roles-body");
+  if (rolesBody) {
+    rolesBody.innerHTML = roles.length
+      ? roles.map((role) => `
+        <tr>
+          <td>${escapeAttr(role.code)}</td>
+          <td>${escapeAttr(role.label)}</td>
+          <td>${role.isIndividualContributor ? "Yes" : "No"}</td>
+          <td>${role.canVoidActingColleague ? "Yes" : "No"}</td>
+          <td>${role.assignable ? "Yes" : "No"}</td>
+          <td style="max-width:220px;font-size:12px">${escapeAttr((role.allowedViews ?? []).map((view) => MASTER_VIEW_LABELS[view] ?? view).join(", "))}</td>
+          <td><span class="badge ${role.active ? "badge-green" : "badge-coral"}">${role.active ? "Active" : "Inactive"}</span></td>
+          <td><button class="btn btn-secondary btn-sm" onclick="window.__editRole('${escapeAttr(role.id)}')">Edit</button></td>
+        </tr>`).join("")
+      : `<tr><td colspan="8" class="text-muted">No roles configured.</td></tr>`;
+  }
+}
+
+async function loadMasterData() {
+  if (!hasRole(["SUPER_ADMIN", "HR"])) {
+    setMasterDataTableMessage("You do not have permission to manage master data.");
+    throw new Error("You do not have permission to manage master data.");
+  }
+  setMasterDataTableMessage("Loading…");
+  try {
+    masterDataCache = await api("/master");
+    renderMasterDataForms();
+  } catch (error) {
+    setMasterDataTableMessage(error?.message ?? "Failed to load master data.");
+    throw error;
+  }
+}
+
+window.__loadViewData = function loadViewData(view) {
+  if (view === "attendance" && token && me) {
+    loadLateJoiners().catch((error) => notify(error.message));
+  }
+  if (view !== "masterdata") return;
+  if (!token || !me) {
+    pendingMasterDataLoad = true;
+    return;
+  }
+  loadMasterData().catch((error) => notify(error.message));
+};
+
+function renderRoleViewCheckboxes(selected = []) {
+  const container = document.getElementById("md-role-views");
+  if (!container) return;
+  const views = publicMasterConfig?.views ?? Object.keys(MASTER_VIEW_LABELS);
+  const selectedSet = new Set(selected);
+  container.innerHTML = views.map((view) => `
+    <label style="display:flex;align-items:center;gap:6px;font-size:12px">
+      <input type="checkbox" value="${escapeAttr(view)}" ${selectedSet.has(view) ? "checked" : ""}>
+      ${escapeAttr(MASTER_VIEW_LABELS[view] ?? view)}
+    </label>`).join("");
+}
+
+window.__openLeaveTypeModal = function openLeaveTypeModal() {
+  document.getElementById("md-lt-id").value = "";
+  document.getElementById("md-leave-type-modal-title").textContent = "Add Leave Type";
+  document.getElementById("md-lt-name").value = "";
+  document.getElementById("md-lt-code").value = "";
+  document.getElementById("md-lt-code").disabled = false;
+  document.getElementById("md-lt-days").value = "0";
+  document.getElementById("md-lt-carry").value = "0";
+  document.getElementById("md-lt-balance-mode").value = "YEARLY";
+  document.getElementById("md-lt-pay-rate").value = "FULL";
+  document.getElementById("md-lt-attachment").value = "false";
+  document.getElementById("md-lt-paid").value = "true";
+  document.getElementById("md-lt-active").value = "true";
+  openModal("md-leave-type-modal");
+};
+
+window.__editLeaveType = function editLeaveType(id) {
+  const type = masterDataCache?.leaveTypes?.find((item) => item.id === id);
+  if (!type) return;
+  document.getElementById("md-lt-id").value = type.id;
+  document.getElementById("md-leave-type-modal-title").textContent = "Edit Leave Type";
+  document.getElementById("md-lt-name").value = type.name ?? "";
+  document.getElementById("md-lt-code").value = type.code ?? "";
+  document.getElementById("md-lt-code").disabled = true;
+  document.getElementById("md-lt-days").value = type.yearlyAllocation ?? 0;
+  document.getElementById("md-lt-carry").value = type.maxCarryForward ?? 0;
+  document.getElementById("md-lt-balance-mode").value = type.balanceMode ?? "YEARLY";
+  document.getElementById("md-lt-pay-rate").value = type.payRate ?? "FULL";
+  document.getElementById("md-lt-attachment").value = type.requiresAttachment ? "true" : "false";
+  document.getElementById("md-lt-paid").value = type.paidLeave ? "true" : "false";
+  document.getElementById("md-lt-active").value = type.active ? "true" : "false";
+  openModal("md-leave-type-modal");
+};
+
+window.__saveLeaveTypeModal = async function saveLeaveTypeModal() {
+  const payload = {
+    name: document.getElementById("md-lt-name").value.trim(),
+    code: document.getElementById("md-lt-code").value.trim().toUpperCase(),
+    yearlyAllocation: Number(document.getElementById("md-lt-days").value || 0),
+    maxCarryForward: Number(document.getElementById("md-lt-carry").value || 0),
+    balanceMode: document.getElementById("md-lt-balance-mode").value,
+    payRate: document.getElementById("md-lt-pay-rate").value,
+    requiresAttachment: document.getElementById("md-lt-attachment").value === "true",
+    paidLeave: document.getElementById("md-lt-paid").value === "true",
+    active: document.getElementById("md-lt-active").value === "true",
+  };
+  const id = document.getElementById("md-lt-id").value;
+  try {
+    if (id) {
+      await api(`/master/leave-types/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
+    } else {
+      await api("/master/leave-types", { method: "POST", body: JSON.stringify(payload) });
+    }
+    closeModal("md-leave-type-modal");
+    leaveTypes = await api("/leave/types");
+    populateLeaveTypes();
+    await loadMasterData();
+    notify("Leave type saved.");
+  } catch (error) {
+    notify(error.message);
+  }
+};
+
+window.__openRoleModal = function openRoleModal() {
+  document.getElementById("md-role-id").value = "";
+  document.getElementById("md-role-modal-title").textContent = "Add Role";
+  document.getElementById("md-role-code").value = "";
+  document.getElementById("md-role-code").disabled = false;
+  document.getElementById("md-role-label").value = "";
+  document.getElementById("md-role-desc").value = "";
+  document.getElementById("md-role-ic").value = "false";
+  document.getElementById("md-role-void").value = "false";
+  document.getElementById("md-role-assignable").value = "true";
+  document.getElementById("md-role-active").value = "true";
+  renderRoleViewCheckboxes(["dashboard", "profile", "settings"]);
+  openModal("md-role-modal");
+};
+
+window.__editRole = function editRole(id) {
+  const role = masterDataCache?.roles?.find((item) => item.id === id);
+  if (!role) return;
+  document.getElementById("md-role-id").value = role.id;
+  document.getElementById("md-role-modal-title").textContent = "Edit Role";
+  document.getElementById("md-role-code").value = role.code ?? "";
+  document.getElementById("md-role-code").disabled = true;
+  document.getElementById("md-role-label").value = role.label ?? "";
+  document.getElementById("md-role-desc").value = role.description ?? "";
+  document.getElementById("md-role-ic").value = role.isIndividualContributor ? "true" : "false";
+  document.getElementById("md-role-void").value = role.canVoidActingColleague ? "true" : "false";
+  document.getElementById("md-role-assignable").value = role.assignable ? "true" : "false";
+  document.getElementById("md-role-active").value = role.active ? "true" : "false";
+  renderRoleViewCheckboxes(role.allowedViews ?? []);
+  openModal("md-role-modal");
+};
+
+window.__saveRoleModal = async function saveRoleModal() {
+  const allowedViews = Array.from(document.querySelectorAll("#md-role-views input:checked")).map((input) => input.value);
+  if (!allowedViews.length) {
+    notify("Select at least one allowed view.");
+    return;
+  }
+  const payload = {
+    code: document.getElementById("md-role-code").value.trim().toUpperCase(),
+    label: document.getElementById("md-role-label").value.trim(),
+    description: document.getElementById("md-role-desc").value.trim() || undefined,
+    isIndividualContributor: document.getElementById("md-role-ic").value === "true",
+    canVoidActingColleague: document.getElementById("md-role-void").value === "true",
+    assignable: document.getElementById("md-role-assignable").value === "true",
+    active: document.getElementById("md-role-active").value === "true",
+    allowedViews,
+  };
+  const id = document.getElementById("md-role-id").value;
+  try {
+    if (id) {
+      const { code, ...updatePayload } = payload;
+      await api(`/master/roles/${id}`, { method: "PATCH", body: JSON.stringify(updatePayload) });
+    } else {
+      await api("/master/roles", { method: "POST", body: JSON.stringify(payload) });
+    }
+    closeModal("md-role-modal");
+    await loadPublicMasterConfig();
+    await applyRoleBasedUi();
+    await loadMasterData();
+    notify("Role saved.");
+  } catch (error) {
+    notify(error.message);
+  }
+};
+
+window.__saveMasterAttendance = async function saveMasterAttendance() {
+  try {
+    await api("/master/attendance", {
+      method: "PATCH",
+      body: JSON.stringify({
+        checkInStart: fromTimeInputValue(document.getElementById("md-check-in-start").value),
+        checkInEnd: fromTimeInputValue(document.getElementById("md-check-in-end").value),
+        autoCheckOut: fromTimeInputValue(document.getElementById("md-auto-check-out").value),
+        timezone: document.getElementById("md-timezone").value.trim(),
+      }),
+    });
+    await loadMasterData();
+    notify("Attendance policy saved.");
+  } catch (error) {
+    notify(error.message);
+  }
+};
+
+window.__saveMasterLeavePolicy = async function saveMasterLeavePolicy() {
+  try {
+    await api("/master/leave-policy", {
+      method: "PATCH",
+      body: JSON.stringify({
+        annualYearlyDays: Number(document.getElementById("md-annual-days").value),
+        maturityMaxCap: Number(document.getElementById("md-maturity-cap").value),
+      }),
+    });
+    await loadMasterData();
+    notify("Leave policy saved.");
+  } catch (error) {
+    notify(error.message);
+  }
+};
+
+function collectMasterAirTicketPayload() {
+  const fares = Array.from(document.querySelectorAll("#md-air-ticket-body tr[data-air-row]")).map((row) => ({
+    country: row.querySelector(".md-air-country")?.value?.trim() ?? "",
+    manager: Number(row.querySelector(".md-air-manager")?.value || 0),
+    staff: Number(row.querySelector(".md-air-staff")?.value || 0),
+    labour: Number(row.querySelector(".md-air-labour")?.value || 0),
+  })).filter((row) => row.country);
+
+  return {
+    enabled: document.getElementById("md-air-enabled")?.value === "true",
+    minDays: Number(document.getElementById("md-air-min-days")?.value || 30),
+    eligibleLeaveCodes: (document.getElementById("md-air-leave-codes")?.value || "AL")
+      .split(",")
+      .map((code) => code.trim().toUpperCase())
+      .filter(Boolean),
+    fares,
+  };
+}
+
+window.__saveMasterAirTicket = async function saveMasterAirTicket() {
+  try {
+    const payload = collectMasterAirTicketPayload();
+    if (!payload.fares.length) {
+      notify("Add at least one country fare row.");
+      return;
+    }
+    await api("/master/air-ticket", {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+    await loadMasterData();
+    notify("Air ticket settings saved.");
+  } catch (error) {
+    notify(error.message);
+  }
+};
+
+window.__resetMasterAirTicketFares = async function resetMasterAirTicketFares() {
+  try {
+    await api("/master/air-ticket/reset-fares", { method: "POST" });
+    await loadMasterData();
+    notify("Default air ticket fares restored.");
+  } catch (error) {
+    notify(error.message);
+  }
+};
+
+window.__saveMasterPayroll = async function saveMasterPayroll() {
+  try {
+    await api("/master/payroll", {
+      method: "PATCH",
+      body: JSON.stringify({
+        dualApprovalThreshold: Number(document.getElementById("md-dual-threshold").value),
+      }),
+    });
+    await loadMasterData();
+    notify("Payroll settings saved.");
+  } catch (error) {
+    notify(error.message);
+  }
+};
+
 window.viewEmployee = function viewEmployeeCompatibility(name) {
   const employee = allEmployees.find((item) => `${item.firstName} ${item.lastName}` === name);
   if (employee) {
@@ -5799,7 +9515,8 @@ window.viewEmployee = function viewEmployeeCompatibility(name) {
 async function start() {
   try {
     await bootstrapAuth();
-    applyRoleBasedUi();
+    await loadPublicMasterConfig();
+    await applyRoleBasedUi();
     const addButton = document.getElementById("emp-add-btn");
     if (addButton && !elevatedRoles.has(me?.role)) {
       addButton.style.display = "none";
@@ -5809,6 +9526,7 @@ async function start() {
     populateLeaveTypes();
     wireLeaveApplyForm();
     wireLeaveBalanceLookup();
+    wireLeaveHistoryTab();
     wireDocumentsLookup();
     const exitNav = document.querySelector(".nav-item[onclick*=\"navigate('exits'\"]");
     exitNav?.addEventListener("click", () => {
@@ -5843,12 +9561,13 @@ async function start() {
     });
     wireEmployeeCreation();
     wireEmployeeFilters();
+    wireLeaveImport();
     document.getElementById("face-modal")?.addEventListener("click", (event) => {
       if (event.target?.id === "face-modal") {
         window.__closeFaceModal();
       }
     });
-    await Promise.all([loadDashboard(), refreshEmployees(), loadLeaveRequests(), loadAttendanceStatus(), loadOnlineAttendance(), loadFaceStatus()]);
+    await Promise.all([loadDashboard(), refreshEmployees(), loadLeaveRequests(), loadAttendanceStatus(), loadOnlineAttendance(), loadFaceStatus(), loadLateJoiners()]);
     populateExitEmployeeSelects();
     loadExits().catch(() => null);
     loadClearance().catch(() => null);
@@ -5885,6 +9604,10 @@ async function start() {
     if (document.getElementById("view-attendance")?.classList.contains("active")) {
       await Promise.all([loadAttendanceStatus(), loadOnlineAttendance()]);
       setTimeout(() => attendanceMap?.invalidateSize(), 150);
+    }
+    if (document.getElementById("view-masterdata")?.classList.contains("active") || pendingMasterDataLoad) {
+      pendingMasterDataLoad = false;
+      await loadMasterData().catch((error) => notify(error.message));
     }
     startAttendanceTracking();
     loadProfile();

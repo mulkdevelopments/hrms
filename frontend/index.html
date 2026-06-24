@@ -3,33 +3,132 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script>
+(function () {
+  var theme = localStorage.getItem("hrms_theme");
+  if (theme !== "light" && theme !== "dark") theme = "dark";
+  document.documentElement.setAttribute("data-theme", theme);
+})();
+</script>
 <title>HRMS — Human Resource Management System</title>
-<link rel="icon" type="image/avif" href="/Mask%20group.avif">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="icon" type="image/png" href="/brand/favicon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/brand/favicon-32.png">
+<link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 <style>
-:root {
-  --navy: #0f172a;
-  --navy-mid: #111827;
-  --navy-light: #1f2937;
-  --blue: #2563eb;
-  --blue-bright: #3b82f6;
-  --accent: #14b8a6;
-  --accent-light: #2dd4bf;
+:root,
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --navy: #000000;
+  --navy-mid: #0a0a0a;
+  --navy-light: #171717;
+  --blue: #525252;
+  --blue-bright: #a3a3a3;
+  --accent: #e5e5e5;
+  --accent-light: #fafafa;
   --amber: #f59e0b;
   --coral: #ef4444;
-  --green: #10b981;
-  --purple: #8b5cf6;
-  --text: #e5e7eb;
-  --text-muted: #94a3b8;
-  --text-dim: #64748b;
-  --border: rgba(148,163,184,0.16);
-  --border-bright: rgba(99,102,241,0.28);
-  --card: rgba(15,23,42,0.78);
-  --card-hover: rgba(30,41,59,0.92);
+  --green: #22c55e;
+  --purple: #a855f7;
+  --text: #fafafa;
+  --text-muted: #a3a3a3;
+  --text-dim: #737373;
+  --border: rgba(255,255,255,0.08);
+  --border-bright: rgba(255,255,255,0.14);
+  --card: rgba(12,12,12,0.96);
+  --card-hover: rgba(23,23,23,0.98);
+  --highlight: rgba(255,255,255,0.06);
+  --highlight-strong: rgba(255,255,255,0.10);
+  --primary: #ffffff;
+  --primary-fg: #0a0a0a;
+  --focus: rgba(255,255,255,0.28);
+  --surface: #0a0a0a;
+  --surface-raised: #171717;
+  --sidebar-bg: rgba(0,0,0,0.98);
+  --header-bg: rgba(10,10,10,0.95);
+  --overlay-bg: rgba(0,0,0,0.82);
+  --bg-gradient-start: #000000;
+  --bg-gradient-end: #0a0a0a;
+  --record-card-bg: linear-gradient(180deg, rgba(18, 18, 18, 0.98), rgba(8, 8, 8, 0.96));
+  --input-bg: rgba(255,255,255,0.03);
+  --input-bg-focus: rgba(255,255,255,0.05);
+  --panel-bg: rgba(12, 12, 12, 0.92);
+  --panel-muted-bg: rgba(10, 10, 10, 0.46);
+  --panel-inset-bg: rgba(10, 10, 10, 0.55);
+  --surface-soft: rgba(10, 10, 10, 0.72);
+  --avatar-bg: #262626;
+  --avatar-fg: #fafafa;
+  --inset-border: rgba(148, 163, 184, 0.18);
+  --hero-gradient: linear-gradient(135deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+  --progress-track: rgba(148, 163, 184, 0.16);
+  --progress-fill-end: #fafafa;
+  --dropdown-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+  --status-success-fg: #a7f3d0;
+  --status-success-bg: rgba(16, 185, 129, 0.16);
+  --status-success-border: rgba(16, 185, 129, 0.4);
+  --financial-item-border: rgba(100, 181, 246, 0.22);
+  --ui-accent: #fafafa;
+  --chip-bg: rgba(255,255,255,0.03);
+  --donut-inner: #171717;
+  --calendar-selected-border: #fafafa;
+  --map-route-color: #fafafa;
   --sidebar-w: 250px;
   --header-h: 62px;
+}
+
+html[data-theme="light"] {
+  color-scheme: light;
+  --navy: #ffffff;
+  --navy-mid: #f8fafc;
+  --navy-light: #f1f5f9;
+  --blue: #64748b;
+  --blue-bright: #475569;
+  --accent: #334155;
+  --accent-light: #1e293b;
+  --text: #0f172a;
+  --text-muted: #64748b;
+  --text-dim: #94a3b8;
+  --border: rgba(15,23,42,0.08);
+  --border-bright: rgba(15,23,42,0.14);
+  --card: #ffffff;
+  --card-hover: #f8fafc;
+  --highlight: rgba(15,23,42,0.04);
+  --highlight-strong: rgba(15,23,42,0.08);
+  --primary: #0f172a;
+  --primary-fg: #ffffff;
+  --focus: rgba(15,23,42,0.22);
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --sidebar-bg: rgba(255,255,255,0.98);
+  --header-bg: rgba(255,255,255,0.96);
+  --overlay-bg: rgba(15,23,42,0.45);
+  --bg-gradient-start: #f8fafc;
+  --bg-gradient-end: #ffffff;
+  --record-card-bg: linear-gradient(180deg, #ffffff, #f8fafc);
+  --input-bg: #ffffff;
+  --input-bg-focus: #ffffff;
+  --panel-bg: #ffffff;
+  --panel-muted-bg: #f8fafc;
+  --panel-inset-bg: #f1f5f9;
+  --surface-soft: #ffffff;
+  --avatar-bg: #e2e8f0;
+  --avatar-fg: #0f172a;
+  --inset-border: rgba(15, 23, 42, 0.1);
+  --hero-gradient: linear-gradient(135deg, #f8fafc 0%, #ffffff 100%);
+  --progress-track: rgba(15, 23, 42, 0.08);
+  --progress-fill-end: #0f172a;
+  --dropdown-shadow: 0 18px 40px rgba(15, 23, 42, 0.12);
+  --status-success-fg: #047857;
+  --status-success-bg: rgba(16, 185, 129, 0.12);
+  --status-success-border: rgba(16, 185, 129, 0.28);
+  --financial-item-border: rgba(15, 23, 42, 0.12);
+  --ui-accent: #0f172a;
+  --chip-bg: rgba(15, 23, 42, 0.04);
+  --donut-inner: #ffffff;
+  --calendar-selected-border: #0f172a;
+  --map-route-color: #0f172a;
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -117,7 +216,7 @@ body {
   justify-content: center;
   color: #fff;
   font-size: 13px;
-  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.45);
+  box-shadow: 0 6px 18px rgba(10, 10, 10, 0.45);
 }
 
 .emp-human-marker.green {
@@ -131,7 +230,7 @@ body {
   min-width: 16px;
   height: 16px;
   border-radius: 999px;
-  background: #0f172a;
+  background: #0a0a0a;
   color: #fff;
   font-size: 10px;
   font-weight: 700;
@@ -143,7 +242,7 @@ body {
 }
 
 .emp-map-tooltip {
-  background: rgba(15, 23, 42, 0.96);
+  background: rgba(10, 10, 10, 0.96);
   color: #e5e7eb;
   border: 1px solid rgba(239, 68, 68, 0.35);
   border-radius: 10px;
@@ -180,13 +279,13 @@ body {
   border-radius: 12px;
   overflow: hidden;
   border: 1px solid var(--border-bright);
-  background: #0f172a;
+  background: #0a0a0a;
 }
 
 .face-cam-wrap video {
   width: 100%;
   display: block;
-  background: #0f172a;
+  background: #0a0a0a;
 }
 
 .face-status-corner {
@@ -197,7 +296,7 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: rgba(15, 23, 42, 0.72);
+  background: rgba(10, 10, 10, 0.72);
   border: 1px solid rgba(148, 163, 184, 0.35);
   border-radius: 999px;
   padding: 6px 10px;
@@ -212,8 +311,8 @@ body {
 }
 
 .face-scan-icon.scanning {
-  background: #3b82f6;
-  box-shadow: 0 0 0 rgba(59, 130, 246, 0.6);
+  background: #fafafa;
+  box-shadow: 0 0 0 rgba(255, 255, 255, 0.45);
   animation: faceScanPulse 1.4s ease-in-out infinite;
 }
 
@@ -234,15 +333,15 @@ body {
 }
 
 @keyframes faceScanPulse {
-  0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.6); }
-  70% { box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+  0% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.35); }
+  70% { box-shadow: 0 0 0 10px rgba(255, 255, 255, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0); }
 }
 
 .face-guide-panel {
   display: grid;
   gap: 6px;
-  background: rgba(15, 23, 42, 0.72);
+  background: rgba(10, 10, 10, 0.72);
   border: 1px solid rgba(148, 163, 184, 0.35);
   border-radius: 10px;
   padding: 8px 10px;
@@ -274,8 +373,8 @@ body {
 }
 
 .face-angle-chip.active {
-  border-color: rgba(59,130,246,.7);
-  color: #93c5fd;
+  border-color: rgba(255,255,255,0.45);
+  color: #fafafa;
 }
 
 .face-angle-chip.done {
@@ -294,7 +393,7 @@ body {
 .calendar-month-label {
   font-size: 20px;
   font-weight: 800;
-  color: #f8fafc;
+  color: var(--text);
 }
 
 .calendar-weekdays,
@@ -308,7 +407,7 @@ body {
   text-align: center;
   font-size: 11px;
   font-weight: 700;
-  color: #94a3b8;
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   padding: 4px 0;
@@ -318,8 +417,8 @@ body {
   min-height: 92px;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: #111827;
-  color: #e2e8f0;
+  background: var(--card);
+  color: var(--text);
   padding: 8px;
   display: flex;
   flex-direction: column;
@@ -346,8 +445,8 @@ body {
 }
 
 .calendar-day.selected {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 1px rgba(59,130,246,0.4) inset;
+  border-color: var(--calendar-selected-border);
+  box-shadow: 0 0 0 1px var(--focus) inset;
 }
 
 .calendar-day.today {
@@ -362,7 +461,7 @@ body {
 
 .calendar-day-minutes {
   font-size: 12px;
-  color: #93c5fd;
+  color: var(--text-muted);
   font-weight: 700;
 }
 
@@ -395,8 +494,8 @@ body {
   min-width: 160px;
   border: 1px solid var(--border-bright);
   border-radius: 10px;
-  background: rgba(15, 23, 42, 0.98);
-  box-shadow: 0 12px 28px rgba(2, 6, 23, 0.45);
+  background: var(--surface-raised);
+  box-shadow: var(--dropdown-shadow);
   z-index: 2000;
   padding: 6px;
 }
@@ -412,13 +511,313 @@ body {
   background: transparent;
   color: var(--text);
   border-radius: 8px;
-  padding: 7px 9px;
+  padding: 8px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.emp-action-item i {
+  width: 16px;
+  font-size: 13px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.emp-action-item.emp-action-view i { color: var(--ui-accent); }
+.emp-action-item.emp-action-edit i { color: #fbbf24; }
+.emp-action-item.emp-action-bank i { color: #34d399; }
+.emp-action-item.emp-action-salary i { color: #c084fc; }
+
+.emp-action-item:hover {
+  background: var(--highlight-strong);
+}
+
+/* ─── EMPLOYEE VIEW MODAL ─── */
+.emp-view-modal {
+  max-width: 920px;
+  width: min(920px, calc(100vw - 32px));
+}
+
+.emp-view-modal .modal-header {
+  margin-bottom: 0;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border-bright);
+}
+
+.emp-report-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  padding: 14px 0 4px;
+  border-top: 1px solid var(--border-bright);
+  margin-top: 12px;
+}
+
+.emp-report-bar .form-group {
+  margin: 0;
+  min-width: 140px;
+}
+
+.emp-report-bar label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.emp-report-bar input[type="date"] {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.emp-report-note {
+  flex: 1 1 220px;
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.45;
+  padding-bottom: 6px;
+}
+
+.emp-report-sections {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.emp-report-sections-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.emp-report-sections-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.emp-report-sections-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.emp-report-sections-actions button {
+  border: none;
+  background: transparent;
+  color: #d4d4d4;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.emp-report-sections-actions button:hover {
+  text-decoration: underline;
+}
+
+.emp-report-section-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.emp-report-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(10, 10, 10, 0.46);
   font-size: 12px;
   cursor: pointer;
 }
 
-.emp-action-item:hover {
-  background: rgba(30, 64, 175, 0.18);
+.emp-report-check input {
+  accent-color: var(--primary);
+}
+
+.emp-report-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  width: 100%;
+}
+
+@media (max-width: 760px) {
+  .emp-report-section-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.emp-profile-view-scroll {
+  max-height: min(68vh, 720px);
+  overflow-y: auto;
+  padding: 2px 4px 2px 0;
+}
+
+.emp-profile-view .profile-hero {
+  padding: 0;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.emp-profile-view .profile-hero-body {
+  display: grid;
+  grid-template-columns: 74px 1fr auto;
+  gap: 18px;
+  align-items: center;
+  padding: 20px;
+  background: var(--hero-gradient);
+  border: 1px solid var(--border-bright);
+  border-radius: 14px;
+}
+
+.emp-profile-view .profile-avatar {
+  width: 74px;
+  height: 74px;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 22px;
+  color: var(--avatar-fg);
+  border: 1px solid var(--border-bright);
+  background: var(--avatar-bg);
+}
+
+.emp-profile-view .profile-headline {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.emp-profile-view .profile-name {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  line-height: 1.2;
+}
+
+.emp-profile-view .profile-subline {
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.emp-profile-view .profile-hero-meta {
+  display: grid;
+  gap: 8px;
+  justify-items: end;
+}
+
+.emp-profile-view .profile-role-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border-bright);
+  background: var(--highlight-strong);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+}
+
+.emp-profile-view .profile-quick-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.emp-profile-view .profile-stat {
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--inset-border);
+  background: var(--panel-muted-bg);
+}
+
+.emp-profile-view .profile-stat-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.emp-profile-view .profile-stat-value {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.emp-profile-view .profile-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.emp-profile-view .profile-panel {
+  background: var(--panel-bg);
+  border: 1px solid var(--border-bright);
+  border-radius: 14px;
+  padding: 16px;
+}
+
+.emp-profile-view .profile-panel-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+
+.emp-profile-view .profile-list {
+  display: grid;
+  gap: 8px;
+}
+
+.emp-profile-view .profile-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--panel-muted-bg);
+  border: 1px solid var(--inset-border);
+}
+
+.emp-profile-view .profile-key {
+  color: var(--text-muted);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.emp-profile-view .profile-value {
+  font-size: 13px;
+  font-weight: 600;
+  text-align: right;
+  word-break: break-word;
+}
+
+@media (max-width: 760px) {
+  .emp-profile-view .profile-hero-body,
+  .emp-profile-view .profile-grid,
+  .emp-profile-view .profile-quick-stats {
+    grid-template-columns: 1fr;
+  }
+  .emp-profile-view .profile-hero-meta {
+    justify-items: start;
+  }
 }
 
 .distance-line-label {
@@ -442,17 +841,18 @@ body {
 body::before {
   content: '';
   position: fixed; inset: 0; z-index: 0;
-  background:
-    radial-gradient(ellipse 80% 60% at 12% 18%, rgba(37,99,235,0.22) 0%, transparent 58%),
-    radial-gradient(ellipse 70% 55% at 88% 82%, rgba(20,184,166,0.14) 0%, transparent 62%),
-    linear-gradient(170deg, #0f172a 0%, #020617 100%);
+  background: linear-gradient(180deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
 }
+
+.theme-logo-light { display: none !important; }
+html[data-theme="light"] .theme-logo-dark { display: none !important; }
+html[data-theme="light"] .theme-logo-light { display: block !important; }
 
 /* ─── SIDEBAR ─── */
 #sidebar {
   position: fixed; left: 0; top: 0; bottom: 0;
   width: var(--sidebar-w);
-  background: rgba(8,18,36,0.95);
+  background: var(--sidebar-bg);
   border-right: 1px solid var(--border-bright);
   z-index: 100;
   display: flex; flex-direction: column;
@@ -461,20 +861,27 @@ body::before {
 }
 
 .sidebar-logo {
-  padding: 0 20px;
+  padding: 0 16px;
   height: var(--header-h);
-  display: flex; align-items: center; justify-content: center;
+  display: flex; align-items: center; gap: 10px;
   border-bottom: 1px solid var(--border);
 }
 .sidebar-logo img {
-  max-width: 100%;
-  max-height: 42px;
-  width: auto;
-  height: auto;
+  width: 34px;
+  height: 34px;
   object-fit: contain;
+  flex-shrink: 0;
   display: block;
 }
-.logo-text { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 17px; letter-spacing: -.3px; }
+.logo-text {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 700;
+  font-size: 17px;
+  letter-spacing: -0.045em;
+  color: var(--text);
+  white-space: nowrap;
+  line-height: 1;
+}
 .logo-text span { color: var(--accent); }
 
 .sidebar-nav { flex: 1; overflow-y: auto; padding: 14px 0; }
@@ -494,15 +901,15 @@ body::before {
   transition: color .2s, background .2s;
   user-select: none;
 }
-.nav-item:hover { color: var(--text); background: rgba(30,56,95,0.5); }
+.nav-item:hover { color: var(--text); background: var(--highlight); }
 .nav-item.active {
-  color: #fff; background: rgba(21,101,192,0.25);
+  color: var(--text); background: var(--highlight-strong);
   font-weight: 500;
 }
 .nav-item.active::before {
   content: ''; position: absolute; left: 0; top: 3px; bottom: 3px;
   width: 3px; border-radius: 0 3px 3px 0;
-  background: linear-gradient(180deg, var(--blue-bright), var(--accent));
+  background: var(--primary);
 }
 .nav-icon { font-size: 15px; width: 20px; text-align: center; flex-shrink: 0; }
 .nav-badge {
@@ -518,15 +925,15 @@ body::before {
 .user-card {
   display: flex; align-items: center; gap: 10px;
   padding: 8px 10px; border-radius: 10px;
-  background: rgba(21,101,192,0.12); cursor: pointer;
+  background: var(--highlight); cursor: pointer;
   transition: background .2s;
 }
-.user-card:hover { background: rgba(21,101,192,0.22); }
+.user-card:hover { background: var(--highlight-strong); }
 .user-avatar {
   width: 32px; height: 32px; border-radius: 50%;
-  background: linear-gradient(135deg, var(--blue), var(--accent));
+  background: var(--avatar-bg); border: 1px solid var(--border-bright);
   display: flex; align-items: center; justify-content: center;
-  font-weight: 700; font-size: 12px; color: #fff; flex-shrink: 0;
+  font-weight: 700; font-size: 12px; color: var(--avatar-fg); flex-shrink: 0;
 }
 .user-name { font-size: 13px; font-weight: 500; }
 .user-role { font-size: 11px; color: var(--text-muted); }
@@ -535,7 +942,7 @@ body::before {
 #header {
   position: fixed; top: 0; left: var(--sidebar-w); right: 0;
   height: var(--header-h);
-  background: rgba(9,21,40,0.9);
+  background: var(--header-bg);
   border-bottom: 1px solid var(--border-bright);
   display: flex; align-items: center; padding: 0 28px;
   z-index: 90; gap: 16px;
@@ -550,15 +957,16 @@ body::before {
   align-items: center;
   gap: 6px;
   font-size: 12px;
-  color: var(--text-muted);
-  padding: 6px 10px;
-  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 6px 12px;
+  border: 1px solid var(--border-bright);
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.55);
+  background: var(--surface-soft);
   max-width: 260px;
 }
 .header-location i {
-  color: #10b981;
+  color: var(--green);
+  flex-shrink: 0;
 }
 #header-location-name {
   white-space: nowrap;
@@ -569,11 +977,11 @@ body::before {
 .mobile-menu-btn { display: none; }
 .icon-btn {
   width: 36px; height: 36px; border-radius: 9px; border: 1px solid var(--border-bright);
-  background: rgba(21,40,80,0.5); cursor: pointer; display: flex;
+  background: var(--highlight); cursor: pointer; display: flex;
   align-items: center; justify-content: center; font-size: 15px;
   color: var(--text-muted); transition: all .2s; position: relative;
 }
-.icon-btn:hover { color: var(--text); border-color: var(--blue-bright); background: rgba(21,101,192,0.2); }
+.icon-btn:hover { color: var(--text); border-color: var(--border-bright); background: var(--highlight-strong); }
 .icon-btn.logout-btn {
   color: #f87171;
   border-color: rgba(248,113,113,0.45);
@@ -584,6 +992,60 @@ body::before {
   border-color: rgba(248,113,113,0.7);
   background: rgba(239,68,68,0.22);
 }
+
+.settings-mobile-quick { display: none; }
+.settings-mobile-quick-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.settings-mobile-action {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 88px;
+  padding: 14px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border-bright);
+  background: var(--highlight);
+  color: var(--text);
+  cursor: pointer;
+  font-family: 'Inter', sans-serif;
+  transition: background .2s, border-color .2s;
+}
+.settings-mobile-action:hover { background: var(--highlight-strong); border-color: var(--border-bright); }
+.settings-mobile-action-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-bright);
+  font-size: 18px;
+}
+.settings-mobile-action-label {
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+}
+.settings-mobile-action-danger {
+  color: #f87171;
+  border-color: rgba(248,113,113,0.35);
+  background: rgba(239,68,68,0.08);
+}
+.settings-mobile-action-danger .settings-mobile-action-icon {
+  color: #f87171;
+  background: rgba(239,68,68,0.12);
+  border-color: rgba(248,113,113,0.35);
+}
+.settings-mobile-action-danger:hover {
+  background: rgba(239,68,68,0.14);
+  border-color: rgba(248,113,113,0.5);
+}
+
 .icon-btn .dot {
   position: absolute; top: 6px; right: 6px;
   width: 7px; height: 7px; border-radius: 50%;
@@ -610,7 +1072,7 @@ body::before {
   cursor: default; transition: border-color .2s, background .2s;
   backdrop-filter: blur(10px);
 }
-.stat-card:hover { border-color: rgba(100,180,255,0.35); background: var(--card-hover); }
+.stat-card:hover { border-color: var(--border-bright); background: var(--card-hover); }
 .stat-label { font-size: 12px; color: var(--text-muted); font-weight: 500; letter-spacing: .3px; margin-bottom: 10px; }
 .stat-value { font-family: 'Inter', sans-serif; font-size: 32px; font-weight: 800; line-height: 1; margin-bottom: 6px; }
 .stat-sub { font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 4px; }
@@ -644,7 +1106,7 @@ body::before {
   gap: 18px;
   align-items: center;
   padding: 20px;
-  background: linear-gradient(135deg, rgba(14, 165, 233, 0.16), rgba(37, 99, 235, 0.08));
+  background: var(--hero-gradient);
   border-bottom: 1px solid var(--border-bright);
 }
 #view-profile .profile-avatar {
@@ -655,9 +1117,9 @@ body::before {
   place-items: center;
   font-weight: 800;
   font-size: 22px;
-  color: #dbeafe;
-  border: 1px solid rgba(125, 211, 252, 0.35);
-  background: rgba(15, 23, 42, 0.55);
+  color: var(--avatar-fg);
+  border: 1px solid var(--border-bright);
+  background: var(--avatar-bg);
 }
 #view-profile .profile-headline {
   display: grid;
@@ -682,9 +1144,9 @@ body::before {
   align-items: center;
   padding: 6px 12px;
   border-radius: 999px;
-  border: 1px solid rgba(96, 165, 250, 0.35);
-  background: rgba(37, 99, 235, 0.2);
-  color: #bfdbfe;
+  border: 1px solid var(--border-bright);
+  background: var(--highlight-strong);
+  color: var(--text);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.6px;
@@ -695,7 +1157,7 @@ body::before {
   gap: 18px;
 }
 #view-profile .profile-panel {
-  background: rgba(8, 21, 42, 0.52);
+  background: var(--panel-bg);
   border: 1px solid var(--border-bright);
   border-radius: 14px;
   padding: 16px;
@@ -719,8 +1181,8 @@ body::before {
   gap: 12px;
   padding: 8px 10px;
   border-radius: 10px;
-  background: rgba(15, 23, 42, 0.46);
-  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: var(--panel-muted-bg);
+  border: 1px solid var(--inset-border);
 }
 #view-profile .profile-key {
   color: var(--text-muted);
@@ -732,9 +1194,9 @@ body::before {
   text-align: right;
 }
 #view-profile .profile-status-pill {
-  border: 1px solid rgba(16, 185, 129, 0.4);
-  background: rgba(16, 185, 129, 0.16);
-  color: #a7f3d0;
+  border: 1px solid var(--status-success-border);
+  background: var(--status-success-bg);
+  color: var(--status-success-fg);
   border-radius: 999px;
   padding: 3px 10px;
   font-size: 11px;
@@ -753,9 +1215,95 @@ tbody tr {
   border-bottom: 1px solid var(--border);
   transition: background .15s; cursor: default;
 }
-tbody tr:hover { background: rgba(21,56,100,0.3); }
+tbody tr:hover { background: var(--highlight); }
 tbody td { padding: 12px 14px; color: var(--text); }
 tbody tr:last-child { border-bottom: none; }
+
+/* ─── MOBILE CARD LISTS (replace wide tables on small screens) ─── */
+.mobile-card-view { display: none; }
+.desktop-table-view { display: block; }
+
+.record-card {
+  border: 1px solid var(--border-bright);
+  border-radius: 14px;
+  background: var(--record-card-bg);
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+}
+.record-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.record-card-head-main { flex: 1; min-width: 0; }
+.record-card-name {
+  font-weight: 700;
+  font-size: 15px;
+  line-height: 1.35;
+  word-break: break-word;
+}
+.record-card-sub {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin-top: 3px;
+  word-break: break-word;
+}
+.record-card-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.record-card-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 12px;
+}
+.record-card-field { display: grid; gap: 3px; min-width: 0; }
+.record-card-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.record-card-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  word-break: break-word;
+}
+.record-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.record-card-actions .btn {
+  flex: 1 1 calc(50% - 4px);
+  min-height: 42px;
+  justify-content: center;
+}
+.record-card-actions .btn-sm {
+  padding: 9px 12px;
+  font-size: 12px;
+}
+.record-card-tappable { cursor: pointer; }
+.record-card-tappable:active { transform: scale(0.995); }
+.mobile-empty {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 28px 12px;
+  font-size: 14px;
+  border: 1px dashed var(--border-bright);
+  border-radius: 14px;
+}
+
+.payadjust-form-card { max-width: 640px; }
+.payadjust-month-input { width: 160px; }
+#adj-loans .payadjust-loans-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 
 /* ─── BADGE ─── */
 .badge {
@@ -764,10 +1312,120 @@ tbody tr:last-child { border-bottom: none; }
   font-size: 11px; font-weight: 600; letter-spacing: .3px;
 }
 .badge-green { background: rgba(0,137,123,0.2); color: #4DB6AC; border: 1px solid rgba(0,191,165,0.3); }
-.badge-blue { background: rgba(21,101,192,0.2); color: #64B5F6; border: 1px solid rgba(30,136,229,0.3); }
+.badge-blue { background: var(--highlight-strong); color: var(--text); border: 1px solid var(--border-bright); }
 .badge-amber { background: rgba(255,179,0,0.15); color: #FFD54F; border: 1px solid rgba(255,179,0,0.3); }
 .badge-coral { background: rgba(244,81,30,0.15); color: #FF8A65; border: 1px solid rgba(244,81,30,0.3); }
 .badge-purple { background: rgba(124,77,255,0.15); color: #B39DDB; border: 1px solid rgba(124,77,255,0.3); }
+
+/* ─── CLEARANCE UX ─── */
+.clearance-hero {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap; margin-bottom: 18px;
+}
+.clearance-hero-copy { display: grid; gap: 6px; max-width: 560px; }
+.clearance-hero-copy h2 {
+  margin: 0; font-family: 'Inter', sans-serif; font-size: 22px; font-weight: 800;
+}
+.clearance-hero-copy p { margin: 0; color: var(--text-muted); font-size: 13px; line-height: 1.5; }
+.clearance-kpi-row {
+  display: flex; flex-wrap: wrap; gap: 10px;
+}
+.clearance-kpi {
+  min-width: 118px; padding: 12px 14px; border-radius: 12px;
+  border: 1px solid var(--border-bright); background: var(--panel-bg);
+}
+.clearance-kpi-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .6px; }
+.clearance-kpi-value { font-size: 24px; font-weight: 800; margin-top: 4px; }
+.clearance-list { display: grid; gap: 16px; }
+.clearance-exit-card {
+  border: 1px solid var(--border-bright); border-radius: 16px;
+  background: var(--record-card-bg);
+  overflow: hidden;
+}
+.clearance-exit-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 16px 18px; border-bottom: 1px solid var(--border);
+  background: var(--highlight);
+}
+.clearance-exit-identity { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.clearance-exit-avatar {
+  width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center;
+  font-weight: 800; font-size: 14px; color: var(--avatar-fg); flex-shrink: 0;
+  border: 1px solid var(--border-bright); background: var(--avatar-bg);
+}
+.clearance-exit-name { font-weight: 700; font-size: 15px; }
+.clearance-exit-meta { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
+.clearance-exit-progress-wrap { min-width: 140px; text-align: right; }
+.clearance-exit-progress-label { font-size: 11px; color: var(--text-muted); margin-bottom: 6px; }
+.clearance-progress-track {
+  height: 8px; border-radius: 999px; background: var(--progress-track); overflow: hidden;
+}
+.clearance-progress-fill {
+  height: 100%; border-radius: 999px;
+  background: linear-gradient(90deg, var(--blue-bright), var(--progress-fill-end));
+  transition: width .25s ease;
+}
+.clearance-dept-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px; padding: 16px 18px 18px;
+}
+.clearance-dept-card {
+  border: 1px solid var(--border); border-radius: 14px; padding: 14px;
+  background: var(--panel-bg); display: grid; gap: 10px;
+  transition: border-color .2s, transform .15s, box-shadow .2s;
+}
+.clearance-dept-card:hover { border-color: var(--border-bright); transform: translateY(-1px); }
+.clearance-dept-card.is-done { border-color: rgba(34, 197, 94, 0.35); background: var(--status-success-bg); }
+.clearance-dept-card.is-pending { border-color: rgba(255, 213, 79, 0.22); }
+.clearance-dept-top { display: flex; align-items: flex-start; gap: 10px; }
+.clearance-dept-icon {
+  width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center;
+  font-size: 17px; flex-shrink: 0;
+}
+.clearance-dept-icon.tone-hod { background: rgba(124,77,255,0.18); color: #B39DDB; border: 1px solid rgba(124,77,255,0.28); }
+.clearance-dept-icon.tone-it { background: var(--highlight-strong); color: var(--text); border: 1px solid var(--border-bright); }
+.clearance-dept-icon.tone-finance { background: rgba(0,137,123,0.18); color: #4DB6AC; border: 1px solid rgba(0,191,165,0.28); }
+.clearance-dept-icon.tone-admin { background: rgba(255,179,0,0.12); color: #FFD54F; border: 1px solid rgba(255,179,0,0.24); }
+.clearance-dept-icon.tone-transport { background: rgba(244,81,30,0.12); color: #FF8A65; border: 1px solid rgba(244,81,30,0.24); }
+.clearance-dept-icon.tone-hr { background: rgba(0,151,167,0.15); color: #4DD0E1; border: 1px solid rgba(0,188,212,0.28); }
+.clearance-dept-icon.tone-pro { background: rgba(156,39,176,0.15); color: #CE93D8; border: 1px solid rgba(186,104,200,0.28); }
+.clearance-dept-title { font-size: 13px; font-weight: 700; line-height: 1.35; }
+.clearance-dept-sub { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+.clearance-dept-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.clearance-empty {
+  padding: 36px 20px; text-align: center; color: var(--text-muted);
+  border: 1px dashed var(--border-bright); border-radius: 14px; background: var(--panel-muted-bg);
+}
+.clearance-empty i { font-size: 28px; display: block; margin-bottom: 10px; opacity: .75; }
+.clearance-checklist-shell { display: grid; gap: 14px; }
+.clearance-checklist-head {
+  padding: 14px 16px; border-radius: 12px;
+  background: var(--highlight);
+  border: 1px solid var(--border-bright);
+}
+.clearance-checklist-items { display: grid; gap: 10px; max-height: 52vh; overflow: auto; padding-right: 4px; }
+.clearance-check-item {
+  border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px;
+  background: var(--panel-bg); display: grid; gap: 10px;
+}
+.clearance-check-item.is-collected { border-color: var(--status-success-border); background: var(--status-success-bg); }
+.clearance-check-item.is-na { border-color: var(--border-bright); opacity: .92; }
+.clearance-check-item-top { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
+.clearance-check-item-title { font-weight: 600; font-size: 14px; }
+.clearance-financial-fields { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0 6px; }
+.clearance-check-amount { max-width: 160px; }
+.clearance-financial-meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 12px; margin: 6px 0; }
+.clearance-check-item.is-financial { border-color: var(--financial-item-border); }
+.clearance-check-note {
+  width: 100%; padding: 9px 11px; border-radius: 9px;
+  border: 1px solid var(--border-bright); background: var(--input-bg);
+  color: var(--text); font-size: 13px;
+}
+.clearance-check-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.clearance-board {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px;
+}
+.clearance-board .clearance-dept-card { padding: 12px; }
 
 /* ─── BUTTON ─── */
 .btn {
@@ -776,11 +1434,11 @@ tbody tr:last-child { border-bottom: none; }
   font-family: 'Inter', sans-serif; font-size: 13.5px; font-weight: 500;
   transition: all .2s; text-decoration: none;
 }
-.btn-primary { background: linear-gradient(135deg, var(--blue), var(--blue-bright)); color: #fff; }
-.btn-primary:hover { filter: brightness(1.1); transform: translateY(-1px); box-shadow: 0 4px 20px rgba(21,101,192,0.4); }
-.btn-secondary { background: rgba(21,56,100,0.5); color: var(--text); border: 1px solid var(--border-bright); }
-.btn-secondary:hover { background: rgba(21,56,100,0.8); border-color: var(--blue-bright); }
-.btn-accent { background: linear-gradient(135deg, var(--accent), var(--green)); color: #fff; }
+.btn-primary { background: var(--primary); color: var(--primary-fg); font-weight: 600; }
+.btn-primary:hover { filter: brightness(0.92); transform: translateY(-1px); box-shadow: 0 4px 24px rgba(0,0,0,0.45); }
+.btn-secondary { background: var(--highlight); color: var(--text); border: 1px solid var(--border-bright); }
+.btn-secondary:hover { background: var(--highlight-strong); border-color: var(--border-bright); }
+.btn-accent { background: var(--green); color: #fff; }
 .btn-accent:hover { filter: brightness(1.1); }
 .btn-sm { padding: 6px 12px; font-size: 12px; border-radius: 7px; }
 .btn-danger { background: rgba(244,81,30,0.2); color: #FF8A65; border: 1px solid rgba(244,81,30,0.3); }
@@ -791,7 +1449,7 @@ tbody tr:last-child { border-bottom: none; }
 .form-group.full { grid-column: 1/-1; }
 label { font-size: 12px; font-weight: 500; color: var(--text-muted); letter-spacing: .3px; }
 input, select, textarea {
-  background: rgba(10,25,50,0.6); border: 1px solid var(--border-bright);
+  background: var(--input-bg); border: 1px solid var(--border-bright);
   border-radius: 8px; padding: 10px 12px;
   color: var(--text); font-family: 'Inter', sans-serif; font-size: 13.5px;
   transition: border-color .2s, background .2s; outline: none; width: 100%;
@@ -800,42 +1458,242 @@ input[readonly] {
   opacity: 0.9;
 }
 input:focus, select:focus, textarea:focus {
-  border-color: var(--blue-bright); background: rgba(15,35,70,0.8);
+  border-color: var(--focus); background: var(--input-bg-focus);
 }
-select option { background: #0B1D3A; }
+select option { background: var(--surface-raised); color: var(--text); }
 textarea { resize: vertical; min-height: 80px; }
+
+.password-field { position: relative; width: 100%; }
+.password-field input { padding-right: 42px; }
+.password-toggle-btn {
+  position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+  border: none; background: transparent; color: var(--text-muted);
+  cursor: pointer; padding: 4px; line-height: 1; display: flex; align-items: center;
+}
+.password-toggle-btn:hover { color: var(--text); }
+.login-error {
+  display: none; margin-top: 12px; padding: 10px 12px; border-radius: 8px;
+  background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.35);
+  color: #fca5a5; font-size: 13px;
+}
+
+/* ─── LOGIN MODAL ─── */
+#hrms-login-modal.modal-overlay {
+  z-index: 20000;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  align-items: center;
+  justify-content: center;
+}
+#hrms-login-modal .login-modal {
+  max-width: 420px;
+  width: 100%;
+  padding: 28px 28px 24px;
+  margin: auto;
+  flex-shrink: 0;
+}
+#hrms-login-modal .login-brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 24px;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+#hrms-login-modal .login-brand img {
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+#hrms-login-modal .login-brand-name {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  color: var(--text);
+  line-height: 1.2;
+}
+#hrms-login-modal .login-brand-tag {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+#hrms-login-modal .login-title {
+  margin: 0 0 6px;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 20px;
+  font-weight: 700;
+  text-align: center;
+  color: var(--text);
+}
+#hrms-login-modal .login-subtitle {
+  margin: 0 0 20px;
+  font-size: 13px;
+  color: var(--text-muted);
+  text-align: center;
+  line-height: 1.45;
+}
+#hrms-login-modal .login-info {
+  display: none;
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--highlight);
+  border: 1px solid var(--border-bright);
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: center;
+}
+#hrms-login-modal .login-form {
+  display: grid;
+  gap: 14px;
+}
+#hrms-login-modal .login-form .form-group {
+  margin: 0;
+}
+#hrms-login-modal .login-email-readonly {
+  opacity: 0.85;
+}
+#hrms-login-modal .login-password-meta {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: -6px;
+}
+#hrms-login-modal .login-actions {
+  display: grid;
+  gap: 10px;
+  margin-top: 20px;
+  padding-top: 0;
+  border-top: none;
+}
+#hrms-login-modal .login-actions .btn-primary {
+  width: 100%;
+  justify-content: center;
+  min-height: 44px;
+  font-size: 14px;
+}
+#hrms-login-modal .login-actions .btn-secondary {
+  width: 100%;
+  justify-content: center;
+}
+#hrms-login-modal .login-actions .btn-link {
+  width: 100%;
+  justify-content: center;
+  margin-top: 2px;
+}
+.btn-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: 'Inter', sans-serif;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: none;
+  transition: color .2s;
+}
+.btn-link:hover { color: var(--text); text-decoration: underline; }
+.btn-link.btn-sm { font-size: 12px; }
+
+@media (max-width: 900px) {
+  #hrms-login-modal.modal-overlay {
+    padding: max(20px, env(safe-area-inset-top, 20px)) 16px max(20px, env(safe-area-inset-bottom, 20px));
+    align-items: center;
+    justify-content: center;
+  }
+  #hrms-login-modal .login-modal {
+    padding: 24px 20px 22px;
+    border-radius: 16px;
+    max-width: 420px;
+  }
+}
+
+.tone-accent { color: var(--ui-accent) !important; }
+.tone-success { color: var(--green) !important; }
+.tone-teal { color: #14b8a6 !important; }
+.tone-warning { color: var(--amber) !important; }
+.tone-gold { color: #d97706 !important; }
+.tone-danger { color: var(--coral) !important; }
+
+.search-results-dropdown {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  z-index: 20;
+  display: none;
+  max-height: 240px;
+  overflow: auto;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-bright);
+  border-radius: 8px;
+  margin-top: 4px;
+  box-shadow: var(--dropdown-shadow);
+}
+
+html[data-theme="light"] .badge-green { background: rgba(16,185,129,0.12); color: #047857; border-color: rgba(16,185,129,0.25); }
+html[data-theme="light"] .badge-amber { background: rgba(245,158,11,0.12); color: #b45309; border-color: rgba(245,158,11,0.25); }
+html[data-theme="light"] .badge-coral { background: rgba(239,68,68,0.1); color: #b91c1c; border-color: rgba(239,68,68,0.22); }
+html[data-theme="light"] .alert-success { color: #047857; background: rgba(16,185,129,0.1); border-color: rgba(16,185,129,0.25); }
+html[data-theme="light"] .alert-warn { color: #b45309; background: rgba(245,158,11,0.1); border-color: rgba(245,158,11,0.25); }
+html[data-theme="light"] .alert-error { color: #b91c1c; background: rgba(239,68,68,0.08); border-color: rgba(239,68,68,0.22); }
+html[data-theme="light"] .login-error { color: #b91c1c; background: rgba(239,68,68,0.08); }
+html[data-theme="light"] .modal { box-shadow: var(--dropdown-shadow); }
+html[data-theme="light"] #sidebar { box-shadow: 20px 0 40px rgba(15, 23, 42, 0.08); }
+html[data-theme="light"] .clearance-dept-icon.tone-hod { color: #6d28d9; background: rgba(109,40,217,0.1); border-color: rgba(109,40,217,0.22); }
+html[data-theme="light"] .clearance-dept-icon.tone-finance { color: #0f766e; background: rgba(15,118,110,0.1); border-color: rgba(15,118,110,0.22); }
+html[data-theme="light"] .clearance-dept-icon.tone-admin { color: #b45309; background: rgba(245,158,11,0.1); border-color: rgba(245,158,11,0.22); }
+html[data-theme="light"] .clearance-dept-icon.tone-transport { color: #c2410c; background: rgba(234,88,12,0.1); border-color: rgba(234,88,12,0.22); }
+html[data-theme="light"] .clearance-dept-icon.tone-hr { color: #0e7490; background: rgba(14,116,144,0.1); border-color: rgba(14,116,144,0.22); }
+html[data-theme="light"] .clearance-dept-icon.tone-pro { color: #7e22ce; background: rgba(126,34,206,0.1); border-color: rgba(126,34,206,0.22); }
 
 .manager-dropdown { position: relative; width: 100%; }
 .manager-trigger {
-  background: rgba(10,25,50,0.6); border: 1px solid var(--border-bright);
+  background: var(--input-bg); border: 1px solid var(--border-bright);
   border-radius: 8px; padding: 10px 12px; color: var(--text);
   font-family: 'Inter', sans-serif; font-size: 13.5px; width: 100%;
   text-align: left; cursor: pointer;
 }
-.manager-trigger:focus { border-color: var(--blue-bright); outline: none; }
+.manager-trigger:focus { border-color: var(--focus); outline: none; }
 .manager-menu {
   position: absolute; z-index: 250; left: 0; right: 0; top: calc(100% + 6px);
-  background: #0E1F3D; border: 1px solid var(--border-bright);
+  background: var(--surface-raised); border: 1px solid var(--border-bright);
   border-radius: 10px; padding: 8px; display: none;
-  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--dropdown-shadow);
 }
 .manager-menu.open { display: block; }
-.manager-menu input { margin-bottom: 8px; }
+.manager-menu input { margin-bottom: 8px; background: var(--input-bg); }
 .manager-options {
   max-height: 220px; overflow: auto; border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 8px; background: var(--surface-raised);
+}
+.manager-options.search-results-dropdown {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  z-index: 20;
+  margin-top: 4px;
+  box-shadow: var(--dropdown-shadow);
 }
 .manager-group-label {
   padding: 7px 10px; font-size: 11px; font-weight: 700;
   letter-spacing: 0.6px; text-transform: uppercase; color: var(--text-dim);
-  background: rgba(99,102,241,0.08);
+  background: var(--highlight);
 }
 .manager-option {
   width: 100%; text-align: left; padding: 8px 10px; border: none;
   background: transparent; color: var(--text); cursor: pointer;
   font-family: 'Inter', sans-serif; font-size: 13px;
 }
-.manager-option:hover { background: rgba(21,101,192,0.2); }
+.manager-option:hover { background: var(--highlight-strong); }
 .manager-empty {
   padding: 10px; font-size: 12px; color: var(--text-muted);
 }
@@ -849,7 +1707,7 @@ textarea { resize: vertical; min-height: 80px; }
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 14px;
-  background: rgba(7, 18, 36, 0.45);
+  background: var(--panel-muted-bg);
 }
 #emp-modal .emp-section-title {
   font-size: 12px;
@@ -868,13 +1726,13 @@ textarea { resize: vertical; min-height: 80px; }
 /* ─── MODAL ─── */
 .modal-overlay {
   position: fixed; inset: 0; z-index: 200;
-  background: rgba(5,12,25,0.8); backdrop-filter: blur(8px);
+  background: var(--overlay-bg); backdrop-filter: blur(8px);
   display: none; align-items: center; justify-content: center;
   padding: 20px;
 }
 .modal-overlay.open { display: flex; }
 .modal {
-  background: #0E1F3D; border: 1px solid var(--border-bright);
+  background: var(--surface-raised); border: 1px solid var(--border-bright);
   border-radius: 18px; padding: 28px; width: 100%; max-width: 680px;
   max-height: 90vh; overflow-y: auto;
   box-shadow: 0 24px 80px rgba(0,0,0,0.6);
@@ -884,35 +1742,151 @@ textarea { resize: vertical; min-height: 80px; }
 .modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
 .modal-title { font-family: 'Inter', sans-serif; font-size: 18px; font-weight: 700; }
 .modal-close { width: 30px; height: 30px; border-radius: 7px; border: 1px solid var(--border-bright); background: transparent; cursor: pointer; color: var(--text-muted); font-size: 16px; display: flex; align-items: center; justify-content: center; transition: all .2s; }
-.modal-close:hover { color: var(--text); background: rgba(30,56,100,0.5); }
+.modal-close:hover { color: var(--text); background: var(--highlight-strong); }
 .modal-footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--border); }
 
+.doc-viewer-modal {
+  max-width: min(960px, 96vw);
+  width: 100%;
+  padding: 20px 22px 22px;
+  display: flex;
+  flex-direction: column;
+  max-height: 92vh;
+}
+.doc-viewer-body {
+  flex: 1;
+  min-height: 420px;
+  max-height: calc(92vh - 88px);
+  background: var(--panel-muted-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.doc-viewer-frame {
+  width: 100%;
+  height: 100%;
+  min-height: 420px;
+  border: 0;
+  background: #fff;
+}
+.doc-viewer-image {
+  display: block;
+  max-width: 100%;
+  max-height: calc(92vh - 120px);
+  object-fit: contain;
+}
+.doc-viewer-loading,
+.doc-viewer-fallback {
+  padding: 32px 24px;
+  text-align: center;
+  color: var(--text-muted);
+}
+.doc-viewer-fallback {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.documents-page-card { max-width: 760px; }
+.exit-form-card { max-width: 620px; }
+
+.leave-annual-balance-panel {
+  margin-top: 8px;
+  padding: 12px;
+  background: var(--highlight);
+  border: 1px solid var(--border-bright);
+  border-radius: 10px;
+}
+.leave-al-mini-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.leave-al-mini-item {
+  padding: 8px 10px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.leave-al-mini-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.leave-al-mini-value {
+  font-size: 15px;
+  font-weight: 700;
+  margin-top: 2px;
+  line-height: 1.2;
+}
+#leave-annual-balance-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  text-align: left;
+}
+#leave-annual-balance-toggle .toggle-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+#leave-annual-balance-toggle.open #leave-annual-balance-chevron {
+  transform: rotate(180deg);
+}
+#leave-annual-balance-chevron {
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
 /* ─── TABS ─── */
-.tabs { display: flex; gap: 4px; background: rgba(10,25,50,0.5); border-radius: 10px; padding: 4px; margin-bottom: 20px; border: 1px solid var(--border); }
+.tabs { display: flex; gap: 4px; background: var(--chip-bg); border-radius: 10px; padding: 4px; margin-bottom: 20px; border: 1px solid var(--border); }
 .tab-btn {
   flex: 1; padding: 9px 14px; border-radius: 7px; border: none;
   background: transparent; color: var(--text-muted);
   cursor: pointer; font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 500;
   transition: all .2s; text-align: center;
 }
-.tab-btn.active { background: rgba(21,101,192,0.35); color: #fff; }
+.tab-btn.active { background: var(--highlight-strong); color: var(--text); font-weight: 600; }
 .tab-pane { display: none; }
 .tab-pane.active { display: block; }
 
 /* ─── PROGRESS BAR ─── */
-.progress { height: 6px; background: rgba(30,56,100,0.5); border-radius: 3px; overflow: hidden; }
+.progress { height: 6px; background: var(--progress-track); border-radius: 3px; overflow: hidden; }
 .progress-bar { height: 100%; border-radius: 3px; transition: width .6s; }
-.progress-blue { background: linear-gradient(90deg, var(--blue), var(--blue-bright)); }
-.progress-accent { background: linear-gradient(90deg, var(--accent), #4DD0E1); }
+.progress-blue { background: linear-gradient(90deg, var(--blue-bright), var(--progress-fill-end)); }
+.progress-accent { background: linear-gradient(90deg, var(--green), #86efac); }
 .progress-amber { background: linear-gradient(90deg, var(--amber), #FFE082); }
 .progress-coral { background: linear-gradient(90deg, var(--coral), #FF8A65); }
+
+#import-progress-modal.open {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 12000;
+}
+#import-progress-modal .modal {
+  pointer-events: none;
+  width: min(420px, 92vw);
+}
+#import-progress-bar {
+  transition: width 0.25s ease;
+}
 
 /* ─── DONUT CHART (CSS) ─── */
 .donut-wrap { display: flex; align-items: center; gap: 20px; }
 .donut {
   width: 110px; height: 110px; border-radius: 50%; flex-shrink: 0;
   background: conic-gradient(
-    var(--accent) 0% 36%,
+    var(--ui-accent) 0% 36%,
     var(--blue-bright) 36% 58%,
     var(--amber) 58% 72%,
     var(--coral) 72% 82%,
@@ -922,7 +1896,7 @@ textarea { resize: vertical; min-height: 80px; }
 }
 .donut::after {
   content: ''; position: absolute; inset: 20px;
-  background: #0E1F3D; border-radius: 50%;
+  background: var(--donut-inner); border-radius: 50%;
 }
 .legend-item { display: flex; align-items: center; gap: 7px; margin-bottom: 7px; font-size: 12.5px; }
 .legend-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
@@ -930,7 +1904,7 @@ textarea { resize: vertical; min-height: 80px; }
 /* ─── ALERT / NOTIFICATION ─── */
 .alert { padding: 12px 16px; border-radius: 10px; margin-bottom: 12px; font-size: 13px; display: flex; align-items: flex-start; gap: 10px; }
 .alert-warn { background: rgba(255,179,0,0.1); border: 1px solid rgba(255,179,0,0.3); color: #FFD54F; }
-.alert-info { background: rgba(21,101,192,0.15); border: 1px solid rgba(30,136,229,0.3); color: #64B5F6; }
+.alert-info { background: var(--highlight-strong); border: 1px solid var(--border-bright); color: var(--text); }
 .alert-success { background: rgba(0,137,123,0.15); border: 1px solid rgba(0,191,165,0.3); color: #4DB6AC; }
 .alert-error { background: rgba(244,81,30,0.1); border: 1px solid rgba(244,81,30,0.3); color: #FF8A65; }
 .alert-icon { font-size: 15px; flex-shrink: 0; margin-top: 1px; }
@@ -944,8 +1918,77 @@ textarea { resize: vertical; min-height: 80px; }
 .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; flex-wrap: wrap; }
 .toolbar .search-bar { flex: 1; min-width: 200px; }
 
+/* ─── LEAVE HISTORY DATE RANGE ─── */
+.leave-history-range-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  background: var(--highlight);
+  border: 1px solid var(--border-bright);
+  border-radius: 12px;
+}
+.range-picker-fields {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.range-picker-field label {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.range-date-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 170px;
+  padding: 8px 10px;
+  background: var(--card);
+  border: 1px solid var(--border-bright);
+  border-radius: 8px;
+}
+.range-date-input i {
+  color: var(--accent);
+  font-size: 14px;
+}
+.range-date-input input[type="date"] {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  min-width: 0;
+  padding: 0;
+}
+.range-date-input input[type="date"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.75;
+}
+.range-picker-sep {
+  color: var(--text-muted);
+  font-size: 16px;
+  padding-bottom: 8px;
+}
+.range-picker-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.range-picker-actions {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 /* ─── PAYSLIP CARD ─── */
-.payslip-card { background: rgba(21,101,192,0.08); border: 1px solid rgba(30,136,229,0.2); border-radius: 12px; padding: 18px; margin-bottom: 12px; }
+.payslip-card { background: var(--highlight); border: 1px solid var(--border-bright); border-radius: 12px; padding: 18px; margin-bottom: 12px; }
 .payslip-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 13.5px; }
 .payslip-total { border-top: 1px solid var(--border-bright); padding-top: 12px; margin-top: 8px; font-weight: 700; font-size: 15px; color: var(--accent); }
 
@@ -960,9 +2003,9 @@ textarea { resize: vertical; min-height: 80px; }
 .avatar-stack { display: flex; }
 .avatar-stack .av {
   width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--navy);
-  background: linear-gradient(135deg, var(--blue), var(--accent));
+  background: var(--avatar-bg); border: 1px solid var(--border-bright);
   display: flex; align-items: center; justify-content: center;
-  font-size: 10px; font-weight: 700; margin-left: -7px; color: #fff;
+  font-size: 10px; font-weight: 700; margin-left: -7px; color: var(--avatar-fg);
 }
 .avatar-stack .av:first-child { margin-left: 0; }
 
@@ -972,21 +2015,21 @@ textarea { resize: vertical; min-height: 80px; }
 .mini-cal-grid { display: grid; grid-template-columns: repeat(7,1fr); gap: 2px; text-align: center; }
 .mini-cal-grid .day-head { font-size: 10px; color: var(--text-muted); padding: 3px 0; }
 .mini-cal-grid .day { padding: 5px 2px; border-radius: 5px; cursor: pointer; transition: background .15s; }
-.mini-cal-grid .day:hover { background: rgba(21,101,192,0.25); }
-.mini-cal-grid .day.today { background: var(--blue); font-weight: 700; }
-.mini-cal-grid .day.has-leave { background: rgba(0,191,165,0.2); color: var(--accent); }
+.mini-cal-grid .day:hover { background: var(--highlight-strong); }
+.mini-cal-grid .day.today { background: var(--highlight-strong); color: var(--text); font-weight: 700; }
+.mini-cal-grid .day.has-leave { background: var(--status-success-bg); color: var(--status-success-fg); }
 .mini-cal-grid .day.muted { color: var(--text-dim); }
 
 /* ─── CHIP ─── */
-.chip { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 20px; font-size: 11.5px; background: rgba(30,56,100,0.5); border: 1px solid var(--border-bright); color: var(--text-muted); cursor: pointer; transition: all .2s; }
-.chip.active, .chip:hover { background: rgba(21,101,192,0.3); border-color: var(--blue-bright); color: var(--text); }
+.chip { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 20px; font-size: 11.5px; background: var(--highlight); border: 1px solid var(--border-bright); color: var(--text-muted); cursor: pointer; transition: all .2s; }
+.chip.active, .chip:hover { background: var(--highlight-strong); border-color: var(--border-bright); color: var(--text); }
 
 /* ─── STEP INDICATOR ─── */
 .steps { display: flex; align-items: center; gap: 0; margin-bottom: 20px; flex-wrap: wrap; gap: 6px; }
 .step { display: flex; align-items: center; gap: 6px; }
 .step-num { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--border-bright); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: var(--text-muted); transition: all .3s; }
-.step.done .step-num { background: var(--accent); border-color: var(--accent); color: #fff; }
-.step.active .step-num { background: var(--blue); border-color: var(--blue-bright); color: #fff; }
+.step.done .step-num { background: var(--green); border-color: var(--green); color: #fff; }
+.step.active .step-num { background: var(--primary); border-color: var(--primary); color: var(--primary-fg); }
 .step-label { font-size: 11.5px; color: var(--text-muted); }
 .step.active .step-label { color: var(--text); font-weight: 500; }
 .step-arrow { color: var(--text-dim); font-size: 11px; }
@@ -999,6 +2042,9 @@ textarea { resize: vertical; min-height: 80px; }
 .tl-dot.green { background: var(--accent); border-color: var(--accent-light); }
 .tl-dot.amber { background: var(--amber); border-color: #FFE082; }
 .tl-date { font-size: 11px; color: var(--text-dim); margin-bottom: 3px; }
+.tl-item.is-summary .tl-dot { background: #64748b; border-color: #94a3b8; width: 10px; height: 10px; left: -22px; }
+.tl-item.is-summary .tl-text { color: var(--text-dim); font-size: 13px; }
+.tl-gap { font-size: 11px; color: var(--text-dim); opacity: 0.75; margin-top: 2px; }
 .tl-text { font-size: 13px; color: var(--text); }
 
 /* ─── NOTIFICATION ─── */
@@ -1006,7 +2052,7 @@ textarea { resize: vertical; min-height: 80px; }
 .notif-item:last-child { border-bottom: none; }
 .notif-icon { width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 17px; flex-shrink: 0; }
 .notif-icon.warn { background: rgba(255,179,0,0.15); }
-.notif-icon.info { background: rgba(21,101,192,0.15); }
+.notif-icon.info { background: var(--highlight-strong); }
 .notif-icon.success { background: rgba(0,137,123,0.15); }
 .notif-icon.error { background: rgba(244,81,30,0.15); }
 .notif-title { font-size: 13.5px; font-weight: 500; margin-bottom: 3px; }
@@ -1038,9 +2084,10 @@ textarea { resize: vertical; min-height: 80px; }
 /* ─── NOTIFICATION PANEL ─── */
 #notif-panel {
   position: fixed; top: var(--header-h); right: 0; bottom: 0; width: 340px;
-  background: rgba(8,18,36,0.97); border-left: 1px solid var(--border-bright);
+  background: var(--header-bg); border-left: 1px solid var(--border-bright);
   z-index: 150; transform: translateX(100%); transition: transform .3s cubic-bezier(.4,0,.2,1);
   backdrop-filter: blur(20px); overflow-y: auto; padding: 20px;
+  box-shadow: var(--dropdown-shadow);
 }
 #notif-panel.open { transform: none; }
 .notif-panel-title { font-family: 'Inter', sans-serif; font-size: 16px; font-weight: 700; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; }
@@ -1048,7 +2095,7 @@ textarea { resize: vertical; min-height: 80px; }
 #mobile-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(3, 10, 21, 0.65);
+  background: var(--overlay-bg);
   backdrop-filter: blur(2px);
   z-index: 120;
   opacity: 0;
@@ -1072,18 +2119,64 @@ textarea { resize: vertical; min-height: 80px; }
 }
 #toast.show { opacity: 1; transform: none; }
 
+/* ─── MOBILE BOTTOM TABS ─── */
+#mobile-bottom-nav {
+  display: none;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 140;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+  padding: 6px 8px calc(8px + env(safe-area-inset-bottom, 0px));
+  background: var(--header-bg);
+  border-top: 1px solid var(--border-bright);
+  backdrop-filter: blur(14px);
+  box-shadow: var(--dropdown-shadow);
+}
+.bottom-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 52px;
+  padding: 6px 4px;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .2px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.bottom-tab i { font-size: 21px; line-height: 1; }
+.bottom-tab.active {
+  color: var(--text);
+  background: var(--highlight-strong);
+}
+.bottom-tab:active { transform: scale(0.97); }
+
 @media (max-width: 900px) {
   :root { --sidebar-w: 0px; }
+  .header-desktop-only { display: none !important; }
+  .settings-mobile-quick { display: block; }
+  .settings-appearance-desktop { display: none; }
   #sidebar {
     transform: translateX(-250px);
     --sidebar-w: 250px;
     z-index: 130;
-    box-shadow: 20px 0 40px rgba(0,0,0,0.35);
+    box-shadow: 20px 0 40px rgba(0,0,0,0.15);
+    background: var(--sidebar-bg);
   }
   #sidebar.mob-open { transform: none; }
   #header {
     left: 0;
     padding: 0 14px;
+    background: var(--header-bg);
   }
   .mobile-menu-btn { display: inline-flex; }
   .header-title {
@@ -1091,7 +2184,9 @@ textarea { resize: vertical; min-height: 80px; }
     min-width: 0;
   }
   .header-title span { display: none; }
-  #main { margin-left: 0; }
+  #main { margin-left: 0; padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
+  #mobile-bottom-nav { display: grid; }
+  .nav-item.nav-in-bottom-bar { display: none !important; }
   .view { padding: 18px 14px; }
   .tabs {
     overflow-x: auto;
@@ -1136,6 +2231,51 @@ textarea { resize: vertical; min-height: 80px; }
   #view-profile .profile-hero-body { grid-template-columns: 1fr; justify-items: start; }
   #view-profile .profile-hero-meta { justify-items: start; }
   #view-profile .profile-grid { grid-template-columns: 1fr; }
+  .desktop-table-view { display: none !important; }
+  .mobile-card-view { display: grid; gap: 10px; }
+  .card { overflow: visible; height: auto !important; }
+  .table-wrap:not(.desktop-table-view) { overflow-x: visible; }
+  .record-card-grid { grid-template-columns: 1fr; }
+  .record-card-actions .btn { flex: 1 1 100%; }
+  #leave-history-emp-wrap,
+  #leave-history-dept-wrap { min-width: 0 !important; width: 100%; }
+  .range-picker-fields { flex-direction: column; align-items: stretch; }
+  .range-picker-sep { display: none; }
+  .range-date-input { min-width: 0; width: 100%; }
+  .range-picker-actions { align-items: stretch; }
+  .range-picker-actions .form-group,
+  .range-picker-actions .btn { width: 100%; flex: 1 1 100%; }
+  #leave-balance-meta { font-size: 12px; line-height: 1.45; word-break: break-word; }
+  .payadjust-form-card { max-width: none; }
+  #adj-process-wrap { width: 100%; flex-direction: column; align-items: stretch; }
+  .payadjust-month-input { width: 100%; min-width: 0; }
+  #adj-process-wrap .btn { width: 100%; }
+  .payadjust-list-head { align-items: flex-start; }
+  #adj-loans .payadjust-loans-grid { grid-template-columns: 1fr; }
+  #adj-loans .payadjust-loans-grid > .card:last-child { order: -1; }
+  #view-payadjust .flex.gap-8.mt-16 { flex-direction: column; align-items: stretch; }
+  #view-payadjust .flex.gap-8.mt-16 .btn { width: 100%; }
+  #view-payadjust .record-card-actions .flex { flex-direction: column; align-items: stretch; width: 100%; }
+  #view-payadjust .record-card-actions .flex .btn { width: 100%; }
+  .documents-page-card { max-width: none; }
+  .exit-form-card { max-width: none; }
+  .pro-stage-select { width: 100%; min-width: 0; }
+  #documents-meta { font-size: 12px; line-height: 1.45; word-break: break-word; }
+  .doc-viewer-modal { padding: 16px; max-height: calc(100vh - 24px); }
+  .doc-viewer-body { min-height: 280px; max-height: calc(100vh - 150px); }
+  .doc-viewer-frame { min-height: 280px; }
+  .doc-viewer-image { max-height: calc(100vh - 170px); }
+  .calendar-head {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .calendar-month-label { font-size: 13px; }
+  #toast {
+    left: 12px;
+    right: 12px;
+    bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+    width: auto;
+  }
 }
 
 @media (max-width: 640px) {
@@ -1155,7 +2295,7 @@ textarea { resize: vertical; min-height: 80px; }
   #toast {
     left: 12px;
     right: 12px;
-    bottom: 12px;
+    bottom: calc(76px + env(safe-area-inset-bottom, 0px));
     width: auto;
   }
 }
@@ -1166,7 +2306,9 @@ textarea { resize: vertical; min-height: 80px; }
 <!-- SIDEBAR -->
 <nav id="sidebar">
   <div class="sidebar-logo">
-    <img src="/Mask%20group.avif" alt="Company logo">
+    <img class="theme-logo-dark" src="/brand/logo-mark-light-sm.png" alt="">
+    <img class="theme-logo-light" src="/brand/logo-mark-sm.png" alt="">
+    <div class="logo-text">Mulk HRMS</div>
   </div>
   <div class="sidebar-nav">
     <div class="nav-section">
@@ -1213,6 +2355,9 @@ textarea { resize: vertical; min-height: 80px; }
       <div class="nav-item" onclick="navigate('pro', this)">
         <i class="bi bi-passport nav-icon"></i> PRO &amp; Visas
       </div>
+      <div class="nav-item" onclick="navigate('masterdata', this)">
+        <i class="bi bi-sliders nav-icon"></i> Master Data
+      </div>
     </div>
     <div class="nav-section">
       <div class="nav-label">Settings</div>
@@ -1235,8 +2380,8 @@ textarea { resize: vertical; min-height: 80px; }
 
 <!-- HEADER -->
 <header id="header">
-  <button class="icon-btn mobile-menu-btn" type="button" aria-label="Toggle menu" onclick="toggleSidebar()">
-    <i class="bi bi-list"></i>
+  <button class="icon-btn mobile-menu-btn" type="button" aria-label="More menu" onclick="toggleSidebar()">
+    <i class="bi bi-grid"></i>
   </button>
   <div class="header-title" id="header-title">Dashboard <span>/ Overview</span></div>
   <div class="header-actions">
@@ -1248,10 +2393,13 @@ textarea { resize: vertical; min-height: 80px; }
       <button id="header-check-in-btn" class="btn btn-primary btn-sm" onclick="window.__attendanceCheckIn()">Check In</button>
       <button id="header-check-out-btn" class="btn btn-secondary btn-sm" style="display:none" onclick="window.__attendanceCheckOut()">Check Out</button>
     </div>
+    <button type="button" class="icon-btn header-desktop-only" id="theme-toggle-btn" title="Switch theme" aria-label="Switch theme" onclick="toggleHrmsTheme()">
+      <i class="bi bi-sun-fill" id="theme-toggle-icon"></i>
+    </button>
     <div class="icon-btn" title="Notifications" onclick="toggleNotifPanel()">
       <i class="bi bi-bell"></i> <span class="dot" id="notif-dot"></span>
     </div>
-    <div class="icon-btn logout-btn" title="Logout" onclick="logout()"><i class="bi bi-power"></i></div>
+    <div class="icon-btn logout-btn header-desktop-only" id="header-logout-btn" title="Logout" onclick="logout()"><i class="bi bi-power"></i></div>
   </div>
 </header>
 
@@ -1271,23 +2419,30 @@ textarea { resize: vertical; min-height: 80px; }
   <div class="stats-grid">
     <div class="stat-card">
       <div class="stat-label">Total Headcount</div>
-      <div class="stat-value" style="color:#64B5F6">248</div>
+      <div class="stat-value tone-accent">248</div>
       <div class="stat-sub"><span class="trend-up">↑ 4</span> this month</div>
     </div>
     <div class="stat-card">
       <div class="stat-label">On Leave Today</div>
-      <div class="stat-value" style="color:#FFD54F">17</div>
+      <div class="stat-value tone-gold">17</div>
       <div class="stat-sub"><span class="trend-up">6.9%</span> of workforce</div>
     </div>
     <div class="stat-card">
       <div class="stat-label">Monthly Payroll (AED)</div>
-      <div class="stat-value" style="color:#4DB6AC">1.24M</div>
+      <div class="stat-value tone-teal">1.24M</div>
       <div class="stat-sub"><span class="trend-up">↑ 2.1%</span> vs last month</div>
     </div>
     <div class="stat-card">
       <div class="stat-label">Attrition Rate (YTD)</div>
-      <div class="stat-value" style="color:#FF8A65">3.2%</div>
+      <div class="stat-value tone-danger">3.2%</div>
       <div class="stat-sub"><span class="trend-up">↓ 0.5%</span> vs last yr</div>
+    </div>
+  </div>
+
+  <div class="card mb-20" id="dash-late-attendance-card" style="display:none">
+    <div class="alert alert-warn" style="margin:0">
+      <span class="alert-icon"><i class="bi bi-alarm"></i></span>
+      <div id="dash-late-attendance-text"><b>Late check-in warning</b> You have exceeded the monthly late check-in limit.</div>
     </div>
   </div>
 
@@ -1311,12 +2466,12 @@ textarea { resize: vertical; min-height: 80px; }
         <div id="dash-workforce-legend"></div>
       </div>
       <div style="margin-top:18px;display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-        <div style="background:rgba(21,101,192,0.1);border:1px solid var(--border-bright);border-radius:9px;padding:12px;text-align:center">
-          <div id="dash-active-count" style="font-size:22px;font-weight:800;font-family:'Syne',sans-serif;color:#64B5F6">0</div>
+        <div style="background:var(--highlight);border:1px solid var(--border-bright);border-radius:9px;padding:12px;text-align:center">
+          <div id="dash-active-count" style="font-size:22px;font-weight:800;font-family:'Plus Jakarta Sans',sans-serif" class="tone-accent">0</div>
           <div class="text-muted">Active</div>
         </div>
         <div style="background:rgba(244,81,30,0.08);border:1px solid rgba(244,81,30,0.2);border-radius:9px;padding:12px;text-align:center">
-          <div id="dash-probation-count" style="font-size:22px;font-weight:800;font-family:'Syne',sans-serif;color:#FF8A65">0</div>
+          <div id="dash-probation-count" style="font-size:22px;font-weight:800;font-family:'Plus Jakarta Sans',sans-serif" class="tone-danger">0</div>
           <div class="text-muted">Probation</div>
         </div>
       </div>
@@ -1357,12 +2512,12 @@ textarea { resize: vertical; min-height: 80px; }
       </div>
       <div id="dash-overtime-panel">
         <div class="mb-16">
-          <div class="stat-label">Overtime Payout (AED)</div>
-          <div id="dash-overtime-amount" style="font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:var(--amber)">0</div>
+          <div class="stat-label" id="dash-overtime-label">Overtime Payout (AED)</div>
+          <div id="dash-overtime-amount" style="font-family:'Plus Jakarta Sans',sans-serif;font-size:28px;font-weight:800" class="tone-warning">0</div>
         </div>
         <div class="mb-16">
           <div class="stat-label">Employees with Overtime</div>
-          <div id="dash-overtime-employees" style="font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:#64B5F6">0</div>
+          <div id="dash-overtime-employees" style="font-family:'Plus Jakarta Sans',sans-serif;font-size:28px;font-weight:800" class="tone-accent">0</div>
         </div>
       </div>
     </div>
@@ -1379,11 +2534,6 @@ textarea { resize: vertical; min-height: 80px; }
     </div>
     <select id="emp-filter-department" style="width:160px">
       <option>All Departments</option>
-      <option>Engineering</option>
-      <option>Operations</option>
-      <option>Sales & Marketing</option>
-      <option>Finance</option>
-      <option>HR & Admin</option>
     </select>
     <select id="emp-filter-status" style="width:140px">
       <option>All Status</option>
@@ -1394,69 +2544,23 @@ textarea { resize: vertical; min-height: 80px; }
       <option>Terminated</option>
     </select>
     <button class="btn btn-primary" id="emp-add-btn" onclick="openModal('emp-modal')">＋ Add Employee</button>
+    <input type="file" id="emp-import-file" accept=".xlsx,.xls" hidden>
+    <button type="button" class="btn btn-secondary" id="emp-import-btn">⬆ Import Excel</button>
     <button id="emp-export-btn" class="btn btn-secondary">⬇ Export</button>
   </div>
 
   <div class="card">
-    <div class="table-wrap">
+    <div class="desktop-table-view table-wrap">
       <table id="emp-table">
         <thead><tr>
           <th>Employee</th><th>ID</th><th>Department</th>
           <th>Designation</th><th>Type</th><th>Join Date</th>
           <th>Emirates ID</th><th>Status</th><th>Attendance</th><th>Actions</th>
         </tr></thead>
-        <tbody>
-          <tr>
-            <td><div class="flex-center gap-8"><div class="user-avatar" style="width:30px;height:30px;font-size:11px">AM</div><div><div style="font-weight:500">Ahmed Al Mansouri</div><div class="text-muted">ahmed@company.ae</div></div></div></td>
-            <td>EMP-001</td><td>Engineering</td><td>Senior Dev</td>
-            <td><span class="badge badge-blue">Full-Time</span></td>
-            <td>Jan 2022</td><td>784-1982-…</td>
-            <td><span class="badge badge-green">Active</span></td>
-            <td><button class="btn btn-secondary btn-sm" onclick="viewEmployee('Ahmed Al Mansouri')">View</button></td>
-          </tr>
-          <tr>
-            <td><div class="flex-center gap-8"><div class="user-avatar" style="width:30px;height:30px;font-size:11px;background:linear-gradient(135deg,#7C4DFF,#E040FB)">FH</div><div><div style="font-weight:500">Fatima Hassan</div><div class="text-muted">fatima@company.ae</div></div></div></td>
-            <td>EMP-002</td><td>Finance</td><td>Finance Manager</td>
-            <td><span class="badge badge-blue">Full-Time</span></td>
-            <td>Mar 2020</td><td>784-1990-…</td>
-            <td><span class="badge badge-amber">Contract Expiry</span></td>
-            <td><button class="btn btn-secondary btn-sm" onclick="viewEmployee('Fatima Hassan')">View</button></td>
-          </tr>
-          <tr>
-            <td><div class="flex-center gap-8"><div class="user-avatar" style="width:30px;height:30px;font-size:11px;background:linear-gradient(135deg,#F4511E,#FFB300)">PN</div><div><div style="font-weight:500">Priya Nair</div><div class="text-muted">priya@company.ae</div></div></div></td>
-            <td>EMP-018</td><td>Operations</td><td>Ops Coordinator</td>
-            <td><span class="badge badge-blue">Full-Time</span></td>
-            <td>Jul 2023</td><td>784-1995-…</td>
-            <td><span class="badge badge-amber">On Leave</span></td>
-            <td><button class="btn btn-secondary btn-sm" onclick="viewEmployee('Priya Nair')">View</button></td>
-          </tr>
-          <tr>
-            <td><div class="flex-center gap-8"><div class="user-avatar" style="width:30px;height:30px;font-size:11px;background:linear-gradient(135deg,#00897B,#00BFA5)">OR</div><div><div style="font-weight:500">Omar Rashid</div><div class="text-muted">omar@company.ae</div></div></div></td>
-            <td>EMP-248</td><td>Engineering</td><td>Software Engineer</td>
-            <td><span class="badge badge-purple">Probation</span></td>
-            <td>Apr 2025</td><td>784-2000-…</td>
-            <td><span class="badge badge-purple">Probation</span></td>
-            <td><button class="btn btn-secondary btn-sm" onclick="viewEmployee('Omar Rashid')">View</button></td>
-          </tr>
-          <tr>
-            <td><div class="flex-center gap-8"><div class="user-avatar" style="width:30px;height:30px;font-size:11px;background:linear-gradient(135deg,#1565C0,#1E88E5)">SK</div><div><div style="font-weight:500">Sara Khalid</div><div class="text-muted">sara@company.ae</div></div></div></td>
-            <td>EMP-035</td><td>HR & Admin</td><td>HR Officer</td>
-            <td><span class="badge badge-blue">Full-Time</span></td>
-            <td>Oct 2021</td><td>784-1994-…</td>
-            <td><span class="badge badge-coral">Visa Alert</span></td>
-            <td><button class="btn btn-secondary btn-sm" onclick="viewEmployee('Sara Khalid')">View</button></td>
-          </tr>
-          <tr>
-            <td><div class="flex-center gap-8"><div class="user-avatar" style="width:30px;height:30px;font-size:11px;background:linear-gradient(135deg,#880E4F,#E91E63)">MK</div><div><div style="font-weight:500">Mohammed Khan</div><div class="text-muted">mkhan@company.ae</div></div></div></td>
-            <td>EMP-062</td><td>Sales</td><td>Sales Executive</td>
-            <td><span class="badge badge-amber">Part-Time</span></td>
-            <td>Feb 2024</td><td>784-1998-…</td>
-            <td><span class="badge badge-green">Active</span></td>
-            <td><button class="btn btn-secondary btn-sm" onclick="viewEmployee('Mohammed Khan')">View</button></td>
-          </tr>
-        </tbody>
+        <tbody></tbody>
       </table>
     </div>
+    <div class="mobile-card-view" id="emp-mobile-list" aria-label="Employee list"></div>
   </div>
 </div>
 
@@ -1467,76 +2571,98 @@ textarea { resize: vertical; min-height: 80px; }
   <div class="tabs">
     <button class="tab-btn active" onclick="switchTab(this,'leave-pending')">Pending Approvals (5)</button>
     <button class="tab-btn" onclick="switchTab(this,'leave-my-history')">My Leaves</button>
+    <button class="tab-btn" onclick="switchTab(this,'leave-history')">Leave History</button>
     <button class="tab-btn" onclick="switchTab(this,'leave-apply')">Apply Leave</button>
     <button class="tab-btn" id="leave-balance-tab-btn" onclick="switchTab(this,'leave-balance')" style="display:none">Leave Balance</button>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:8px;padding:0 8px">
+      <input type="file" id="leave-import-file" accept=".xlsx,.xls" hidden>
+      <button type="button" class="btn btn-secondary btn-sm" id="leave-import-btn" style="display:none">⬆ Import Leave Report</button>
+    </div>
   </div>
 
   <div id="leave-pending" class="tab-pane active">
     <div class="card">
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Employee</th><th>Leave Type</th><th>From</th><th>To</th><th>Days</th><th>Reason</th><th>L1</th><th>L2 (You)</th></tr></thead>
-          <tbody>
-            <tr>
-              <td><b>Ahmed Al Mansouri</b></td>
-              <td><span class="badge badge-blue">Annual</span></td>
-              <td>May 10</td><td>May 16</td><td>5</td>
-              <td>Family vacation</td>
-              <td><span class="badge badge-green">✓ Approved</span></td>
-              <td><div class="flex gap-8"><button class="btn btn-accent btn-sm" onclick="approveLeave(this,'Ahmed Al Mansouri')">Approve</button><button class="btn btn-danger btn-sm" onclick="showToast('Rejected')">Reject</button></div></td>
-            </tr>
-            <tr>
-              <td><b>Priya Nair</b></td>
-              <td><span class="badge badge-coral">Sick</span></td>
-              <td>May 2</td><td>May 4</td><td>3</td>
-              <td>Medical — fever</td>
-              <td><span class="badge badge-green">✓ Approved</span></td>
-              <td><div class="flex gap-8"><button class="btn btn-accent btn-sm" onclick="approveLeave(this,'Priya Nair')">Approve</button><button class="btn btn-danger btn-sm" onclick="showToast('Rejected')">Reject</button></div></td>
-            </tr>
-            <tr>
-              <td><b>Mohammed Khan</b></td>
-              <td><span class="badge badge-amber">Emergency</span></td>
-              <td>May 3</td><td>May 5</td><td>2</td>
-              <td>Family matter</td>
-              <td><span class="badge badge-amber">Pending</span></td>
-              <td><span class="text-muted">Awaiting L1</span></td>
-            </tr>
-            <tr>
-              <td><b>Sara Khalid</b></td>
-              <td><span class="badge badge-blue">Annual</span></td>
-              <td>May 19</td><td>May 23</td><td>5</td>
-              <td>Personal</td>
-              <td><span class="badge badge-green">✓ Approved</span></td>
-              <td><div class="flex gap-8"><button class="btn btn-accent btn-sm" onclick="approveLeave(this,'Sara Khalid')">Approve</button><button class="btn btn-danger btn-sm" onclick="showToast('Rejected')">Reject</button></div></td>
-            </tr>
-            <tr>
-              <td><b>Omar Rashid</b></td>
-              <td><span class="badge badge-blue">Annual</span></td>
-              <td>Jun 1</td><td>Jun 3</td><td>3</td>
-              <td>Travel</td>
-              <td><span class="badge badge-green">✓ Approved</span></td>
-              <td><div class="flex gap-8"><button class="btn btn-accent btn-sm" onclick="approveLeave(this,'Omar Rashid')">Approve</button><button class="btn btn-danger btn-sm" onclick="showToast('Rejected')">Reject</button></div></td>
-            </tr>
-          </tbody>
+      <div class="desktop-table-view table-wrap">
+        <table id="leave-pending-table">
+          <thead><tr><th>Employee</th><th>Leave Type</th><th>From</th><th>To</th><th>Days</th><th>Reason</th><th>Air Ticket</th><th>L1</th><th>L2 (You)</th></tr></thead>
+          <tbody></tbody>
         </table>
       </div>
+      <div class="mobile-card-view" id="leave-pending-mobile"></div>
     </div>
   </div>
 
   <div id="leave-my-history" class="tab-pane">
     <div class="card">
       <div class="section-title">My Applied & Previous Leaves</div>
-      <div class="table-wrap">
+      <div class="desktop-table-view table-wrap">
         <table id="leave-my-table">
-          <thead><tr><th>Leave Type</th><th>From</th><th>To</th><th>Days</th><th>Status</th><th>L1 Approver</th><th>L2 Approver</th><th>Reason</th></tr></thead>
+          <thead><tr><th>Leave Type</th><th>From</th><th>To</th><th>Days</th><th>Rejoin</th><th>Status As On</th><th>Extended</th><th>Status</th><th>Air Ticket</th><th>L1 Approver</th><th>L2 Approver</th><th>Remark</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
+      <div class="mobile-card-view" id="leave-my-mobile"></div>
+    </div>
+  </div>
+
+  <div id="leave-history" class="tab-pane">
+    <div class="card">
+      <div class="section-title">Leave History</div>
+      <p class="text-muted" style="font-size:12px;margin:-4px 0 14px">Search leave records by date range. HR and managers can view other employees.</p>
+      <div class="leave-history-range-picker" id="leave-history-range-picker">
+        <div class="range-picker-fields">
+          <div class="range-picker-field">
+            <label for="leave-history-from">From</label>
+            <div class="range-date-input">
+              <i class="bi bi-calendar3"></i>
+              <input type="date" id="leave-history-from" aria-label="From date">
+            </div>
+          </div>
+          <span class="range-picker-sep">→</span>
+          <div class="range-picker-field">
+            <label for="leave-history-to">To</label>
+            <div class="range-date-input">
+              <i class="bi bi-calendar3"></i>
+              <input type="date" id="leave-history-to" aria-label="To date">
+            </div>
+          </div>
+        </div>
+        <div class="range-picker-presets">
+          <button type="button" class="btn btn-secondary btn-sm" data-leave-range="this-month">This month</button>
+          <button type="button" class="btn btn-secondary btn-sm" data-leave-range="last-3-months">Last 3 months</button>
+          <button type="button" class="btn btn-secondary btn-sm" data-leave-range="this-year">This year</button>
+          <button type="button" class="btn btn-secondary btn-sm" data-leave-range="last-year">Last year</button>
+        </div>
+        <div class="range-picker-actions">
+          <div class="form-group" id="leave-history-emp-wrap" style="margin:0;display:none;min-width:220px">
+            <label for="leave-history-emp" style="font-size:11px">Employee</label>
+            <select id="leave-history-emp"><option value="">All employees</option></select>
+          </div>
+          <div class="form-group" id="leave-history-dept-wrap" style="margin:0;display:none;min-width:180px">
+            <label for="leave-history-dept" style="font-size:11px">Department</label>
+            <select id="leave-history-dept"><option value="">All departments</option></select>
+          </div>
+          <button type="button" class="btn btn-primary btn-sm" onclick="window.__loadLeaveHistory()">Search</button>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="window.__resetLeaveHistoryRange()">Reset</button>
+          <button type="button" class="btn btn-secondary btn-sm" id="leave-export-xlsx-btn" style="display:none" onclick="window.__downloadLeaveReport('xlsx')">⬇ Excel</button>
+          <button type="button" class="btn btn-secondary btn-sm" id="leave-export-pdf-btn" style="display:none" onclick="window.__downloadLeaveReport('pdf')">⬇ PDF</button>
+        </div>
+      </div>
+      <div id="leave-history-summary" class="text-muted" style="font-size:12px;margin-bottom:10px"></div>
+      <div class="desktop-table-view table-wrap">
+        <table id="leave-history-table">
+          <thead><tr><th>Applied</th><th>Employee</th><th>Leave Type</th><th>From</th><th>To</th><th>Days</th><th>Rejoin</th><th>Status As On</th><th>Extended</th><th>Leave Balance</th><th>Current Balance</th><th>Status</th><th>L1</th><th>L2</th><th>Remark</th></tr></thead>
+          <tbody id="leave-history-body">
+            <tr><td colspan="15" class="text-muted">Select a date range and click Search.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="mobile-card-view" id="leave-history-mobile" aria-label="Leave history"></div>
     </div>
   </div>
 
   <div id="leave-apply" class="tab-pane">
-    <div class="card" style="max-width:600px">
+    <div class="card exit-form-card">
       <div class="section-title">Apply for Leave</div>
       <div class="form-grid">
         <div class="form-group">
@@ -1561,6 +2687,13 @@ textarea { resize: vertical; min-height: 80px; }
           <label>To Date</label>
           <input type="date">
         </div>
+        <div class="form-group full" id="leave-acting-manager-group">
+          <label>Assign Acting Colleague <span style="color:var(--coral)">*</span></label>
+          <select id="leave-acting-manager-select">
+            <option value="">Select department colleague…</option>
+          </select>
+          <div id="leave-acting-manager-help" class="text-muted" style="font-size:12px;margin-top:6px">Pick a department colleague to cover your duties while you are away. They must accept before your leave goes to your line manager.</div>
+        </div>
         <div class="form-group full">
           <label>Reason</label>
           <textarea placeholder="Briefly describe the reason for leave…"></textarea>
@@ -1574,43 +2707,73 @@ textarea { resize: vertical; min-height: 80px; }
         <span class="alert-icon">🗓️</span>
         <div style="display:grid;gap:6px;flex:1">
           <div style="display:flex;flex-wrap:wrap;gap:8px">
-            <span class="badge badge-blue" id="leave-earned-chip">Earned: 0.00</span>
-            <span class="badge badge-blue" id="leave-used-chip">Used: 0.00</span>
-            <span class="badge badge-green" id="leave-available-chip">Available: 0.00</span>
-            <span class="badge badge-amber" id="leave-worked-chip">Days worked: 0</span>
+            <span class="badge badge-blue" id="leave-earned-chip">Entitled: —</span>
+            <span class="badge badge-blue" id="leave-used-chip">Used: —</span>
+            <span class="badge badge-green" id="leave-available-chip">Available: —</span>
+            <span class="badge badge-amber" id="leave-worked-chip">Pending: —</span>
           </div>
           <div id="leave-selected-days-text" class="text-muted" style="font-size:12px">Selected days: 0.00</div>
+          <div id="leave-air-ticket-preview" class="text-muted" style="font-size:12px"></div>
+        </div>
+      </div>
+      <div id="leave-annual-balance-wrap" style="display:none;margin-top:10px">
+        <button type="button" id="leave-annual-balance-toggle" class="btn btn-secondary btn-sm" aria-expanded="false" aria-controls="leave-annual-balance-panel">
+          <span class="toggle-main">
+            <i class="bi bi-calendar-check"></i>
+            <span>Annual Leave Balance</span>
+          </span>
+          <i class="bi bi-chevron-down" id="leave-annual-balance-chevron"></i>
+        </button>
+        <div id="leave-annual-balance-panel" class="leave-annual-balance-panel" hidden>
+          <div class="leave-al-mini-grid">
+            <div class="leave-al-mini-item"><div class="leave-al-mini-label">Entitled</div><div class="leave-al-mini-value tone-teal" id="leave-al-earned">—</div></div>
+            <div class="leave-al-mini-item"><div class="leave-al-mini-label">Used</div><div class="leave-al-mini-value tone-danger" id="leave-al-used">—</div></div>
+            <div class="leave-al-mini-item"><div class="leave-al-mini-label">Pending</div><div class="leave-al-mini-value tone-gold" id="leave-al-pending">—</div></div>
+            <div class="leave-al-mini-item"><div class="leave-al-mini-label">Available</div><div class="leave-al-mini-value tone-accent" id="leave-al-available">—</div></div>
+          </div>
+          <div id="leave-annual-balance-note" class="text-muted" style="font-size:11px;margin-top:8px;line-height:1.45"></div>
         </div>
       </div>
       <div class="flex gap-8 mt-16">
-        <button id="leave-submit-btn" class="btn btn-primary" onclick="showToast('Leave request submitted successfully')">Submit Request</button>
-        <button class="btn btn-secondary" onclick="showToast('Cleared')">Clear</button>
+        <button id="leave-submit-btn" class="btn btn-primary" type="button">Submit Request</button>
+        <button class="btn btn-secondary" type="button" onclick="showToast('Cleared')">Clear</button>
       </div>
     </div>
   </div>
 
   <div id="leave-balance" class="tab-pane">
-    <div class="card" style="max-width:760px">
+    <div class="card documents-page-card">
       <div class="section-title">Employee Leave Balance Lookup</div>
       <div class="form-group full" style="position:relative">
         <label>Search Employee (name, ID, email or department)</label>
         <input id="leave-balance-search" type="text" autocomplete="off" placeholder="Start typing to search…">
-        <div id="leave-balance-results" class="manager-options" style="position:absolute;left:0;right:0;top:100%;z-index:20;display:none;max-height:240px;overflow:auto;background:#0b1a33;border:1px solid var(--border-bright);border-radius:8px;margin-top:4px;"></div>
+        <div id="leave-balance-results" class="manager-options search-results-dropdown"></div>
       </div>
       <div id="leave-balance-detail" style="margin-top:14px;display:none">
         <div class="flex-center gap-8" style="justify-content:flex-start;margin-bottom:14px">
-          <div class="user-avatar" id="leave-balance-avatar" style="width:42px;height:42px;font-size:14px">--</div>
-          <div>
+          <div class="user-avatar" id="leave-balance-avatar" style="width:42px;height:42px;font-size:14px;flex-shrink:0">--</div>
+          <div style="min-width:0">
             <div style="font-weight:600" id="leave-balance-name">—</div>
             <div class="text-muted" id="leave-balance-meta">—</div>
           </div>
         </div>
         <div class="stats-grid">
-          <div class="stat-card"><div class="stat-label">Days Worked</div><div class="stat-value" id="leave-balance-worked" style="color:#64B5F6">0</div></div>
-          <div class="stat-card"><div class="stat-label">Earned (Matured)</div><div class="stat-value" id="leave-balance-earned" style="color:#4DB6AC">0</div></div>
-          <div class="stat-card"><div class="stat-label">Used Leaves</div><div class="stat-value" id="leave-balance-used" style="color:#FF8A65">0</div></div>
-          <div class="stat-card"><div class="stat-label">Available Balance</div><div class="stat-value" id="leave-balance-available" style="color:#FFD54F">0</div></div>
+          <div class="stat-card"><div class="stat-label">Days Worked</div><div class="stat-value tone-accent" id="leave-balance-worked">0</div></div>
+          <div class="stat-card"><div class="stat-label">Annual Entitled</div><div class="stat-value tone-teal" id="leave-balance-earned">0</div></div>
+          <div class="stat-card"><div class="stat-label">Annual Used</div><div class="stat-value tone-danger" id="leave-balance-used">0</div></div>
+          <div class="stat-card"><div class="stat-label">Annual Available</div><div class="stat-value tone-gold" id="leave-balance-available">0</div></div>
         </div>
+        <div class="desktop-table-view table-wrap" style="margin-top:14px">
+          <table>
+            <thead>
+              <tr><th>Leave Type</th><th>Entitlement</th><th>Used</th><th>Pending</th><th>Available</th><th>Pay</th></tr>
+            </thead>
+            <tbody id="leave-balance-types-body">
+              <tr><td colspan="6" class="text-muted">No leave entitlements loaded.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="mobile-card-view" id="leave-balance-types-mobile" aria-label="Leave balance by type"></div>
         <div class="text-muted" style="margin-top:10px;font-size:12px" id="leave-balance-note"></div>
       </div>
       <div id="leave-balance-empty" class="text-muted" style="margin-top:14px">Search and select an employee to view their leave balance.</div>
@@ -1631,7 +2794,7 @@ textarea { resize: vertical; min-height: 80px; }
 
   <div id="exit-records" class="tab-pane active">
     <div class="card">
-      <div class="table-wrap">
+      <div class="desktop-table-view table-wrap">
         <table>
           <thead><tr><th>Employee</th><th>Type</th><th>Status</th><th>Last Working Day</th><th>Submitted</th><th>Action</th></tr></thead>
           <tbody id="exit-records-body">
@@ -1639,11 +2802,12 @@ textarea { resize: vertical; min-height: 80px; }
           </tbody>
         </table>
       </div>
+      <div class="mobile-card-view" id="exit-records-mobile" aria-label="Exit records"></div>
     </div>
   </div>
 
   <div id="exit-apply" class="tab-pane">
-    <div class="card" style="max-width:620px">
+    <div class="card exit-form-card">
       <div class="section-title">Submit Resignation</div>
       <div class="form-grid">
         <div class="form-group">
@@ -1691,7 +2855,7 @@ textarea { resize: vertical; min-height: 80px; }
   </div>
 
   <div id="exit-terminate" class="tab-pane">
-    <div class="card" style="max-width:620px">
+    <div class="card exit-form-card">
       <div class="section-title">Initiate Termination</div>
       <div class="form-grid">
         <div class="form-group">
@@ -1739,32 +2903,38 @@ textarea { resize: vertical; min-height: 80px; }
 ════════════════════════════════════════════════════ -->
 <div id="view-clearance" class="view">
   <div class="card">
-    <div class="flex-between" style="margin-bottom:12px;flex-wrap:wrap;gap:8px">
-      <div class="section-title" style="margin:0">Exit Clearance</div>
-      <div class="text-muted" id="clearance-summary" style="font-size:13px"></div>
+    <div class="clearance-hero">
+      <div class="clearance-hero-copy">
+        <h2>Exit Clearance</h2>
+        <p>Track department sign-offs and item checklists. Mark assets as <b>Collected</b> or <b>N/A</b> — matching your paper clearance form.</p>
+      </div>
+      <div class="clearance-kpi-row">
+        <div class="clearance-kpi">
+          <div class="clearance-kpi-label">Pending</div>
+          <div class="clearance-kpi-value tone-gold" id="clearance-kpi-pending">0</div>
+        </div>
+        <div class="clearance-kpi">
+          <div class="clearance-kpi-label">Completed</div>
+          <div class="clearance-kpi-value tone-teal" id="clearance-kpi-done">0</div>
+        </div>
+        <div class="clearance-kpi">
+          <div class="clearance-kpi-label">Employees</div>
+          <div class="clearance-kpi-value tone-accent" id="clearance-kpi-exits">0</div>
+        </div>
+      </div>
     </div>
-    <div class="tabs" style="margin-bottom:12px">
-      <button class="tab-btn active" onclick="switchTab(this,'clearance-pending')">Pending</button>
+    <div class="tabs" style="margin-bottom:14px">
+      <button class="tab-btn active" onclick="switchTab(this,'clearance-pending')">My Pending Tasks</button>
       <button class="tab-btn" onclick="switchTab(this,'clearance-done')">Completed</button>
     </div>
     <div id="clearance-pending" class="tab-pane active">
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Employee</th><th>Exit Type</th><th>Clearance Dept</th><th>LWD</th><th>Dept Manager</th><th>Status</th><th>Action</th></tr></thead>
-          <tbody id="clearance-pending-body">
-            <tr><td colspan="7" class="text-muted">Loading clearance tasks…</td></tr>
-          </tbody>
-        </table>
+      <div id="clearance-pending-list" class="clearance-list">
+        <div class="clearance-empty"><i class="bi bi-hourglass-split"></i>Loading clearance tasks…</div>
       </div>
     </div>
     <div id="clearance-done" class="tab-pane">
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Employee</th><th>Exit Type</th><th>Clearance Dept</th><th>Completed</th><th>Note</th><th>Dept Manager</th></tr></thead>
-          <tbody id="clearance-done-body">
-            <tr><td colspan="6" class="text-muted">No completed clearance yet.</td></tr>
-          </tbody>
-        </table>
+      <div id="clearance-done-list" class="clearance-list">
+        <div class="clearance-empty"><i class="bi bi-check2-circle"></i>No completed clearance yet.</div>
       </div>
     </div>
   </div>
@@ -1782,14 +2952,14 @@ textarea { resize: vertical; min-height: 80px; }
 
   <div id="adj-list" class="tab-pane active">
     <div class="card">
-      <div class="flex-between" style="margin-bottom:10px;flex-wrap:wrap;gap:8px">
+      <div class="flex-between payadjust-list-head" style="margin-bottom:10px;flex-wrap:wrap;gap:8px">
         <div class="section-title" style="margin:0">Payroll Adjustments</div>
         <div class="flex gap-8" id="adj-process-wrap" style="display:none;flex-wrap:wrap">
-          <input id="adj-process-month" type="month" style="width:160px">
+          <input id="adj-process-month" type="month" class="payadjust-month-input">
           <button class="btn btn-secondary btn-sm" onclick="window.__processAdjustmentMonth()">Process Month (Finance)</button>
         </div>
       </div>
-      <div class="table-wrap">
+      <div class="desktop-table-view table-wrap">
         <table>
           <thead><tr><th>Reference</th><th>Employee</th><th>Type</th><th>Category</th><th>Amount</th><th>Month</th><th>Status</th><th>Action</th></tr></thead>
           <tbody id="adj-list-body">
@@ -1797,11 +2967,12 @@ textarea { resize: vertical; min-height: 80px; }
           </tbody>
         </table>
       </div>
+      <div class="mobile-card-view" id="adj-list-mobile" aria-label="Payroll adjustments"></div>
     </div>
   </div>
 
   <div id="adj-new" class="tab-pane">
-    <div class="card" style="max-width:640px">
+    <div class="card payadjust-form-card">
       <div class="section-title">New Adjustment</div>
       <div class="form-grid">
         <div class="form-group">
@@ -1819,6 +2990,7 @@ textarea { resize: vertical; min-height: 80px; }
         <div class="form-group">
           <label>Amount (AED)</label>
           <input id="adj-amount" type="number" min="1" step="0.01" placeholder="0.00">
+          <div id="adj-dual-threshold-note" class="text-muted" style="font-size:12px;margin-top:6px;display:none"></div>
         </div>
         <div class="form-group">
           <label>Effective Month</label>
@@ -1848,7 +3020,7 @@ textarea { resize: vertical; min-height: 80px; }
   </div>
 
   <div id="adj-loans" class="tab-pane">
-    <div class="grid2 mb-20">
+    <div class="payadjust-loans-grid mb-20">
       <div class="card" id="adj-loan-form-card">
         <div class="section-title" id="adj-loan-form-title">Request Loan / Advance</div>
         <div class="form-grid">
@@ -1892,11 +3064,11 @@ textarea { resize: vertical; min-height: 80px; }
           <div class="section-title" style="margin:0">Loans &amp; Advances</div>
           <div class="text-muted" id="loan-list-summary" style="font-size:13px"></div>
         </div>
-        <div class="tabs" style="margin-bottom:12px">
+        <div class="tabs payadjust-loan-tabs" style="margin-bottom:12px">
           <button class="tab-btn active" onclick="window.__switchLoanListTab(this,'pending')">Pending</button>
           <button class="tab-btn" onclick="window.__switchLoanListTab(this,'history')">History</button>
         </div>
-        <div class="table-wrap">
+        <div class="desktop-table-view table-wrap">
           <table>
             <thead><tr><th>Employee</th><th>Type</th><th>Total</th><th>Recovered</th><th>Outstanding</th><th>Status</th><th>Document</th><th>Action</th></tr></thead>
             <tbody id="adj-loans-body">
@@ -1904,6 +3076,7 @@ textarea { resize: vertical; min-height: 80px; }
             </tbody>
           </table>
         </div>
+        <div class="mobile-card-view" id="adj-loans-mobile" aria-label="Loans and advances"></div>
       </div>
     </div>
   </div>
@@ -1920,6 +3093,7 @@ textarea { resize: vertical; min-height: 80px; }
         <div class="flex-between"><span class="text-muted">Current State</span><span id="att-status-badge" class="badge badge-amber">Offline</span></div>
         <div class="flex-between"><span class="text-muted">Work Mode</span><span id="att-work-mode">—</span></div>
         <div class="flex-between"><span class="text-muted">Assigned Office</span><span id="att-office-name">—</span></div>
+        <div class="flex-between"><span class="text-muted">Geo Tag</span><span id="att-geo-tag">—</span></div>
         <div class="flex-between"><span class="text-muted">Last Location</span><span id="att-last-location">—</span></div>
         <div class="flex-between"><span class="text-muted">Geofence State</span><span id="att-geofence-state">—</span></div>
       </div>
@@ -1945,16 +3119,61 @@ textarea { resize: vertical; min-height: 80px; }
       <div class="text-muted mt-16" style="margin-top:10px;font-size:12px" id="att-policy-note">
         Office employees auto check-in/out based on geofence; onsite/hybrid can check in from anywhere with live tracking.
       </div>
+      <div id="att-late-warning" class="alert alert-warn" style="display:none;margin-top:12px">
+        <span class="alert-icon"><i class="bi bi-alarm"></i></span>
+        <div id="att-late-warning-text"></div>
+      </div>
     </div>
     <div class="card" id="att-live-workforce-card">
       <div class="section-title">Live Workforce Online</div>
-      <div class="table-wrap">
+      <div class="desktop-table-view table-wrap">
         <table>
-          <thead><tr><th>Employee</th><th>Mode</th><th>Office</th><th>Latest Coordinates</th><th>Last Ping</th></tr></thead>
+          <thead><tr><th>Employee</th><th>Mode</th><th>Office</th><th>Geo Tag / Location</th><th>Last Ping</th></tr></thead>
           <tbody id="att-online-body">
             <tr><td colspan="5" class="text-muted">Loading live attendance…</td></tr>
           </tbody>
         </table>
+      </div>
+      <div class="mobile-card-view" id="att-online-mobile"></div>
+    </div>
+  </div>
+  <div class="card mb-20" id="att-late-joiners-card" style="display:none">
+    <div class="flex-between" style="align-items:center;margin-bottom:10px;gap:12px;flex-wrap:wrap">
+      <div class="section-title" style="margin:0">Late Joiners</div>
+      <div class="calendar-head" style="margin:0">
+        <button class="btn btn-secondary btn-sm" onclick="window.__lateJoinersPrevMonth()">← Previous</button>
+        <div id="att-late-joiners-month-label" class="calendar-month-label">Month</div>
+        <button id="att-late-joiners-next-btn" class="btn btn-secondary btn-sm" onclick="window.__lateJoinersNextMonth()">Next →</button>
+      </div>
+    </div>
+    <div class="text-muted" style="font-size:12px;margin-bottom:10px" id="att-late-joiners-summary">Employees who checked in after the allowed window.</div>
+    <div class="desktop-table-view table-wrap">
+      <table>
+        <thead><tr><th>Employee</th><th>Department</th><th>Late Count</th><th>Latest Late Check-in</th><th>Status</th></tr></thead>
+        <tbody id="att-late-joiners-body">
+          <tr><td colspan="5" class="text-muted">Loading late joiners…</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="mobile-card-view" id="att-late-joiners-mobile"></div>
+  </div>
+  <div class="modal-overlay" id="att-late-detail-modal">
+    <div class="modal" style="max-width:720px">
+      <div class="modal-header">
+        <div class="modal-title" id="att-late-detail-title">Late Check-in Details</div>
+        <button class="modal-close" onclick="closeModal('att-late-detail-modal')">✕</button>
+      </div>
+      <div id="att-late-detail-summary" class="text-muted" style="font-size:13px;margin-bottom:12px"></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Date</th><th>Check-in</th><th>Check-out</th><th>Method</th><th>Office</th></tr></thead>
+          <tbody id="att-late-detail-body">
+            <tr><td colspan="5" class="text-muted">Select an employee to view details.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary btn-sm" onclick="closeModal('att-late-detail-modal')">Close</button>
       </div>
     </div>
   </div>
@@ -1994,7 +3213,10 @@ textarea { resize: vertical; min-height: 80px; }
     <div id="cal-day-map"></div>
   </div>
   <div class="card" style="margin-top:14px">
-    <div class="section-title">Check-In / Check-Out Timeline</div>
+    <div class="flex-between" style="margin-bottom:10px;flex-wrap:wrap;gap:8px">
+      <div class="section-title" style="margin:0">Check-In / Check-Out Timeline</div>
+      <button type="button" class="btn btn-secondary btn-sm" id="cal-timeline-toggle-pings" onclick="window.__toggleCalendarPingDetails()" style="display:none">Show all pings</button>
+    </div>
     <div id="cal-day-timeline" class="timeline">
       <div class="text-muted">Select a date to load timeline.</div>
     </div>
@@ -2078,26 +3300,178 @@ textarea { resize: vertical; min-height: 80px; }
 </div>
 
 <!-- ════════════════════════════════════════════════════
+     MASTER DATA
+════════════════════════════════════════════════════ -->
+<div id="view-masterdata" class="view">
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab(this,'md-attendance')">Attendance</button>
+    <button class="tab-btn" onclick="switchTab(this,'md-leave-policy')">Leave Policy</button>
+    <button class="tab-btn" onclick="switchTab(this,'md-air-ticket')">Air Ticket</button>
+    <button class="tab-btn" onclick="switchTab(this,'md-leave-types')">Leave Types</button>
+    <button class="tab-btn" onclick="switchTab(this,'md-roles')">Roles</button>
+    <button class="tab-btn" onclick="switchTab(this,'md-payroll')">Payroll</button>
+  </div>
+
+  <div id="md-attendance" class="tab-pane active">
+    <div class="card" style="max-width:760px">
+      <div class="section-title">Attendance Windows</div>
+      <p class="text-muted" style="margin-bottom:14px;font-size:13px">Configure check-in window, auto check-out time, and timezone used for attendance rules.</p>
+      <div class="form-grid">
+        <div class="form-group"><label>Check-in Start (HH:mm)</label><input id="md-check-in-start" type="time"></div>
+        <div class="form-group"><label>Check-in End (HH:mm)</label><input id="md-check-in-end" type="time"></div>
+        <div class="form-group"><label>Auto Check-out (HH:mm)</label><input id="md-auto-check-out" type="time"></div>
+        <div class="form-group"><label>Timezone</label><input id="md-timezone" type="text" placeholder="Asia/Dubai"></div>
+      </div>
+      <div class="flex gap-8 mt-16" style="margin-top:12px">
+        <button class="btn btn-primary btn-sm" onclick="window.__saveMasterAttendance()">Save Attendance Policy</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="md-leave-policy" class="tab-pane">
+    <div class="card" style="max-width:760px">
+      <div class="section-title">Annual Leave Maturity</div>
+      <p class="text-muted" style="margin-bottom:14px;font-size:13px">Annual leave accrues daily based on days worked. These settings control the accrual rate and cap.</p>
+      <div class="form-grid">
+        <div class="form-group"><label>Annual Days Per Year</label><input id="md-annual-days" type="number" min="1" max="365"></div>
+        <div class="form-group"><label>Maximum Accrual Cap</label><input id="md-maturity-cap" type="number" min="1" max="365"></div>
+      </div>
+      <div class="text-muted" id="md-maturity-rate-note" style="font-size:12px;margin-top:8px"></div>
+      <div class="flex gap-8 mt-16" style="margin-top:12px">
+        <button class="btn btn-primary btn-sm" onclick="window.__saveMasterLeavePolicy()">Save Leave Policy</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="md-air-ticket" class="tab-pane">
+    <div class="card">
+      <div class="section-title">Air Ticket Allowance</div>
+      <p class="text-muted" style="margin-bottom:14px;font-size:13px">On L2 approval, eligible annual leave requests automatically create a draft pay adjustment using nationality and role band fares.</p>
+      <div class="form-grid" style="max-width:760px;margin-bottom:14px">
+        <div class="form-group"><label>Enabled</label><select id="md-air-enabled"><option value="true">Yes</option><option value="false">No</option></select></div>
+        <div class="form-group"><label>Minimum Leave Days</label><input id="md-air-min-days" type="number" min="1" max="90"></div>
+        <div class="form-group full"><label>Eligible Leave Type Codes</label><input id="md-air-leave-codes" type="text" placeholder="AL"></div>
+      </div>
+      <div class="flex gap-8" style="justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+        <div class="text-muted" style="font-size:12px">Fare amounts in AED by country and role band (Manager / Staff / Labour).</div>
+        <button class="btn btn-secondary btn-sm" onclick="window.__resetMasterAirTicketFares()">Restore Default Fares</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Country</th><th>Manager (AED)</th><th>Staff (AED)</th><th>Labour (AED)</th></tr></thead>
+          <tbody id="md-air-ticket-body"><tr><td colspan="4" class="text-muted">Loading…</td></tr></tbody>
+        </table>
+      </div>
+      <div class="flex gap-8 mt-16" style="margin-top:12px">
+        <button class="btn btn-primary btn-sm" onclick="window.__saveMasterAirTicket()">Save Air Ticket Settings</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="md-leave-types" class="tab-pane">
+    <div class="card">
+      <div class="flex gap-8" style="justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+        <div class="section-title" style="margin:0">Leave Types</div>
+        <button class="btn btn-primary btn-sm" onclick="window.__openLeaveTypeModal()">Add Leave Type</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Name</th><th>Code</th><th>Days/Year</th><th>Balance Mode</th><th>Pay Rate</th><th>Attachment</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody id="md-leave-types-body"><tr><td colspan="8" class="text-muted">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div id="md-roles" class="tab-pane">
+    <div class="card">
+      <div class="flex gap-8" style="justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+        <div class="section-title" style="margin:0">Role Definitions</div>
+        <button class="btn btn-primary btn-sm" onclick="window.__openRoleModal()">Add Role</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Code</th><th>Label</th><th>Individual</th><th>Void Acting</th><th>Assignable</th><th>Views</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody id="md-roles-body"><tr><td colspan="8" class="text-muted">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div id="md-payroll" class="tab-pane">
+    <div class="card" style="max-width:560px">
+      <div class="section-title">Payroll Settings</div>
+      <p class="text-muted" style="margin-bottom:14px;font-size:13px">Pay adjustments at or above this amount require HR first approval, then CEO / Super Admin final approval before payroll processing.</p>
+      <div class="form-group"><label>Dual Approval Threshold (AED)</label><input id="md-dual-threshold" type="number" min="1" step="100"></div>
+      <div class="flex gap-8 mt-16" style="margin-top:12px">
+        <button class="btn btn-primary btn-sm" onclick="window.__saveMasterPayroll()">Save Payroll Settings</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="md-leave-type-modal">
+  <div class="modal" style="max-width:640px">
+    <div class="modal-header"><h3 id="md-leave-type-modal-title">Leave Type</h3><button class="icon-btn" onclick="closeModal('md-leave-type-modal')"><i class="bi bi-x-lg"></i></button></div>
+    <div class="modal-body">
+      <input type="hidden" id="md-lt-id">
+      <div class="form-grid">
+        <div class="form-group"><label>Name</label><input id="md-lt-name" type="text"></div>
+        <div class="form-group"><label>Code</label><input id="md-lt-code" type="text" placeholder="AL"></div>
+        <div class="form-group"><label>Days Per Year</label><input id="md-lt-days" type="number" min="0"></div>
+        <div class="form-group"><label>Max Carry Forward</label><input id="md-lt-carry" type="number" min="0"></div>
+        <div class="form-group"><label>Balance Mode</label><select id="md-lt-balance-mode"><option value="YEARLY">Yearly allocation</option><option value="MATURITY">Maturity accrual</option><option value="NONE">No balance tracking</option></select></div>
+        <div class="form-group"><label>Pay Rate</label><select id="md-lt-pay-rate"><option value="FULL">Full pay</option><option value="HALF">Half pay</option><option value="NONE">Unpaid</option></select></div>
+        <div class="form-group"><label>Requires Attachment</label><select id="md-lt-attachment"><option value="false">No</option><option value="true">Yes</option></select></div>
+        <div class="form-group"><label>Paid Leave</label><select id="md-lt-paid"><option value="true">Yes</option><option value="false">No</option></select></div>
+        <div class="form-group"><label>Active</label><select id="md-lt-active"><option value="true">Active</option><option value="false">Inactive</option></select></div>
+      </div>
+    </div>
+    <div class="modal-footer"><button class="btn btn-secondary btn-sm" onclick="closeModal('md-leave-type-modal')">Cancel</button><button class="btn btn-primary btn-sm" onclick="window.__saveLeaveTypeModal()">Save</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="md-role-modal">
+  <div class="modal" style="max-width:720px">
+    <div class="modal-header"><h3 id="md-role-modal-title">Role</h3><button class="icon-btn" onclick="closeModal('md-role-modal')"><i class="bi bi-x-lg"></i></button></div>
+    <div class="modal-body">
+      <input type="hidden" id="md-role-id">
+      <div class="form-grid">
+        <div class="form-group"><label>Code</label><input id="md-role-code" type="text" placeholder="CUSTOM_ROLE"></div>
+        <div class="form-group"><label>Label</label><input id="md-role-label" type="text"></div>
+        <div class="form-group full"><label>Description</label><input id="md-role-desc" type="text"></div>
+        <div class="form-group"><label>Individual Contributor</label><select id="md-role-ic"><option value="false">No</option><option value="true">Yes</option></select></div>
+        <div class="form-group"><label>Can Void Acting Colleague</label><select id="md-role-void"><option value="false">No</option><option value="true">Yes</option></select></div>
+        <div class="form-group"><label>Assignable to Employees</label><select id="md-role-assignable"><option value="true">Yes</option><option value="false">No</option></select></div>
+        <div class="form-group"><label>Active</label><select id="md-role-active"><option value="true">Active</option><option value="false">Inactive</option></select></div>
+        <div class="form-group full"><label>Allowed Navigation Views</label><div id="md-role-views" class="flex gap-8" style="flex-wrap:wrap;margin-top:6px"></div></div>
+      </div>
+    </div>
+    <div class="modal-footer"><button class="btn btn-secondary btn-sm" onclick="closeModal('md-role-modal')">Cancel</button><button class="btn btn-primary btn-sm" onclick="window.__saveRoleModal()">Save</button></div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════
      EMPLOYEE DOCUMENTS
 ════════════════════════════════════════════════════ -->
 <div id="view-documents" class="view">
-  <div class="card" style="max-width:760px">
+  <div class="card documents-page-card">
     <div class="section-title" id="documents-page-title">Employee Document Lookup</div>
     <div id="documents-search-wrap" style="position:relative">
       <label class="text-muted" style="font-size:12px;display:block;margin-bottom:6px">Search Employee (name, ID, email or department)</label>
       <input id="documents-search" type="text" autocomplete="off" placeholder="Start typing to search…">
-      <div id="documents-search-results" class="manager-options" style="position:absolute;left:0;right:0;top:100%;z-index:20;display:none;max-height:240px;overflow:auto;background:#0b1a33;border:1px solid var(--border-bright);border-radius:8px;margin-top:4px;"></div>
+      <div id="documents-search-results" class="manager-options search-results-dropdown"></div>
     </div>
     <div id="documents-self-note" class="text-muted" style="margin-top:10px;font-size:13px;display:none">Showing your registered documents.</div>
     <div id="documents-detail" style="margin-top:14px;display:none">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
-        <div class="user-avatar" id="documents-avatar" style="width:42px;height:42px;font-size:14px">--</div>
-        <div>
+        <div class="user-avatar" id="documents-avatar" style="width:42px;height:42px;font-size:14px;flex-shrink:0">--</div>
+        <div style="min-width:0">
           <div style="font-weight:600" id="documents-name">—</div>
           <div class="text-muted" id="documents-meta">—</div>
         </div>
       </div>
-      <div class="table-wrap">
+      <div class="desktop-table-view table-wrap">
         <table>
           <thead><tr><th>Document</th><th>Number</th><th>Authority</th><th>Issue</th><th>Expiry</th><th>Status</th><th>File</th></tr></thead>
           <tbody id="documents-table-body">
@@ -2105,6 +3479,7 @@ textarea { resize: vertical; min-height: 80px; }
           </tbody>
         </table>
       </div>
+      <div class="mobile-card-view" id="documents-mobile-list" aria-label="Employee documents"></div>
     </div>
     <div id="documents-empty" class="text-muted" style="margin-top:14px">Search and select an employee to view their documents.</div>
   </div>
@@ -2124,7 +3499,12 @@ textarea { resize: vertical; min-height: 80px; }
   <div id="pro-tasks" class="tab-pane active">
     <div class="card">
       <div class="section-title">PRO / Immigration Tasks</div>
-      <div class="table-wrap">
+      <div class="toolbar" style="margin-bottom:12px">
+        <div class="search-bar" style="flex:1;max-width:360px">
+          <input id="pro-tasks-search" type="text" placeholder="Search reference, employee, type, stage…" autocomplete="off">
+        </div>
+      </div>
+      <div class="desktop-table-view table-wrap">
         <table>
           <thead><tr><th>Reference</th><th>Employee</th><th>Type</th><th>Stage</th><th>Gov. Ref / Fee</th><th>Change Stage</th></tr></thead>
           <tbody id="pro-tasks-body">
@@ -2132,13 +3512,21 @@ textarea { resize: vertical; min-height: 80px; }
           </tbody>
         </table>
       </div>
+      <div class="mobile-card-view" id="pro-tasks-mobile" aria-label="PRO tasks"></div>
     </div>
   </div>
 
   <div id="pro-documents" class="tab-pane">
     <div class="card">
       <div class="section-title">Document Registry &amp; Expiry Alerts</div>
-      <div class="table-wrap">
+      <div class="toolbar" style="margin-bottom:12px">
+        <div class="search-bar" style="flex:1;max-width:360px">
+          <input id="pro-docs-search" type="text" placeholder="Search employee, document, number, authority…" autocomplete="off">
+        </div>
+        <input type="file" id="pro-import-file" accept=".xlsx,.xls" hidden>
+        <button type="button" class="btn btn-secondary" id="pro-import-btn">⬆ Import PRO Data</button>
+      </div>
+      <div class="desktop-table-view table-wrap">
         <table>
           <thead><tr><th>Employee</th><th>Document</th><th>Number</th><th>Authority</th><th>Expiry</th><th>Status</th><th>Action</th></tr></thead>
           <tbody id="pro-docs-body">
@@ -2146,11 +3534,12 @@ textarea { resize: vertical; min-height: 80px; }
           </tbody>
         </table>
       </div>
+      <div class="mobile-card-view" id="pro-docs-mobile" aria-label="Document registry"></div>
     </div>
   </div>
 
   <div id="pro-doc-new" class="tab-pane">
-    <div class="card" style="max-width:640px">
+    <div class="card exit-form-card">
       <div class="section-title" id="pro-doc-form-title">Add / Register Document</div>
       <div class="form-grid">
         <div class="form-group">
@@ -2195,7 +3584,7 @@ textarea { resize: vertical; min-height: 80px; }
   </div>
 
   <div id="pro-task-new" class="tab-pane">
-    <div class="card" style="max-width:640px">
+    <div class="card exit-form-card">
       <div class="section-title">New PRO Task</div>
       <div class="form-grid">
         <div class="form-group">
@@ -2271,9 +3660,9 @@ textarea { resize: vertical; min-height: 80px; }
     <div class="profile-panel">
       <div class="profile-panel-title">Compensation</div>
       <div class="profile-list">
-        <div class="profile-item"><span class="profile-key">Basic Salary</span><span class="profile-value">AED <span id="profile-basic-salary">0</span></span></div>
-        <div class="profile-item"><span class="profile-key">Housing Allowance</span><span class="profile-value">AED <span id="profile-housing">0</span></span></div>
-        <div class="profile-item"><span class="profile-key">Transport Allowance</span><span class="profile-value">AED <span id="profile-transport">0</span></span></div>
+        <div class="profile-item"><span class="profile-key">Basic Salary</span><span class="profile-value" id="profile-basic-salary">—</span></div>
+        <div class="profile-item"><span class="profile-key">Housing Allowance</span><span class="profile-value" id="profile-housing">—</span></div>
+        <div class="profile-item"><span class="profile-key">Transport Allowance</span><span class="profile-value" id="profile-transport">—</span></div>
       </div>
     </div>
     <div class="profile-panel">
@@ -2291,7 +3680,28 @@ textarea { resize: vertical; min-height: 80px; }
      SETTINGS
 ════════════════════════════════════════════════════ -->
 <div id="view-settings" class="view">
-  <div class="card" style="max-width:560px">
+  <div class="card settings-mobile-quick" style="max-width:560px;margin-bottom:14px">
+    <div class="section-title">Quick Actions</div>
+    <div class="settings-mobile-quick-row">
+      <button type="button" class="settings-mobile-action" id="settings-mobile-theme-btn" onclick="toggleHrmsTheme()" aria-label="Switch theme">
+        <span class="settings-mobile-action-icon"><i class="bi bi-sun-fill" id="settings-mobile-theme-icon"></i></span>
+        <span class="settings-mobile-action-label" id="settings-mobile-theme-label">Light mode</span>
+      </button>
+      <button type="button" class="settings-mobile-action settings-mobile-action-danger" onclick="logout()" aria-label="Log out">
+        <span class="settings-mobile-action-icon"><i class="bi bi-power"></i></span>
+        <span class="settings-mobile-action-label">Log out</span>
+      </button>
+    </div>
+  </div>
+  <div class="card settings-appearance-desktop" style="max-width:560px">
+    <div class="section-title">Appearance</div>
+    <div class="text-muted" style="font-size:12px;margin-bottom:14px">Choose how Mulk HRMS looks on this device.</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button type="button" class="btn btn-secondary btn-sm" id="settings-theme-dark-btn" onclick="applyHrmsTheme('dark')"><i class="bi bi-moon-fill"></i> Dark</button>
+      <button type="button" class="btn btn-secondary btn-sm" id="settings-theme-light-btn" onclick="applyHrmsTheme('light')"><i class="bi bi-sun-fill"></i> Light</button>
+    </div>
+  </div>
+  <div class="card" style="max-width:560px;margin-top:14px">
     <div class="section-title">Reset Password</div>
     <div class="text-muted" style="font-size:12px;margin-bottom:10px">Update your login password securely.</div>
     <div class="form-grid">
@@ -2342,10 +3752,11 @@ textarea { resize: vertical; min-height: 80px; }
         <div class="emp-section-title">Personal Information</div>
         <div class="emp-grid">
           <div class="form-group"><label>Full Name</label><input id="emp-full-name" type="text" placeholder="Ahmed Al Mansouri"></div>
-          <div class="form-group"><label>Employee ID</label><input id="emp-code" type="text" placeholder="Auto-generated" readonly></div>
+          <div class="form-group"><label>Employee ID</label><input id="emp-code" type="text" placeholder="e.g. 2120 (auto if blank)"></div>
+          <div class="form-group"><label>Legacy Emp ID</label><input id="emp-legacy-id" type="text" placeholder="10EMP2921"></div>
           <div class="form-group"><label>Date of Birth</label><input id="emp-dob" type="date"></div>
           <div class="form-group"><label>Gender</label><select id="emp-gender"><option>Male</option><option>Female</option></select></div>
-          <div class="form-group"><label>Nationality</label><select id="emp-nationality"><option>Emirati</option><option>Indian</option><option>Pakistani</option><option>Filipino</option><option>Other</option></select></div>
+          <div class="form-group"><label>Nationality</label><select id="emp-nationality"><option>Emirati</option><option>Indian</option><option>Pakistani</option><option>Bangladeshi</option><option>Egyptian</option><option>Iranian</option><option>Italian</option><option>Nepali</option><option>Filipino</option><option>Srilankan</option><option>Syrian</option><option>Ukrainian</option><option>Other</option></select></div>
           <div class="form-group"><label>Marital Status</label><select id="emp-marital-status"><option>Single</option><option>Married</option></select></div>
           <div class="form-group"><label>Mobile</label><input id="emp-mobile" type="text" placeholder="+971 50 XXX XXXX"></div>
           <div class="form-group"><label>Email</label><input id="emp-email" type="email" placeholder="email@company.ae"></div>
@@ -2388,7 +3799,64 @@ textarea { resize: vertical; min-height: 80px; }
         <div class="emp-section-title">Compensation</div>
         <div class="emp-grid">
           <div class="form-group"><label>Basic Salary (AED)</label><input id="emp-basic-salary" type="number" placeholder="10,000"></div>
+          <div class="form-group"><label>Gross Salary (AED)</label><input id="emp-gross-salary" type="number" placeholder="15,000"></div>
+          <div class="form-group"><label>CTC / Month</label><input id="emp-ctc-month" type="number"></div>
+          <div class="form-group"><label>CTC / Year</label><input id="emp-ctc-year" type="number"></div>
           <div class="form-group"><label>Pay Frequency</label><select id="emp-pay-frequency"><option>Monthly</option><option>Bi-weekly</option></select></div>
+          <div class="form-group"><label>Net Pay Currency</label><input id="emp-net-currency" type="text" placeholder="AED"></div>
+        </div>
+      </section>
+
+      <section class="emp-section">
+        <div class="emp-section-title">Organization & Payroll</div>
+        <div class="emp-grid">
+          <div class="form-group"><label>Category</label><input id="emp-category" type="text" placeholder="Staff / Labour"></div>
+          <div class="form-group"><label>Sub Category</label><input id="emp-sub-category" type="text"></div>
+          <div class="form-group"><label>Grade</label><input id="emp-grade" type="text"></div>
+          <div class="form-group"><label>Employee Type</label><input id="emp-employee-type" type="text" placeholder="Permanent"></div>
+          <div class="form-group"><label>Business Unit</label><input id="emp-business-unit" type="text"></div>
+          <div class="form-group"><label>Division</label><input id="emp-division" type="text"></div>
+          <div class="form-group"><label>Work Location</label><input id="emp-work-location" type="text"></div>
+          <div class="form-group"><label>Work Country</label><input id="emp-work-country" type="text"></div>
+          <div class="form-group"><label>Payroll Type</label><input id="emp-payroll-type" type="text"></div>
+          <div class="form-group"><label>Payroll Status</label><input id="emp-payroll-status" type="text"></div>
+          <div class="form-group"><label>Payroll Division</label><input id="emp-payroll-division" type="text"></div>
+          <div class="form-group"><label>Joining Month</label><input id="emp-joining-month" type="text" placeholder="Jan-2024"></div>
+          <div class="form-group"><label>Probation Status</label><input id="emp-probation-status" type="text"></div>
+          <div class="form-group"><label>Probation Completion</label><input id="emp-probation-completion" type="date"></div>
+        </div>
+      </section>
+
+      <section class="emp-section">
+        <div class="emp-section-title">Allowances</div>
+        <div class="emp-grid">
+          <div class="form-group"><label>Conveyance</label><input id="emp-conveyance" type="number"></div>
+          <div class="form-group"><label>Fixed OT Allowance</label><input id="emp-fixed-ot" type="number"></div>
+          <div class="form-group"><label>Food Allowance</label><input id="emp-food" type="number"></div>
+          <div class="form-group"><label>Housing (HRA)</label><input id="emp-housing" type="number"></div>
+          <div class="form-group"><label>Other Allowance</label><input id="emp-other-allow" type="number"></div>
+          <div class="form-group"><label>Overseas Allowance</label><input id="emp-overseas" type="number"></div>
+          <div class="form-group"><label>Performance Allowance</label><input id="emp-performance" type="number"></div>
+          <div class="form-group"><label>Petrol Allowance</label><input id="emp-petrol" type="number"></div>
+          <div class="form-group"><label>Risk Allowance</label><input id="emp-risk" type="number"></div>
+          <div class="form-group"><label>Social Insurance</label><input id="emp-social-insurance" type="number"></div>
+          <div class="form-group"><label>Telephone Allowance</label><input id="emp-telephone" type="number"></div>
+          <div class="form-group"><label>Transport Allowance</label><input id="emp-transport" type="number"></div>
+          <div class="form-group"><label>Vehicle Allowance</label><input id="emp-vehicle" type="number"></div>
+          <div class="form-group"><label>Kids Education</label><input id="emp-kids-education" type="number"></div>
+          <div class="form-group"><label>OT Eligible</label><input id="emp-ot-eligible" type="text" placeholder="Yes / No"></div>
+          <div class="form-group"><label>OT Rule (Normal)</label><input id="emp-ot-rule" type="number"></div>
+        </div>
+      </section>
+
+      <section class="emp-section">
+        <div class="emp-section-title">Visa & HOD</div>
+        <div class="emp-grid">
+          <div class="form-group"><label>Visa Type</label><input id="emp-visa-type" type="text"></div>
+          <div class="form-group"><label>Visa Sponsor</label><input id="emp-visa-sponsor" type="text"></div>
+          <div class="form-group"><label>HOD Name</label><input id="emp-hod-name" type="text"></div>
+          <div class="form-group"><label>HOD Email</label><input id="emp-hod-email" type="email"></div>
+          <div class="form-group full"><label>Comments</label><input id="emp-comments" type="text"></div>
         </div>
       </section>
 
@@ -2414,7 +3882,7 @@ textarea { resize: vertical; min-height: 80px; }
         <div class="emp-section-title">Platform Access</div>
         <div class="emp-grid">
           <div class="form-group"><label>Enable Login</label><select id="emp-access-enabled"><option value="true">Yes</option><option value="false">No</option></select></div>
-          <div class="form-group"><label>Role / Access Level</label><select id="emp-user-role"><option value="EMPLOYEE">EMPLOYEE</option><option value="MANAGER">MANAGER</option><option value="PRO">PRO</option><option value="HR_OFFICER">HR_OFFICER</option><option value="HR">HR</option><option value="CEO">CEO</option><option value="SUPER_ADMIN">SUPER_ADMIN</option></select></div>
+          <div class="form-group"><label>Role / Access Level</label><select id="emp-user-role"><option value="EMPLOYEE">EMPLOYEE</option><option value="LABOUR">LABOUR</option><option value="STAFF">STAFF</option><option value="MANAGER">MANAGER</option><option value="PRO">PRO</option><option value="HR_OFFICER">HR_OFFICER</option><option value="HR">HR</option><option value="CEO">CEO</option><option value="SUPER_ADMIN">SUPER_ADMIN</option></select></div>
           <div class="form-group"><label>Login Email</label><input id="emp-login-email" type="email" placeholder="Leave blank to use work email"></div>
           <div class="form-group"><label>Temporary Password</label><input id="emp-login-password" type="password" placeholder="Leave blank for default: Welcome@123"></div>
         </div>
@@ -2428,7 +3896,35 @@ textarea { resize: vertical; min-height: 80px; }
 </div>
 
 <!-- Toast -->
+<div class="modal-overlay" id="import-progress-modal" aria-live="polite" aria-busy="true">
+  <div class="modal">
+    <div class="modal-title" id="import-progress-title">Importing…</div>
+    <div id="import-progress-status" class="text-muted" style="font-size:13px;margin-bottom:12px">Preparing…</div>
+    <div class="progress" style="height:10px;border-radius:999px">
+      <div class="progress-bar progress-accent" id="import-progress-bar" style="width:0%"></div>
+    </div>
+    <div id="import-progress-percent" style="font-size:12px;color:var(--text-muted);margin-top:8px;text-align:right">0%</div>
+  </div>
+</div>
+
 <div id="toast"></div>
+
+<nav id="mobile-bottom-nav" aria-label="Primary navigation"></nav>
+
+<div class="modal-overlay" id="doc-viewer-modal">
+  <div class="modal doc-viewer-modal">
+    <div class="modal-header" style="margin-bottom:14px">
+      <div class="modal-title" id="doc-viewer-title">Document</div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button type="button" class="btn btn-secondary btn-sm" id="doc-viewer-open-tab">Open in tab</button>
+        <button type="button" class="modal-close" aria-label="Close document viewer" onclick="window.__closeDocumentViewer()">✕</button>
+      </div>
+    </div>
+    <div class="doc-viewer-body" id="doc-viewer-body">
+      <div class="doc-viewer-loading" id="doc-viewer-loading">Loading document…</div>
+    </div>
+  </div>
+</div>
 
 <div class="modal-overlay" id="face-modal">
   <div class="modal" style="max-width:560px">
@@ -2459,6 +3955,46 @@ textarea { resize: vertical; min-height: 80px; }
 </div>
 
 <script>
+const HRMS_THEME_KEY = 'hrms_theme';
+
+function getHrmsTheme() {
+  return document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+}
+
+function applyHrmsTheme(theme) {
+  const next = theme === 'light' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem(HRMS_THEME_KEY, next);
+  syncHrmsThemeToggle();
+  window.dispatchEvent(new CustomEvent('hrms-theme-change', { detail: { theme: next } }));
+}
+
+function toggleHrmsTheme() {
+  applyHrmsTheme(getHrmsTheme() === 'dark' ? 'light' : 'dark');
+}
+
+function syncHrmsThemeToggle() {
+  const isDark = getHrmsTheme() === 'dark';
+  const icon = document.getElementById('theme-toggle-icon');
+  if (icon) icon.className = isDark ? 'bi bi-sun-fill' : 'bi bi-moon-fill';
+  const btn = document.getElementById('theme-toggle-btn');
+  if (btn) btn.title = isDark ? 'Switch to light theme' : 'Switch to dark theme';
+  const mobileIcon = document.getElementById('settings-mobile-theme-icon');
+  if (mobileIcon) mobileIcon.className = isDark ? 'bi bi-sun-fill' : 'bi bi-moon-fill';
+  const mobileLabel = document.getElementById('settings-mobile-theme-label');
+  if (mobileLabel) mobileLabel.textContent = isDark ? 'Light mode' : 'Dark mode';
+  const darkBtn = document.getElementById('settings-theme-dark-btn');
+  const lightBtn = document.getElementById('settings-theme-light-btn');
+  if (darkBtn) darkBtn.classList.toggle('btn-primary', isDark);
+  if (darkBtn) darkBtn.classList.toggle('btn-secondary', !isDark);
+  if (lightBtn) lightBtn.classList.toggle('btn-primary', !isDark);
+  if (lightBtn) lightBtn.classList.toggle('btn-secondary', isDark);
+}
+
+window.getHrmsTheme = getHrmsTheme;
+window.applyHrmsTheme = applyHrmsTheme;
+window.toggleHrmsTheme = toggleHrmsTheme;
+
 const HRMS_ACTIVE_VIEW_KEY = 'hrms_active_view';
 const HRMS_ACTIVE_TAB_KEY = 'hrms_active_tab';
 const HRMS_MOBILE_BREAKPOINT = 900;
@@ -2484,6 +4020,19 @@ function closeSidebar() {
   toggleSidebar(false);
 }
 
+function updateBottomTabActive(view) {
+  document.querySelectorAll('#mobile-bottom-nav .bottom-tab').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.view === view);
+  });
+}
+
+function navigateFromBottomTab(view) {
+  navigate(view, getNavItemByView(view));
+}
+
+window.navigateFromBottomTab = navigateFromBottomTab;
+window.updateBottomTabActive = updateBottomTabActive;
+
 // ─── Navigation ───
 function navigate(view, el) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
@@ -2499,6 +4048,7 @@ function navigate(view, el) {
     attendance: 'Attendance & Tracking <span>/ Live Workforce Map</span>',
     calendar: 'Calendar <span>/ Attendance & Route Map</span>',
     offices: 'Office Master <span>/ Geofence Setup</span>',
+    masterdata: 'Master Data <span>/ System Configuration</span>',
     pro: 'PRO &amp; Visas <span>/ Document &amp; Immigration</span>',
     documents: 'Documents <span>/ Employee Files</span>',
     profile: 'My Profile <span>/ Employee Information</span>',
@@ -2507,7 +4057,9 @@ function navigate(view, el) {
   document.getElementById('header-title').innerHTML = titles[view] || view;
   localStorage.setItem(HRMS_ACTIVE_VIEW_KEY, view);
   closeSidebar();
+  updateBottomTabActive(view);
   window.scrollTo(0,0);
+  window.__loadViewData?.(view);
 }
 
 // ─── Tabs ───
@@ -2523,6 +4075,8 @@ function switchTab(btn, paneId) {
   localStorage.setItem(HRMS_ACTIVE_TAB_KEY, paneId);
   if (paneId === 'exit-terminate') window.__refreshTermNoticeInfo?.();
   if (paneId === 'exit-apply') window.__refreshExitNoticeInfo?.();
+  if (paneId === 'leave-history') window.__initLeaveHistoryTab?.();
+  if (paneId === 'leave-apply') window.__refreshLeaveApplyBalance?.();
 }
 
 // ─── Modal ───
@@ -2533,6 +4087,10 @@ document.querySelectorAll('.modal-overlay').forEach(o => {
     if (e.target !== o) return;
     if (o.id === 'emp-modal') {
       window.__attemptCloseEmployeeModal?.();
+      return;
+    }
+    if (o.id === 'doc-viewer-modal') {
+      window.__closeDocumentViewer?.();
       return;
     }
     o.classList.remove('open');
@@ -2626,6 +4184,7 @@ document.querySelectorAll('.chip').forEach(c => {
 });
 
 document.addEventListener('DOMContentLoaded', () => {
+  syncHrmsThemeToggle();
   window.addEventListener('resize', () => {
     if (!isMobileViewport()) {
       document.getElementById('sidebar')?.classList.remove('mob-open');

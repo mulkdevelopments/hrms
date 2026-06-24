@@ -70,24 +70,19 @@ This repository now contains a production-style full-stack HRMS implementation w
 - `manager@hrms.com / Manager@123`
 - `employee@hrms.com / Employee@123`
 
-## Proper Hosting (Render)
+## Hosting (Render + Vercel)
 
-This repo includes a Render Blueprint at `render.yaml` for stable team hosting.
+Production is split:
 
-1. Push the repository to GitHub.
-2. In Render, choose **New > Blueprint** and select this repo.
-3. Render provisions:
-   - one web service (`hrms-app`) for frontend + backend
-   - one managed PostgreSQL database (`hrms-db`)
-4. After first deploy, run seed once from Render Shell:
-   ```bash
-   npm run db:seed
-   ```
-5. Share the Render service URL with your team.
+- **Backend + PostgreSQL** → Render (`render.yaml`, service `hrms-api`)
+- **Frontend** → Vercel (root directory `frontend`, env `VITE_API_URL`)
 
-Notes:
-- The backend serves the built frontend in production.
-- API is available under the same domain at `/api/*`.
+See **[DEPLOYMENT.md](./DEPLOYMENT.md)** for step-by-step setup, env vars, and seeding.
+
+Quick links after deploy:
+
+- API health: `https://<render-host>/api/health`
+- Frontend env: `VITE_API_URL=https://<render-host>/api`
 
 ## Implemented Requirement Mapping
 

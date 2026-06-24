@@ -12,8 +12,12 @@ import AttendanceScreen from "../screens/AttendanceScreen";
 import LeaveScreen from "../screens/LeaveScreen";
 import ProfileScreen from "../screens/ProfileScreen";
 import NotificationsScreen from "../screens/NotificationsScreen";
+import EmployeesScreen from "../screens/EmployeesScreen";
+import EmployeeDetailScreen from "../screens/EmployeeDetailScreen";
+import HrToolsScreen from "../screens/HrToolsScreen";
+import type { RootStackParamList } from "./types";
 
-const Stack = createNativeStackNavigator();
+const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator();
 
 const navTheme = {
@@ -81,7 +85,12 @@ export default function RootNavigator() {
     <NavigationContainer theme={navTheme}>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {user ? (
-          <Stack.Screen name="Main" component={MainTabs} />
+          <>
+            <Stack.Screen name="Main" component={MainTabs} />
+            <Stack.Screen name="HrTools" component={HrToolsScreen} />
+            <Stack.Screen name="Employees" component={EmployeesScreen} />
+            <Stack.Screen name="EmployeeDetail" component={EmployeeDetailScreen} />
+          </>
         ) : (
           <Stack.Screen name="Login" component={LoginScreen} />
         )}

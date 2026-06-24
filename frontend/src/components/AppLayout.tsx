@@ -7,7 +7,10 @@ export function AppLayout() {
   return (
     <div className="shell">
       <aside className="sidebar">
-        <div className="logo">HRMS Enterprise</div>
+        <div className="logo">
+          <img src="/brand/logo-mark-light-sm.png" alt="" className="logo-image" />
+          <span className="logo-title">Mulk HRMS</span>
+        </div>
         <nav>
           <NavLink to="/" end className="nav-link">
             Dashboard

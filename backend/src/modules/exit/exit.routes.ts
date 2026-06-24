@@ -7,23 +7,48 @@ import { computeSettlement } from "../../lib/settlement.js";
 import { resolveEmploymentStatus } from "../../lib/employment-status.js";
 import { getOutstandingLoanTotal, closeOutstandingLoansOnExit } from "../adjustments/adjustments.routes.js";
 import { createCancellationTaskForExit } from "../pro/pro.routes.js";
+import { resolveLeaveL1Approver as resolveExitApprover, employeeName, startOfDay } from "../../lib/leave-delegation.js";
+import {
+  CLEARANCE_DEPARTMENTS,
+  CLEARANCE_DEPARTMENT_LABELS,
+  DEPARTMENT_CHECKLISTS,
+  checklistItemResolved,
+  departmentHasChecklist,
+  getChecklistItemFinancialConfig,
+  isFinancialChecklistItem,
+} from "../../lib/clearance-checklist.js";
+import {
+  clearPayAdjustmentForChecklistItem,
+  createPayAdjustmentForClearanceItem,
+} from "../../lib/clearance-pay-adjustment.js";
 
 export const exitRouter = Router();
 exitRouter.use(authMiddleware);
 
 const HR_ROLES = ["SUPER_ADMIN", "HR", "HR_OFFICER"];
-const CLEARANCE_DEPARTMENTS = ["IT", "FINANCE", "ADMIN", "PRO"];
 
 /** Maps clearance checklist dept → org departments whose MANAGER receives the task */
 const CLEARANCE_DEPT_MANAGER_LOOKUP: Record<string, string[]> = {
   IT: ["IT", "Engineering", "Technology"],
   FINANCE: ["Finance", "FINANCE"],
+  TRANSPORTATION: ["Transportation", "Transport", "Logistics", "TRANSPORTATION"],
 };
 
-const HR_CLEARANCE_DEPARTMENTS = new Set(["ADMIN", "PRO"]);
+const HR_CLEARANCE_DEPARTMENTS = new Set(["ADMIN", "HR", "PRO"]);
 const HR_CLEARANCE_ROLES = ["SUPER_ADMIN", "HR", "HR_OFFICER"] as const;
 
-async function resolveClearanceDepartmentManager(clearanceDepartment: string): Promise<string | null> {
+async function resolveClearanceDepartmentManager(clearanceDepartment: string, exitRecordId?: string) {
+  if (clearanceDepartment === "HOD" && exitRecordId) {
+    const exit = await prisma.exitRecord.findUnique({
+      where: { id: exitRecordId },
+      select: {
+        assignedApproverId: true,
+        employee: { select: { managerId: true } },
+      },
+    });
+    return exit?.employee?.managerId ?? exit?.assignedApproverId ?? null;
+  }
+
   if (HR_CLEARANCE_DEPARTMENTS.has(clearanceDepartment)) {
     for (const role of HR_CLEARANCE_ROLES) {
       const assignee = await prisma.employee.findFirst({
@@ -63,6 +88,9 @@ function canCompleteClearanceTask(
   if (HR_CLEARANCE_DEPARTMENTS.has(task.department)) {
     return Boolean(auth.role && (HR_CLEARANCE_ROLES as readonly string[]).includes(auth.role));
   }
+  if (task.department === "HOD") {
+    return auth.role === "MANAGER" && task.assignedManagerId === auth.employeeId;
+  }
   return auth.role === "MANAGER" && task.assignedManagerId === auth.employeeId;
 }
 
@@ -72,12 +100,12 @@ async function syncClearanceTaskAssignments() {
       status: "PENDING",
       exitRecord: { status: ExitStatus.CLEARANCE_IN_PROGRESS },
     },
-    select: { id: true, department: true, assignedManagerId: true },
+    select: { id: true, department: true, assignedManagerId: true, exitRecordId: true },
     take: 200,
   });
   await Promise.all(
     pendingTasks.map(async (task) => {
-      const managerId = await resolveClearanceDepartmentManager(task.department);
+      const managerId = await resolveClearanceDepartmentManager(task.department, task.exitRecordId);
       if (managerId && managerId !== task.assignedManagerId) {
         await prisma.clearanceTask.update({
           where: { id: task.id },
@@ -140,7 +168,38 @@ const documentSchema = z.object({
   supportingDocUrl: z.string().optional(),
 });
 
-const rejectSchema = z.object({ reason: z.string().min(3) });
+const clearanceChecklistItemSchema = z.object({
+  status: z.enum(["PENDING", "COMPLETED", "NOT_APPLICABLE"]),
+  remarks: z.string().trim().optional(),
+  amount: z.number().positive().optional(),
+  adjustmentType: z.enum(["DEDUCTION", "ADDITION"]).optional(),
+});
+
+const clearanceTaskInclude = {
+  assignedManager: {
+    select: {
+      id: true,
+      employeeCode: true,
+      firstName: true,
+      lastName: true,
+    },
+  },
+  checklistItems: {
+    orderBy: { sortOrder: "asc" as const },
+    include: {
+      payrollAdjustment: {
+        select: {
+          id: true,
+          referenceNumber: true,
+          status: true,
+          amount: true,
+          type: true,
+          requiresDualApproval: true,
+        },
+      },
+    },
+  },
+} satisfies Prisma.ClearanceTaskInclude;
 const clearanceSchema = z
   .object({
     status: z.enum(["PENDING", "COMPLETED"]),
@@ -155,6 +214,7 @@ const clearanceSchema = z
       });
     }
   });
+const rejectSchema = z.object({ reason: z.string().min(3) });
 const settlementSchema = z.object({
   unpaidSalaryDays: z.number().min(0).optional().default(0),
   extraDeductions: z.number().min(0).optional().default(0),
@@ -171,12 +231,6 @@ function canSeeAllExits(role?: string) {
 
 function startOfYear(date = new Date()) {
   return new Date(date.getFullYear(), 0, 1, 0, 0, 0, 0);
-}
-
-function startOfDay(date = new Date()) {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d;
 }
 
 function parseDateInput(value: string) {
@@ -214,101 +268,13 @@ function applyNoticePeriodStart(
   return { noticePeriodStartDate, lastWorkingDate, noticeShortfallDays };
 }
 
-async function isEmployeeOnApprovedLeave(employeeId: string, date = new Date()) {
-  const day = startOfDay(date);
-  const leave = await prisma.leaveRequest.findFirst({
-    where: {
-      employeeId,
-      status: "APPROVED",
-      startDate: { lte: day },
-      endDate: { gte: day },
-    },
-  });
-  return Boolean(leave);
-}
-
-async function resolveExitApprover(employee: { id: string; managerId: string | null; department: string }) {
-  const managerSelect = {
-    id: true,
-    employeeCode: true,
-    firstName: true,
-    lastName: true,
-    department: true,
-    role: true,
-  } as const;
-
-  if (!employee.managerId) {
-    const fallback = await prisma.employee.findFirst({
-      where: {
-        role: "MANAGER",
-        department: employee.department,
-        id: { not: employee.id },
-        accessEnabled: true,
-        status: { in: ["ACTIVE", "PROBATION"] },
-      },
-      select: managerSelect,
-    });
-    return {
-      approverId: fallback?.id ?? null,
-      lineManager: null,
-      assignedApprover: fallback,
-      isActing: false,
-      managerOnLeave: false,
-    };
-  }
-
-  const lineManager = await prisma.employee.findUnique({
-    where: { id: employee.managerId },
-    select: managerSelect,
-  });
-  if (!lineManager) {
-    return { approverId: null, lineManager: null, assignedApprover: null, isActing: false, managerOnLeave: false };
-  }
-
-  const managerOnLeave = await isEmployeeOnApprovedLeave(lineManager.id);
-  if (!managerOnLeave) {
-    return {
-      approverId: lineManager.id,
-      lineManager,
-      assignedApprover: lineManager,
-      isActing: false,
-      managerOnLeave: false,
-    };
-  }
-
-  const actingManager = await prisma.employee.findFirst({
-    where: {
-      role: "MANAGER",
-      department: employee.department,
-      id: { notIn: [employee.id, lineManager.id] },
-      accessEnabled: true,
-      status: { in: ["ACTIVE", "PROBATION"] },
-    },
-    select: managerSelect,
-    orderBy: { firstName: "asc" },
-  });
-
-  return {
-    approverId: actingManager?.id ?? lineManager.id,
-    lineManager,
-    assignedApprover: actingManager ?? lineManager,
-    isActing: Boolean(actingManager),
-    managerOnLeave: true,
-  };
-}
-
-function employeeName(emp?: { firstName?: string; lastName?: string | null } | null) {
-  if (!emp) return "—";
-  return `${emp.firstName ?? ""} ${emp.lastName ?? ""}`.trim() || "—";
-}
-
 async function getUsedPaidLeaveDays(employeeId: string, now = new Date()) {
   const used = await prisma.leaveRequest.aggregate({
     where: {
       employeeId,
       status: "APPROVED",
       approvedAt: { gte: startOfYear(now), lte: now },
-      leaveType: { paidLeave: true },
+      leaveType: { balanceMode: "MATURITY" },
     },
     _sum: { days: true },
   });
@@ -332,6 +298,7 @@ function exitInclude() {
         basicSalary: true,
         housingAllowance: true,
         transportAllowance: true,
+        netPayCurrency: true,
         manager: {
           select: {
             id: true,
@@ -354,16 +321,7 @@ function exitInclude() {
     },
     clearanceTasks: {
       orderBy: { department: "asc" },
-      include: {
-        assignedManager: {
-          select: {
-            id: true,
-            employeeCode: true,
-            firstName: true,
-            lastName: true,
-          },
-        },
-      },
+      include: clearanceTaskInclude,
     },
     finalSettlement: true,
   } satisfies Prisma.ExitRecordInclude;
@@ -486,6 +444,15 @@ exitRouter.get("/:id", async (req: AuthRequest, res) => {
     } else if (record.employeeId !== auth?.employeeId) {
       return res.status(403).json({ message: "You cannot view this exit record" });
     }
+  }
+  if (record.status === ExitStatus.CLEARANCE_IN_PROGRESS) {
+    await ensureClearanceTasks(record.id, record.type === "TERMINATION");
+    await syncClearanceTaskAssignments();
+    const refreshed = await prisma.exitRecord.findUnique({
+      where: { id: record.id },
+      include: exitInclude(),
+    });
+    return res.json(refreshed ?? record);
   }
   return res.json(record);
 });
@@ -706,18 +673,109 @@ exitRouter.post("/:id/document", requireRoles("MANAGER", "SUPER_ADMIN", "HR", "H
   return res.json(updated);
 });
 
-async function createClearanceTasks(exitRecordId: string, urgent: boolean) {
-  const existing = await prisma.clearanceTask.count({ where: { exitRecordId } });
-  if (existing > 0) return;
-  const tasks = await Promise.all(
-    CLEARANCE_DEPARTMENTS.map(async (department) => ({
-      exitRecordId,
-      department,
-      urgent,
-      assignedManagerId: await resolveClearanceDepartmentManager(department),
+async function ensureDepartmentChecklistItems(clearanceTaskId: string, department: string) {
+  const template = DEPARTMENT_CHECKLISTS[department as keyof typeof DEPARTMENT_CHECKLISTS];
+  if (!template?.length) return;
+
+  const existing = await prisma.clearanceChecklistItem.findMany({
+    where: { clearanceTaskId },
+    select: { itemKey: true },
+  });
+  const existingKeys = new Set(existing.map((item) => item.itemKey));
+  const missing = template.filter((item) => !existingKeys.has(item.itemKey));
+  if (!missing.length) return;
+
+  await prisma.clearanceChecklistItem.createMany({
+    data: missing.map((item) => ({
+      clearanceTaskId,
+      itemKey: item.itemKey,
+      label: item.label,
+      sortOrder: item.sortOrder,
     })),
+  });
+}
+
+async function syncChecklistTaskCompletion(clearanceTaskId: string, completedById?: string | null) {
+  const task = await prisma.clearanceTask.findUnique({
+    where: { id: clearanceTaskId },
+    include: { checklistItems: { orderBy: { sortOrder: "asc" } } },
+  });
+  if (!task || !task.checklistItems.length || !departmentHasChecklist(task.department)) return;
+
+  const allResolved = task.checklistItems.every((item) => checklistItemResolved(item.status));
+  const deptLabel = CLEARANCE_DEPARTMENT_LABELS[task.department as keyof typeof CLEARANCE_DEPARTMENT_LABELS] ?? task.department;
+
+  if (allResolved && task.status !== "COMPLETED") {
+    const remarks =
+      task.checklistItems
+        .map((item) => {
+          const statusLabel = item.status === "NOT_APPLICABLE" ? "N/A" : "Collected";
+          return item.remarks ? `${item.label} (${statusLabel}: ${item.remarks})` : `${item.label} (${statusLabel})`;
+        })
+        .join(" · ") || `${deptLabel} checklist cleared`;
+    await prisma.clearanceTask.update({
+      where: { id: clearanceTaskId },
+      data: {
+        status: "COMPLETED",
+        remarks,
+        completedById: completedById ?? task.completedById,
+        completedAt: new Date(),
+      },
+    });
+    return;
+  }
+
+  if (!allResolved && task.status === "COMPLETED") {
+    await prisma.clearanceTask.update({
+      where: { id: clearanceTaskId },
+      data: {
+        status: "PENDING",
+        remarks: null,
+        completedById: null,
+        completedAt: null,
+      },
+    });
+  }
+}
+
+async function ensureClearanceTasks(exitRecordId: string, urgent: boolean) {
+  const existing = await prisma.clearanceTask.findMany({
+    where: { exitRecordId },
+    select: { department: true },
+  });
+  const existingDepartments = new Set(existing.map((task) => task.department));
+  const missingDepartments = CLEARANCE_DEPARTMENTS.filter((department) => !existingDepartments.has(department));
+
+  if (missingDepartments.length) {
+    const tasks = await Promise.all(
+      missingDepartments.map(async (department) => ({
+        exitRecordId,
+        department,
+        urgent,
+        assignedManagerId: await resolveClearanceDepartmentManager(department, exitRecordId),
+      })),
+    );
+    await prisma.clearanceTask.createMany({ data: tasks });
+  }
+
+  const allTasks = await prisma.clearanceTask.findMany({
+    where: { exitRecordId },
+    select: { id: true, department: true },
+  });
+  await Promise.all(allTasks.map((task) => ensureDepartmentChecklistItems(task.id, task.department)));
+
+  const hodTasks = allTasks.filter((task) => task.department === "HOD");
+  await Promise.all(
+    hodTasks.map(async (task) => {
+      const managerId = await resolveClearanceDepartmentManager("HOD", exitRecordId);
+      if (managerId) {
+        await prisma.clearanceTask.update({
+          where: { id: task.id },
+          data: { assignedManagerId: managerId },
+        });
+      }
+    }),
   );
-  await prisma.clearanceTask.createMany({ data: tasks });
 }
 
 // List clearance tasks (managers see assigned; HR/admin see all)
@@ -737,14 +795,19 @@ exitRouter.get("/clearance/tasks", async (req: AuthRequest, res) => {
     return res.status(403).json({ message: "You cannot view clearance tasks" });
   }
 
+  const activeClearances = await prisma.exitRecord.findMany({
+    where: { status: ExitStatus.CLEARANCE_IN_PROGRESS },
+    select: { id: true, type: true },
+  });
+  await Promise.all(
+    activeClearances.map((exit) => ensureClearanceTasks(exit.id, exit.type === "TERMINATION")),
+  );
   await syncClearanceTaskAssignments();
 
   const tasks = await prisma.clearanceTask.findMany({
     where,
     include: {
-      assignedManager: {
-        select: { id: true, employeeCode: true, firstName: true, lastName: true },
-      },
+      ...clearanceTaskInclude,
       exitRecord: {
         select: {
           id: true,
@@ -790,7 +853,7 @@ exitRouter.post("/:id/hr-approve", requireRoles("SUPER_ADMIN", "HR", "HR_OFFICER
       hrApprovedAt: new Date(),
     },
   });
-  await createClearanceTasks(record.id, false);
+  await ensureClearanceTasks(record.id, false);
   const full = await prisma.exitRecord.findUnique({ where: { id: record.id }, include: exitInclude() });
   return res.json(full);
 });
@@ -810,7 +873,7 @@ exitRouter.post("/:id/ceo-approve", requireRoles("SUPER_ADMIN", "CEO"), async (r
       ceoApprovedAt: new Date(),
     },
   });
-  await createClearanceTasks(record.id, true);
+  await ensureClearanceTasks(record.id, true);
   const full = await prisma.exitRecord.findUnique({ where: { id: record.id }, include: exitInclude() });
   return res.json(full);
 });
@@ -853,6 +916,128 @@ exitRouter.delete("/:id", requireRoles("SUPER_ADMIN", "HR", "HR_OFFICER"), async
   return res.json({ message: "Exit record deleted" });
 });
 
+// Update IT checklist item — marks parent IT task complete when all items are done
+exitRouter.patch(
+  "/clearance/checklist/:itemId",
+  requireRoles("MANAGER", "SUPER_ADMIN", "HR", "HR_OFFICER"),
+  async (req: AuthRequest, res) => {
+    const payload = clearanceChecklistItemSchema.parse(req.body);
+    const item = await prisma.clearanceChecklistItem.findUnique({
+      where: { id: String(req.params.itemId) },
+      include: {
+        payrollAdjustment: true,
+        clearanceTask: {
+          include: {
+            exitRecord: {
+              select: {
+                id: true,
+                status: true,
+                lastWorkingDate: true,
+                requestedLastWorkingDay: true,
+                employeeId: true,
+                employee: {
+                  select: {
+                    id: true,
+                    firstName: true,
+                    lastName: true,
+                    employeeCode: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!item) return res.status(404).json({ message: "Checklist item not found" });
+    if (item.clearanceTask.exitRecord.status !== ExitStatus.CLEARANCE_IN_PROGRESS) {
+      return res.status(400).json({ message: "Checklist can only be updated while exit is in clearance stage" });
+    }
+    if (!canCompleteClearanceTask(item.clearanceTask, req.auth ?? {})) {
+      return res.status(403).json({ message: "You are not allowed to update this clearance checklist" });
+    }
+
+    const financialConfig = getChecklistItemFinancialConfig(item.itemKey);
+    const isFinancial = isFinancialChecklistItem(item.itemKey);
+
+    if (payload.status === "COMPLETED" && isFinancial) {
+      const amount = payload.amount;
+      if (!amount || amount <= 0) {
+        return res.status(400).json({ message: `Enter an amount (AED) for ${item.label} before marking collected.` });
+      }
+      const adjustmentType = payload.adjustmentType ?? financialConfig?.defaultType ?? "DEDUCTION";
+      if (adjustmentType === "ADDITION" && !financialConfig?.allowAddition && financialConfig?.defaultType === "DEDUCTION") {
+        return res.status(400).json({ message: `${item.label} can only be recorded as a deduction.` });
+      }
+      const category = financialConfig?.category ?? (adjustmentType === "ADDITION" ? "OTHER_ADDITION" : "OTHER_DEDUCTION");
+      const lwd = item.clearanceTask.exitRecord.lastWorkingDate
+        ?? item.clearanceTask.exitRecord.requestedLastWorkingDay
+        ?? new Date();
+
+      if (item.payrollAdjustmentId && item.payrollAdjustment?.status === "DRAFT") {
+        await prisma.payrollAdjustment.delete({ where: { id: item.payrollAdjustmentId } });
+      }
+
+      await createPayAdjustmentForClearanceItem({
+        checklistItemId: item.id,
+        employeeId: item.clearanceTask.exitRecord.employeeId,
+        exitRecordId: item.clearanceTask.exitRecord.id,
+        itemLabel: item.label,
+        amount,
+        adjustmentType,
+        category,
+        effectiveMonth: lwd.getMonth() + 1,
+        effectiveYear: lwd.getFullYear(),
+        createdById: req.auth?.employeeId,
+        remarks: payload.remarks,
+      });
+    }
+
+    if (payload.status === "PENDING" && item.payrollAdjustmentId) {
+      await clearPayAdjustmentForChecklistItem(item.id);
+    }
+
+    if (payload.status === "NOT_APPLICABLE" && item.payrollAdjustmentId) {
+      await clearPayAdjustmentForChecklistItem(item.id);
+    }
+
+    const isResolved = checklistItemResolved(payload.status);
+    const updatedItem = await prisma.clearanceChecklistItem.update({
+      where: { id: item.id },
+      data: {
+        status: payload.status,
+        remarks: payload.remarks ?? null,
+        completedById: isResolved ? req.auth?.employeeId ?? null : null,
+        completedAt: isResolved ? new Date() : null,
+        ...(payload.status === "NOT_APPLICABLE"
+          ? { amount: null, adjustmentType: null, adjustmentCategory: null, payrollAdjustmentId: null }
+          : {}),
+      },
+      include: {
+        payrollAdjustment: {
+          select: {
+            id: true,
+            referenceNumber: true,
+            status: true,
+            amount: true,
+            type: true,
+            requiresDualApproval: true,
+          },
+        },
+      },
+    });
+
+    await syncChecklistTaskCompletion(item.clearanceTaskId, req.auth?.employeeId);
+
+    const full = await prisma.exitRecord.findUnique({
+      where: { id: item.clearanceTask.exitRecordId },
+      include: exitInclude(),
+    });
+    const task = full?.clearanceTasks.find((entry) => entry.id === item.clearanceTaskId);
+    return res.json({ item: updatedItem, task, exit: full });
+  },
+);
+
 // Mark clearance task complete — dept manager or HR/admin for ADMIN & PRO, note required
 exitRouter.patch(
   "/clearance/:taskId",
@@ -862,6 +1047,7 @@ exitRouter.patch(
   const task = await prisma.clearanceTask.findUnique({
     where: { id: String(req.params.taskId) },
     include: {
+      checklistItems: true,
       exitRecord: {
         select: { status: true },
       },
@@ -876,6 +1062,15 @@ exitRouter.patch(
   }
   if (payload.status !== "COMPLETED") {
     return res.status(400).json({ message: "Clearance can only be marked as completed" });
+  }
+  if (departmentHasChecklist(task.department) && task.checklistItems.length) {
+    const pendingItems = task.checklistItems.filter((entry) => entry.status === "PENDING");
+    if (pendingItems.length) {
+      return res.status(400).json({
+        message: `Complete all ${CLEARANCE_DEPARTMENT_LABELS[task.department as keyof typeof CLEARANCE_DEPARTMENT_LABELS] ?? task.department} checklist items first (${pendingItems.length} remaining)`,
+        pendingItems: pendingItems.map((entry) => entry.label),
+      });
+    }
   }
   const updated = await prisma.clearanceTask.update({
     where: { id: task.id },

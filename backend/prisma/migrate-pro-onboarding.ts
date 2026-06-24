@@ -5,7 +5,7 @@ const prisma = new PrismaClient();
 
 async function main() {
   console.log("Creating PRO onboarding tasks for employees without an open new-visa task…");
-  const result = await ensureOnboardingProTasks();
+  const result = await ensureOnboardingProTasks({ recentDays: 3650 });
   console.log(`Created ${result.created} task(s), updated ${result.updated} legacy task(s).`);
 }
 

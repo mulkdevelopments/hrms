@@ -4,7 +4,6 @@ import { z } from "zod";
 import { prisma } from "../../lib/prisma.js";
 import {
   createOnboardingProTask,
-  ensureOnboardingProTasks,
   generateProRef,
   NEW_VISA_ONBOARDING_FLOW,
   ONBOARDING_INITIAL_STATUS,
@@ -15,8 +14,14 @@ export const proRouter = Router();
 proRouter.use(authMiddleware);
 
 const PRO_ROLES: ("SUPER_ADMIN" | "HR" | "HR_OFFICER" | "PRO")[] = ["SUPER_ADMIN", "HR", "HR_OFFICER", "PRO"];
-const EXPIRY_ALERT_DAYS = 30;
+const EXPIRY_ALERT_MONTHS = 6;
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+function expiryAlertCutoff(from = new Date()) {
+  const cutoff = new Date(from);
+  cutoff.setMonth(cutoff.getMonth() + EXPIRY_ALERT_MONTHS);
+  return cutoff;
+}
 
 const DOC_TYPES = [
   "PASSPORT",
@@ -60,10 +65,9 @@ function canViewAllDocuments(role?: string) {
 
 function docStatus(expiryDate: Date | null) {
   if (!expiryDate) return "VALID";
-  const now = Date.now();
-  const diffDays = Math.floor((expiryDate.getTime() - now) / DAY_MS);
-  if (diffDays < 0) return "EXPIRED";
-  if (diffDays <= EXPIRY_ALERT_DAYS) return "EXPIRING";
+  const now = new Date();
+  if (expiryDate.getTime() < now.getTime()) return "EXPIRED";
+  if (expiryDate.getTime() <= expiryAlertCutoff(now).getTime()) return "EXPIRING";
   return "VALID";
 }
 
@@ -115,7 +119,7 @@ function scopeDocWhere(auth: AuthRequest["auth"]): Prisma.EmployeeDocumentWhereI
 
 // ───────── Documents ─────────
 
-proRouter.get("/doc-types", (_req, res) => res.json({ docTypes: DOC_TYPES, alertDays: EXPIRY_ALERT_DAYS }));
+proRouter.get("/doc-types", (_req, res) => res.json({ docTypes: DOC_TYPES, alertMonths: EXPIRY_ALERT_MONTHS }));
 
 proRouter.get("/documents", async (req: AuthRequest, res) => {
   const where = scopeDocWhere(req.auth);
@@ -132,10 +136,13 @@ proRouter.get("/documents", async (req: AuthRequest, res) => {
 });
 
 proRouter.get("/documents/expiring", async (req: AuthRequest, res) => {
-  const days = Number(req.query.days ?? EXPIRY_ALERT_DAYS);
-  const cutoff = new Date(Date.now() + days * DAY_MS);
   const where = scopeDocWhere(req.auth);
-  where.expiryDate = { lte: cutoff };
+  if (req.query.days != null) {
+    const days = Number(req.query.days);
+    where.expiryDate = { lte: new Date(Date.now() + days * DAY_MS) };
+  } else {
+    where.expiryDate = { lte: expiryAlertCutoff() };
+  }
   const docs = await prisma.employeeDocument.findMany({ where, include: docInclude, orderBy: { expiryDate: "asc" } });
   return res.json(docs.map(withDocStatus));
 });
@@ -198,7 +205,6 @@ const taskInclude = {
 } satisfies Prisma.ProTaskInclude;
 
 proRouter.get("/tasks", async (req: AuthRequest, res) => {
-  await ensureOnboardingProTasks();
   const where = scopeTaskWhere(req.auth);
   if (req.query.status) where.status = String(req.query.status);
   if (req.query.taskType) where.taskType = String(req.query.taskType);
@@ -236,11 +242,15 @@ proRouter.patch("/tasks/:id/status", requireRoles(...PRO_ROLES), async (req, res
   }
 
   const flow = TASK_FLOWS[task.taskType] ?? [];
+  const finalStage = flow[flow.length - 1];
+  if (finalStage && task.status === finalStage) {
+    return res.status(400).json({ message: "Completed tasks cannot be updated" });
+  }
+
   if (!flow.includes(payload.status)) {
     return res.status(400).json({ message: "Invalid stage for this task type" });
   }
 
-  const finalStage = flow[flow.length - 1];
   const isFinal = payload.status === finalStage;
 
   const updated = await prisma.proTask.update({
@@ -300,7 +310,7 @@ proRouter.post("/tasks/:id/cancel", requireRoles(...PRO_ROLES), async (req, res)
 export { createOnboardingProTask, ensureOnboardingProTasks } from "../../lib/pro-tasks.js";
 
 export async function autoCreateRenewalTasks() {
-  const cutoff = new Date(Date.now() + EXPIRY_ALERT_DAYS * DAY_MS);
+  const cutoff = expiryAlertCutoff();
   const renewableTypes = ["RESIDENCE_VISA", "LABOUR_PERMIT", "EMIRATES_ID", "HEALTH_CARD"];
   const expiringDocs = await prisma.employeeDocument.findMany({
     where: { docType: { in: renewableTypes }, expiryDate: { not: null, lte: cutoff, gte: new Date() } },

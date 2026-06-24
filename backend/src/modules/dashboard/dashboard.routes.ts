@@ -2,6 +2,12 @@ import { Router } from "express";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../../lib/prisma.js";
 import { getProbationCutoffDate } from "../../lib/employment-status.js";
+import {
+  countEmployeesOverLateThreshold,
+  countLateJoinersToday,
+  getLateAttendanceSummary,
+} from "../../lib/late-attendance.js";
+import { isIndividualContributor } from "../../lib/roles.js";
 import { authMiddleware, type AuthRequest } from "../../middleware/auth.js";
 
 const EmployeeStatus = {
@@ -12,6 +18,7 @@ const EmployeeStatus = {
 
 const LeaveStatus = {
   PENDING_L1: "PENDING_L1",
+  PENDING_ACTING: "PENDING_ACTING",
   PENDING_L2: "PENDING_L2",
 } as const;
 
@@ -42,6 +49,7 @@ dashboardRouter.get("/overview", async (req: AuthRequest, res) => {
     ...employeeWhere,
     nationality: { not: null },
   };
+  let departmentFilter: string | undefined;
   const now = new Date();
   const currentMonth = now.getMonth() + 1;
   const currentYear = now.getFullYear();
@@ -63,6 +71,7 @@ dashboardRouter.get("/overview", async (req: AuthRequest, res) => {
     if (!managerEmployee) {
       return res.status(404).json({ message: "Manager employee profile not found" });
     }
+    departmentFilter = managerEmployee.department;
     employeeWhere.department = managerEmployee.department;
     onLeaveWhere.department = managerEmployee.department;
     activeWhere.department = managerEmployee.department;
@@ -74,7 +83,7 @@ dashboardRouter.get("/overview", async (req: AuthRequest, res) => {
     overtimePayslipWhere.employee = { department: managerEmployee.department };
   }
 
-  if (auth?.role === "EMPLOYEE" && auth.employeeId) {
+  if (isIndividualContributor(auth?.role) && auth?.employeeId) {
     employeeWhere.id = auth.employeeId;
     onLeaveWhere.id = auth.employeeId;
     activeWhere.id = auth.employeeId;
@@ -86,7 +95,9 @@ dashboardRouter.get("/overview", async (req: AuthRequest, res) => {
     overtimePayslipWhere.employeeId = auth.employeeId;
   }
 
-  const [headcount, onLeave, activeCount, probationCount, pendingLeaveApprovals, employeesByDept, payroll, payrollCurrent, overtimeEmployees, nationalityMix] = await Promise.all([
+  const isEmployeeScope = isIndividualContributor(auth?.role) && auth?.employeeId;
+
+  const [headcount, onLeave, activeCount, probationCount, pendingLeaveApprovals, employeesByDept, payroll, payrollCurrent, overtimeEmployees, nationalityMix, lateJoinersToday, employeesOverLateThreshold, lateAttendance] = await Promise.all([
     prisma.employee.count({ where: employeeWhere }),
     prisma.employee.count({ where: onLeaveWhere }),
     prisma.employee.count({ where: activeWhere }),
@@ -118,6 +129,11 @@ dashboardRouter.get("/overview", async (req: AuthRequest, res) => {
       orderBy: { _count: { nationality: "desc" } },
       take: 5,
     }),
+    isEmployeeScope ? Promise.resolve(0) : countLateJoinersToday(departmentFilter),
+    isEmployeeScope ? Promise.resolve(0) : countEmployeesOverLateThreshold(departmentFilter),
+    isEmployeeScope && auth?.employeeId
+      ? getLateAttendanceSummary(auth.employeeId)
+      : Promise.resolve(null),
   ]);
 
   const nationalityTotal = nationalityMix.reduce((sum, row) => sum + row._count.nationality, 0);
@@ -151,5 +167,8 @@ dashboardRouter.get("/overview", async (req: AuthRequest, res) => {
         + (payrollCurrent._sum.overtime ?? 0),
       overtimeEmployees,
     },
+    lateJoinersToday,
+    employeesOverLateThreshold,
+    lateAttendance,
   });
 });

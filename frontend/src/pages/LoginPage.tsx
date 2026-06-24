@@ -25,7 +25,7 @@ export function LoginPage() {
     <div className="login-wrap">
       <form className="login-card" onSubmit={onSubmit}>
         <div className="login-brand">
-          <img src="/Mask%20group.avif" alt="HRMS logo" className="login-logo" />
+          <img src="/brand/logo-light.png" alt="HRMS logo" className="login-logo" />
         </div>
 
         <label>

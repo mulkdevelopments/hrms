@@ -26,7 +26,13 @@ export default function NotificationsScreen() {
 
     try {
       const att = await api<AttendanceStatus>("/attendance/status").catch(() => null);
-      if (att?.activeSession?.isActive) {
+      if (att?.lateAttendance?.warningActive) {
+        next.push({
+          title: "Late check-in warning",
+          desc: `${att.lateAttendance.monthlyLateCount} late check-in(s) this month (limit: ${att.lateAttendance.threshold}).`,
+          tone: "coral",
+        });
+      } else if (att?.activeSession?.isActive) {
         next.push({ title: "You are checked in", desc: "Your attendance session is active.", tone: "blue" });
       } else {
         next.push({ title: "Not checked in", desc: "Check in from the Attendance tab.", tone: "amber" });

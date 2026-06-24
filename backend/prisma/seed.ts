@@ -1,5 +1,10 @@
 import bcrypt from "bcryptjs";
 import { PrismaClient } from "@prisma/client";
+import {
+  DEFAULT_LEAVE_TYPES,
+  ensureEmployeeLeaveBalances,
+} from "../src/lib/leave-policy.js";
+import { seedMasterData } from "../src/lib/master-data.js";
 
 const prisma = new PrismaClient();
 
@@ -23,26 +28,13 @@ async function main() {
     },
   });
 
-  const annual = await prisma.leaveType.create({
-    data: {
-      name: "Annual Leave",
-      code: "AL",
-      yearlyAllocation: 30,
-      maxCarryForward: 60,
-      paidLeave: true,
-    },
-  });
-
-  const sick = await prisma.leaveType.create({
-    data: {
-      name: "Sick Leave",
-      code: "SL",
-      yearlyAllocation: 15,
-      maxCarryForward: 0,
-      paidLeave: true,
-      requiresAttachment: true,
-    },
-  });
+  await seedMasterData({ resetLeaveTypes: true });
+  const leaveTypes = await prisma.leaveType.findMany({ where: { active: true } });
+  const annual = leaveTypes.find((type) => type.code === "AL");
+  const sick = leaveTypes.find((type) => type.code === "SL");
+  if (!annual || !sick) {
+    throw new Error("Default leave types were not seeded");
+  }
 
   const superAdminEmployee = await prisma.employee.create({
     data: {
@@ -119,38 +111,14 @@ async function main() {
     },
   });
 
-  const year = new Date().getFullYear();
+  await ensureEmployeeLeaveBalances(superAdminEmployee.id);
+  await ensureEmployeeLeaveBalances(managerEmployee.id);
+  await ensureEmployeeLeaveBalances(employee.id);
 
-  await prisma.leaveBalance.createMany({
-    data: [
-      {
-        employeeId: employee.id,
-        leaveTypeId: annual.id,
-        year,
-        openingBalance: 5,
-        accrued: 12,
-        used: 4,
-        carryForward: 13,
-      },
-      {
-        employeeId: employee.id,
-        leaveTypeId: sick.id,
-        year,
-        openingBalance: 0,
-        accrued: 8,
-        used: 1,
-        carryForward: 7,
-      },
-      {
-        employeeId: managerEmployee.id,
-        leaveTypeId: annual.id,
-        year,
-        openingBalance: 7,
-        accrued: 14,
-        used: 6,
-        carryForward: 15,
-      },
-    ],
+  const year = new Date().getFullYear();
+  await prisma.leaveBalance.updateMany({
+    where: { employeeId: employee.id, leaveTypeId: sick.id, year },
+    data: { used: 1 },
   });
 
   await prisma.leaveRequest.create({
@@ -193,6 +161,7 @@ async function main() {
   });
 
   console.log("Seed completed.");
+  console.log(`Leave types configured: ${DEFAULT_LEAVE_TYPES.length}`);
   console.log("Credentials:");
   console.log("- admin@hrms.com / Admin@123");
   console.log("- manager@hrms.com / Manager@123");

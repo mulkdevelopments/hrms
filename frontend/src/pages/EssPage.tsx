@@ -7,12 +7,19 @@ type EssProfile = {
   lastName: string;
   designation: string;
   department: string;
+  netPayCurrency?: string | null;
   manager?: {
     firstName: string;
     lastName: string;
     employeeCode: string;
   } | null;
 };
+
+function formatEssMoney(value: number, currency?: string | null) {
+  const amount = value.toLocaleString();
+  const code = currency?.trim();
+  return code ? `${code} ${amount}` : amount;
+}
 
 type Payslip = {
   id: string;
@@ -103,7 +110,7 @@ export function EssPage() {
                 <tr key={payslip.id}>
                   <td>{payslip.month}</td>
                   <td>{payslip.year}</td>
-                  <td>AED {payslip.netPay.toLocaleString()}</td>
+                  <td>{formatEssMoney(payslip.netPay, profile.netPayCurrency)}</td>
                 </tr>
               ))}
             </tbody>

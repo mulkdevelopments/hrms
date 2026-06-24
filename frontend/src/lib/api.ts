@@ -1,10 +1,19 @@
 import axios from "axios";
 
 export const api = axios.create({
-  baseURL: "http://localhost:4000/api",
+  baseURL: import.meta.env.VITE_API_URL || "/api",
 });
 
-export type UserRole = "SUPER_ADMIN" | "HR" | "HR_OFFICER" | "MANAGER" | "EMPLOYEE";
+export type UserRole =
+  | "SUPER_ADMIN"
+  | "CEO"
+  | "HR"
+  | "HR_OFFICER"
+  | "PRO"
+  | "MANAGER"
+  | "EMPLOYEE"
+  | "LABOUR"
+  | "STAFF";
 
 export type Employee = {
   id: string;
@@ -28,6 +37,10 @@ export type LeaveType = {
   code: string;
   yearlyAllocation: number;
   maxCarryForward: number;
+  paidLeave?: boolean;
+  balanceMode?: string;
+  payRate?: string;
+  requiresAttachment?: boolean;
 };
 
 export type LeaveRequest = {

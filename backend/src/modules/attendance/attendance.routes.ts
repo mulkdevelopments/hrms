@@ -3,16 +3,39 @@ import { Prisma, type AttendanceSession } from "@prisma/client";
 import jwt from "jsonwebtoken";
 import { z } from "zod";
 import { prisma } from "../../lib/prisma.js";
+import { createLocationPing } from "../../lib/location-ping.js";
 import { env } from "../../config/env.js";
+import { getAttendancePolicy } from "../../lib/master-data.js";
+import {
+  getLateAttendanceSummary,
+  isLateCheckIn,
+  listLateJoinersForMonth,
+  countLateJoinersToday,
+  LATE_WARNING_THRESHOLD,
+  getZonedYearMonth,
+  recordLateCheckInSideEffects,
+} from "../../lib/late-attendance.js";
+import {
+  descriptorFromImageBase64,
+  descriptorsFromImagesBase64,
+  descriptorsMatch,
+} from "../../lib/face-recognition.js";
+import { isIndividualContributor } from "../../lib/roles.js";
 import { authMiddleware, requireRoles, type AuthRequest } from "../../middleware/auth.js";
 
 const attendanceRouter = Router();
 attendanceRouter.use(authMiddleware);
 
+const geoFieldsSchema = {
+  geoTag: z.string().trim().max(200).optional(),
+  geoAddress: z.string().trim().max(500).optional(),
+};
+
 const locationSchema = z.object({
   latitude: z.number().min(-90).max(90),
   longitude: z.number().min(-180).max(180),
   accuracy: z.number().nonnegative().optional(),
+  ...geoFieldsSchema,
 });
 
 const checkInSchema = z.object({
@@ -20,6 +43,7 @@ const checkInSchema = z.object({
   longitude: z.number().min(-180).max(180).optional(),
   accuracy: z.number().nonnegative().optional(),
   faceVerificationToken: z.string().optional(),
+  ...geoFieldsSchema,
 }).refine(
   (value) => (value.latitude === undefined && value.longitude === undefined)
     || (typeof value.latitude === "number" && typeof value.longitude === "number"),
@@ -31,6 +55,7 @@ const checkOutSchema = z.object({
   longitude: z.number().min(-180).max(180).optional(),
   accuracy: z.number().nonnegative().optional(),
   faceVerificationToken: z.string().optional(),
+  ...geoFieldsSchema,
 }).refine(
   (value) => (value.latitude === undefined && value.longitude === undefined)
     || (typeof value.latitude === "number" && typeof value.longitude === "number"),
@@ -51,6 +76,12 @@ const faceDescriptorSchema = z.object({
 });
 const faceConfigSchema = z.object({
   enabled: z.boolean(),
+});
+const faceImageSchema = z.object({
+  image: z.string().min(50),
+});
+const faceImagesSchema = z.object({
+  images: z.array(z.string().min(50)).min(1).max(5),
 });
 const calendarMonthSchema = z.object({
   month: z.string().regex(/^\d{4}-\d{2}$/),
@@ -86,13 +117,14 @@ function startOfDay(date = new Date()) {
   return value;
 }
 
-const CHECK_IN_START_MINUTES = 7 * 60; // 07:00
-const CHECK_IN_END_MINUTES = 8 * 60 + 30; // 08:30
-const AUTO_CHECK_OUT_MINUTES = 18 * 60; // 18:00
+const CHECK_IN_START_MINUTES = 7 * 60; // 07:00 fallback
+const CHECK_IN_END_MINUTES = 8 * 60 + 30; // 08:30 fallback
+const AUTO_CHECK_OUT_MINUTES = 18 * 60; // 18:00 fallback
+const DEFAULT_TIMEZONE = "Asia/Dubai";
 
-function getMinutesOfDayInTz(date = new Date()) {
+function getMinutesOfDayInTz(date = new Date(), timezone = DEFAULT_TIMEZONE) {
   const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: env.ATTENDANCE_TIMEZONE,
+    timeZone: timezone,
     hourCycle: "h23",
     hour: "2-digit",
     minute: "2-digit",
@@ -102,17 +134,58 @@ function getMinutesOfDayInTz(date = new Date()) {
   return hour * 60 + minute;
 }
 
-function isWithinCheckInWindow(date = new Date()) {
-  const minutes = getMinutesOfDayInTz(date);
-  return minutes >= CHECK_IN_START_MINUTES && minutes <= CHECK_IN_END_MINUTES;
+async function isBeforeCheckInWindow(date = new Date()) {
+  const policy = await getAttendancePolicy();
+  const minutes = getMinutesOfDayInTz(date, policy.timezone);
+  return minutes < policy.checkInStartMinutes;
 }
 
-function isPastAutoCheckOut(date = new Date()) {
-  return getMinutesOfDayInTz(date) >= AUTO_CHECK_OUT_MINUTES;
+async function createAttendanceCheckIn(params: {
+  employee: {
+    id: string;
+    officeId: string | null;
+    firstName: string;
+    lastName: string;
+    email: string;
+    loginEmail: string | null;
+  };
+  checkInMethod: string;
+  now?: Date;
+}) {
+  const now = params.now ?? new Date();
+  const lateCheckIn = await isLateCheckIn(now);
+  const session = await prisma.attendanceSession.create({
+    data: {
+      employeeId: params.employee.id,
+      officeId: params.employee.officeId,
+      checkInMethod: params.checkInMethod,
+      isLateCheckIn: lateCheckIn,
+      checkInAt: now,
+      lastSeenAt: now,
+    },
+  });
+
+  let lateAttendance = null;
+  if (lateCheckIn) {
+    const sideEffects = await recordLateCheckInSideEffects(params.employee);
+    lateAttendance = {
+      monthlyLateCount: sideEffects.monthlyLateCount,
+      threshold: LATE_WARNING_THRESHOLD,
+      warningActive: sideEffects.monthlyLateCount > LATE_WARNING_THRESHOLD,
+      warningEmailed: sideEffects.warningEmailed,
+    };
+  }
+
+  return { session, lateCheckIn, lateAttendance };
+}
+
+async function isPastAutoCheckOut(date = new Date()) {
+  const policy = await getAttendancePolicy();
+  return getMinutesOfDayInTz(date, policy.timezone) >= policy.autoCheckOutMinutes;
 }
 
 export async function autoCheckOutOverdueSessions() {
-  if (!isPastAutoCheckOut()) {
+  if (!(await isPastAutoCheckOut())) {
     return 0;
   }
   const now = new Date();
@@ -241,6 +314,8 @@ attendanceRouter.get("/status", async (req: AuthRequest, res) => {
     orderBy: { recordedAt: "desc" },
   });
 
+  const lateAttendance = await getLateAttendanceSummary(employeeId);
+
   return res.json({
     employee: {
       id: employee.id,
@@ -253,6 +328,7 @@ attendanceRouter.get("/status", async (req: AuthRequest, res) => {
     },
     activeSession,
     latestPing,
+    lateAttendance,
   });
 });
 
@@ -355,17 +431,13 @@ attendanceRouter.post("/face/verify", async (req: AuthRequest, res) => {
     return res.status(400).json({ message: "Face is not enrolled yet" });
   }
 
-  const length = Math.min(savedDescriptor.length, payload.descriptor.length);
-  if (length < 64) {
+  let matched: boolean;
+  let distance: number;
+  try {
+    ({ matched, distance } = descriptorsMatch(savedDescriptor.map(Number), payload.descriptor));
+  } catch {
     return res.status(400).json({ message: "Face descriptor data is invalid" });
   }
-  let squared = 0;
-  for (let index = 0; index < length; index += 1) {
-    const diff = Number(savedDescriptor[index]) - Number(payload.descriptor[index]);
-    squared += diff * diff;
-  }
-  const distance = Math.sqrt(squared);
-  const matched = distance <= 0.55;
   if (!matched) {
     return res.status(403).json({ message: "Face verification failed. Please retry.", distance });
   }
@@ -384,6 +456,83 @@ attendanceRouter.post("/face/verify", async (req: AuthRequest, res) => {
     distance,
     faceVerificationToken,
   });
+});
+
+attendanceRouter.post("/face/enroll-photo", async (req: AuthRequest, res) => {
+  const employeeId = req.auth?.employeeId;
+  if (!employeeId) {
+    return res.status(400).json({ message: "Employee identity missing for this account" });
+  }
+
+  const payload = faceImagesSchema.parse(req.body ?? {});
+  try {
+    const descriptor = payload.images.length === 1
+      ? await descriptorFromImageBase64(payload.images[0])
+      : await descriptorsFromImagesBase64(payload.images);
+
+    await prisma.employee.update({
+      where: { id: employeeId },
+      data: {
+        faceDescriptor: descriptor,
+        faceEnrolledAt: new Date(),
+      },
+    });
+    return res.json({ message: "Face enrolled successfully" });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Face enrollment failed";
+    return res.status(400).json({ message });
+  }
+});
+
+attendanceRouter.post("/face/verify-photo", async (req: AuthRequest, res) => {
+  const employeeId = req.auth?.employeeId;
+  if (!employeeId) {
+    return res.status(400).json({ message: "Employee identity missing for this account" });
+  }
+
+  const payload = faceImageSchema.parse(req.body ?? {});
+  const employee = await prisma.employee.findUnique({
+    where: { id: employeeId },
+    select: {
+      id: true,
+      faceDescriptor: true,
+      faceAuthEnabled: true,
+    },
+  });
+  if (!employee) {
+    return res.status(404).json({ message: "Employee profile not found" });
+  }
+
+  const savedDescriptor = Array.isArray(employee.faceDescriptor) ? employee.faceDescriptor.map(Number) : null;
+  if (!savedDescriptor?.length) {
+    return res.status(400).json({ message: "Face is not enrolled yet" });
+  }
+
+  try {
+    const candidate = await descriptorFromImageBase64(payload.image);
+    const { matched, distance } = descriptorsMatch(savedDescriptor, candidate);
+    if (!matched) {
+      return res.status(403).json({ message: "Face verification failed. Please retry.", distance });
+    }
+
+    const faceVerificationToken = jwt.sign(
+      {
+        employeeId: employee.id,
+        purpose: "attendance_checkin",
+      },
+      env.JWT_SECRET,
+      { expiresIn: "2m" },
+    );
+
+    return res.json({
+      matched: true,
+      distance,
+      faceVerificationToken,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Face verification failed";
+    return res.status(400).json({ message });
+  }
 });
 
 attendanceRouter.post("/check-in", async (req: AuthRequest, res) => {
@@ -410,8 +559,11 @@ attendanceRouter.post("/check-in", async (req: AuthRequest, res) => {
     return res.json({ message: "Already checked in", session: activeSession });
   }
 
-  if (!isWithinCheckInWindow()) {
-    return res.status(403).json({ message: "Check-in is allowed only between 07:00 AM and 08:30 AM" });
+  if (await isBeforeCheckInWindow()) {
+    const policy = await getAttendancePolicy();
+    return res.status(403).json({
+      message: `Check-in opens at ${policy.checkInStart}`,
+    });
   }
 
   if (employee.workMode === "OFFICE") {
@@ -423,16 +575,16 @@ attendanceRouter.post("/check-in", async (req: AuthRequest, res) => {
     }
     const state = geofenceState(employee.office, location.latitude, location.longitude);
     if (!state.inside) {
-      await prisma.locationPing.create({
-        data: {
-          employeeId: employee.id,
-          officeId: employee.officeId,
-          latitude: location.latitude,
-          longitude: location.longitude,
-          accuracy: location.accuracy,
-          insideGeofence: false,
-          eventType: "CHECK_IN_BLOCKED_OUTSIDE_GEOFENCE",
-        },
+      await createLocationPing({
+        employeeId: employee.id,
+        officeId: employee.officeId,
+        latitude: location.latitude,
+        longitude: location.longitude,
+        accuracy: location.accuracy,
+        insideGeofence: false,
+        eventType: "CHECK_IN_BLOCKED_OUTSIDE_GEOFENCE",
+        geoTag: payload.geoTag,
+        geoAddress: payload.geoAddress,
       });
       return res.status(403).json({
         message: `Check-in allowed only within ${employee.office.radiusMeters}m office geofence`,
@@ -461,33 +613,42 @@ attendanceRouter.post("/check-in", async (req: AuthRequest, res) => {
     }
   }
 
-  const createdSession = await prisma.attendanceSession.create({
-    data: {
-      employeeId: employee.id,
+  const { session: createdSession, lateCheckIn, lateAttendance } = await createAttendanceCheckIn({
+    employee: {
+      id: employee.id,
       officeId: employee.officeId,
-      checkInMethod: "MANUAL",
+      firstName: employee.firstName,
+      lastName: employee.lastName,
+      email: employee.email,
+      loginEmail: employee.loginEmail,
     },
+    checkInMethod: "MANUAL",
   });
 
   if (location) {
     const insideState = employee.office
       ? geofenceState(employee.office, location.latitude, location.longitude)
       : null;
-    await prisma.locationPing.create({
-      data: {
-        employeeId: employee.id,
-        sessionId: createdSession.id,
-        officeId: employee.officeId,
-        latitude: location.latitude,
-        longitude: location.longitude,
-        accuracy: location.accuracy,
-        insideGeofence: insideState ? insideState.inside : null,
-        eventType: "MANUAL_CHECK_IN",
-      },
+    await createLocationPing({
+      employeeId: employee.id,
+      sessionId: createdSession.id,
+      officeId: employee.officeId,
+      latitude: location.latitude,
+      longitude: location.longitude,
+      accuracy: location.accuracy,
+      insideGeofence: insideState ? insideState.inside : null,
+      eventType: "MANUAL_CHECK_IN",
+      geoTag: payload.geoTag,
+      geoAddress: payload.geoAddress,
     });
   }
 
-  return res.status(201).json({ message: "Checked in successfully", session: createdSession });
+  return res.status(201).json({
+    message: lateCheckIn ? "Checked in late — attendance recorded" : "Checked in successfully",
+    session: createdSession,
+    lateCheckIn,
+    lateAttendance,
+  });
 });
 
 attendanceRouter.post("/check-out", async (req: AuthRequest, res) => {
@@ -548,17 +709,17 @@ attendanceRouter.post("/check-out", async (req: AuthRequest, res) => {
     const insideState = employee.office
       ? geofenceState(employee.office, location.latitude, location.longitude)
       : null;
-    await prisma.locationPing.create({
-      data: {
-        employeeId: employee.id,
-        sessionId: updated.id,
-        officeId: employee.officeId,
-        latitude: location.latitude,
-        longitude: location.longitude,
-        accuracy: location.accuracy,
-        insideGeofence: insideState ? insideState.inside : null,
-        eventType: "MANUAL_CHECK_OUT",
-      },
+    await createLocationPing({
+      employeeId: employee.id,
+      sessionId: updated.id,
+      officeId: employee.officeId,
+      latitude: location.latitude,
+      longitude: location.longitude,
+      accuracy: location.accuracy,
+      insideGeofence: insideState ? insideState.inside : null,
+      eventType: "MANUAL_CHECK_OUT",
+      geoTag: payload.geoTag,
+      geoAddress: payload.geoAddress,
     });
   }
 
@@ -583,7 +744,7 @@ attendanceRouter.post("/ping", async (req: AuthRequest, res) => {
   let insideGeofence: boolean | null = null;
   let distanceMeters: number | null = null;
 
-  if (activeSession && isPastAutoCheckOut(now)) {
+  if (activeSession && (await isPastAutoCheckOut(now))) {
     await prisma.attendanceSession.update({
       where: { id: activeSession.id },
       data: {
@@ -617,20 +778,25 @@ attendanceRouter.post("/ping", async (req: AuthRequest, res) => {
         },
         orderBy: { checkOutAt: "desc" },
       });
-      if (!isWithinCheckInWindow(now)) {
+      if (await isBeforeCheckInWindow(now)) {
         eventType = "CHECK_IN_WINDOW_CLOSED";
       } else if (manualLogoutToday) {
         eventType = "MANUAL_LOGOUT_LOCK";
       } else {
-      activeSession = await prisma.attendanceSession.create({
-        data: {
-          employeeId: employee.id,
+      const checkInResult = await createAttendanceCheckIn({
+        employee: {
+          id: employee.id,
           officeId: employee.officeId,
-          checkInMethod: "AUTO_GEOFENCE",
-          lastSeenAt: now,
+          firstName: employee.firstName,
+          lastName: employee.lastName,
+          email: employee.email,
+          loginEmail: employee.loginEmail,
         },
+        checkInMethod: "AUTO_GEOFENCE",
+        now,
       });
-      eventType = "AUTO_CHECK_IN";
+      activeSession = checkInResult.session;
+      eventType = checkInResult.lateCheckIn ? "LATE_AUTO_CHECK_IN" : "AUTO_CHECK_IN";
       }
     } else if (!state.inside && activeSession) {
       await prisma.attendanceSession.update({
@@ -654,18 +820,18 @@ attendanceRouter.post("/ping", async (req: AuthRequest, res) => {
     });
   }
 
-  await prisma.locationPing.create({
-    data: {
-      employeeId: employee.id,
-      sessionId: activeSession?.id ?? null,
-      officeId: employee.officeId,
-      latitude: payload.latitude,
-      longitude: payload.longitude,
-      accuracy: payload.accuracy,
-      insideGeofence,
-      eventType,
-      recordedAt: now,
-    },
+  await createLocationPing({
+    employeeId: employee.id,
+    sessionId: activeSession?.id ?? null,
+    officeId: employee.officeId,
+    latitude: payload.latitude,
+    longitude: payload.longitude,
+    accuracy: payload.accuracy,
+    insideGeofence,
+    eventType,
+    recordedAt: now,
+    geoTag: payload.geoTag,
+    geoAddress: payload.geoAddress,
   });
 
   return res.json({
@@ -680,7 +846,7 @@ attendanceRouter.get("/online", async (req: AuthRequest, res) => {
   const auth = req.auth;
   const where: Prisma.AttendanceSessionWhereInput = { isActive: true };
 
-  if (auth?.role === "EMPLOYEE" && auth.employeeId) {
+  if (isIndividualContributor(auth?.role) && auth.employeeId) {
     where.employeeId = auth.employeeId;
   }
 
@@ -716,11 +882,49 @@ attendanceRouter.get("/online", async (req: AuthRequest, res) => {
     sessions.map((session) => ({
       id: session.id,
       checkInAt: session.checkInAt,
+      isLateCheckIn: session.isLateCheckIn,
       employee: session.employee,
       office: session.office,
       latestPing: session.locationPings[0] ?? null,
     })),
   );
+});
+
+attendanceRouter.get("/late-joiners", requireRoles("SUPER_ADMIN", "HR", "HR_OFFICER", "MANAGER", "CEO"), async (req: AuthRequest, res) => {
+  const auth = req.auth;
+  const policy = await getAttendancePolicy();
+  const now = new Date();
+  const { year, month } = getZonedYearMonth(now, policy.timezone);
+
+  let department: string | undefined;
+  if (auth?.role === "MANAGER" && auth.employeeId) {
+    const manager = await prisma.employee.findUnique({
+      where: { id: auth.employeeId },
+      select: { department: true },
+    });
+    department = manager?.department ?? undefined;
+  }
+
+  let targetYear = year;
+  let targetMonth = month;
+  const monthParam = typeof req.query.month === "string" ? req.query.month : undefined;
+  if (monthParam && /^\d{4}-\d{2}$/.test(monthParam)) {
+    const [yearText, monthText] = monthParam.split("-");
+    targetYear = Number(yearText);
+    targetMonth = Number(monthText);
+  }
+
+  const [employees, lateJoinersToday] = await Promise.all([
+    listLateJoinersForMonth(targetYear, targetMonth, department),
+    countLateJoinersToday(department),
+  ]);
+
+  return res.json({
+    month: `${targetYear}-${String(targetMonth).padStart(2, "0")}`,
+    threshold: LATE_WARNING_THRESHOLD,
+    lateJoinersToday,
+    employees,
+  });
 });
 
 attendanceRouter.get("/employees-presence", async (req: AuthRequest, res) => {
@@ -730,7 +934,7 @@ attendanceRouter.get("/employees-presence", async (req: AuthRequest, res) => {
   }
 
   const where: Prisma.EmployeeWhereInput = {};
-  if (auth.role === "EMPLOYEE") {
+  if (isIndividualContributor(auth.role)) {
     where.id = auth.employeeId;
   }
 
@@ -861,6 +1065,8 @@ attendanceRouter.get("/calendar/day-route", async (req: AuthRequest, res) => {
         accuracy: true,
         eventType: true,
         insideGeofence: true,
+        geoTag: true,
+        geoAddress: true,
         recordedAt: true,
       },
       orderBy: { recordedAt: "asc" },
@@ -880,6 +1086,7 @@ attendanceRouter.get("/calendar/day-route", async (req: AuthRequest, res) => {
         checkOutAt: true,
         checkInMethod: true,
         checkOutMethod: true,
+        isLateCheckIn: true,
       },
       orderBy: { checkInAt: "asc" },
     }),

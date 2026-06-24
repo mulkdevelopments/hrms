@@ -12,7 +12,7 @@ model Employee {
   employeeCode       String         @unique
   firstName          String
   lastName           String
-  email              String         @unique
+  email              String?        @unique
   loginEmail         String?        @unique
   passwordHash       String?
   role               String         @default("EMPLOYEE")
@@ -41,6 +41,48 @@ model Employee {
   labourCardNumber   String?
   noticePeriodDays   Int            @default(30)
   status             String         @default("ACTIVE")
+  legacyEmpId        String?
+  gender             String?
+  maritalStatus      String?
+  category           String?
+  subCategory        String?
+  grade              String?
+  employeeType       String?
+  businessUnit       String?
+  division           String?
+  workLocation       String?
+  workCountry        String?
+  payrollType        String?
+  payrollStatus      String?
+  payrollDivision    String?
+  conveyanceAllowance    Float          @default(0)
+  fixedOtAllowance       Float          @default(0)
+  foodAllowance          Float          @default(0)
+  otherAllowance         Float          @default(0)
+  overseasAllowance      Float          @default(0)
+  performanceAllowance   Float          @default(0)
+  petrolAllowance        Float          @default(0)
+  riskAllowance          Float          @default(0)
+  socialInsurance        Float          @default(0)
+  telephoneAllowance     Float          @default(0)
+  vehicleAllowance       Float          @default(0)
+  kidsEducationAllowance Float          @default(0)
+  grossSalary            Float          @default(0)
+  otEligible             String?
+  otRuleNormal           Float          @default(0)
+  netPayCurrency         String         @default("AED")
+  visaType               String?
+  visaSponsor            String?
+  hodName                String?
+  hodEmail               String?
+  comments               String?
+  probationStatus        String?
+  joiningMonth           String?
+  probationCompletionDate DateTime?
+  ctcMonth               Float?
+  ctcYear                Float?
+  cancellationType       String?
+  lastWorkingDate        DateTime?
   createdAt          DateTime       @default(now())
   updatedAt          DateTime       @updatedAt
 
@@ -51,6 +93,7 @@ model Employee {
   leaveRequests    LeaveRequest[] @relation("RequestedBy")
   l1Approvals      LeaveRequest[] @relation("ApprovedByL1")
   l2Approvals      LeaveRequest[] @relation("ApprovedByL2")
+  actingLeaveAssignments LeaveRequest[] @relation("ActingLeaveApprover")
   payslips         Payslip[]
   attendanceSessions AttendanceSession[]
   locationPings      LocationPing[]
@@ -61,6 +104,38 @@ model Employee {
   advanceLoans       SalaryAdvanceLoan[] @relation("LoanEmployee")
   documents          EmployeeDocument[]  @relation("DocumentEmployee")
   proTasks           ProTask[]           @relation("ProTaskEmployee")
+  passwordResetTokens PasswordResetToken[]
+  lateAttendanceWarnings LateAttendanceWarning[]
+}
+
+model LateAttendanceWarning {
+  id         String    @id @default(cuid())
+  employeeId String
+  year       Int
+  month      Int
+  lateCount  Int       @default(0)
+  emailedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, year, month])
+  @@index([year, month])
+}
+
+model PasswordResetToken {
+  id         String    @id @default(cuid())
+  employeeId String
+  tokenHash  String
+  purpose    String
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId, purpose, expiresAt])
 }
 
 model LeaveType {
@@ -71,6 +146,8 @@ model LeaveType {
   maxCarryForward     Int      @default(60)
   requiresAttachment  Boolean  @default(false)
   paidLeave           Boolean  @default(true)
+  balanceMode         String   @default("YEARLY")
+  payRate             String   @default("FULL")
   active              Boolean  @default(true)
   createdAt           DateTime @default(now())
 
@@ -103,19 +180,37 @@ model LeaveRequest {
   days           Float
   reason         String
   attachmentUrl  String?
-  status         String      @default("PENDING_L1")
-  l1ApprovedById String?
-  l2ApprovedById String?
-  approvedAt     DateTime?
+  status             String      @default("PENDING_L1")
+  l1ApprovedById     String?
+  l2ApprovedById     String?
+  actingApproverId   String?
+  actingAcceptedAt   DateTime?
+  actingRejectedAt   DateTime?
+  actingRejectReason String?
+  airTicketEligible   Boolean   @default(false)
+  airTicketFare       Float?
+  payrollAdjustmentId String?   @unique
+  approvedAt         DateTime?
   rejectedAt     DateTime?
   rejectReason   String?
+  rejoiningDate              DateTime?
+  statusAsOn                 String?
+  leaveBalanceSnapshot       Float?
+  currentLeaveBalanceSnapshot Float?
+  extendedDays               Float          @default(0)
+  remark                     String?
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
-  employee     Employee  @relation("RequestedBy", fields: [employeeId], references: [id])
-  leaveType    LeaveType @relation(fields: [leaveTypeId], references: [id])
-  l1ApprovedBy Employee? @relation("ApprovedByL1", fields: [l1ApprovedById], references: [id])
-  l2ApprovedBy Employee? @relation("ApprovedByL2", fields: [l2ApprovedById], references: [id])
+  employee       Employee  @relation("RequestedBy", fields: [employeeId], references: [id])
+  leaveType      LeaveType @relation(fields: [leaveTypeId], references: [id])
+  l1ApprovedBy   Employee? @relation("ApprovedByL1", fields: [l1ApprovedById], references: [id])
+  l2ApprovedBy   Employee? @relation("ApprovedByL2", fields: [l2ApprovedById], references: [id])
+  actingApprover Employee? @relation("ActingLeaveApprover", fields: [actingApproverId], references: [id])
+  payrollAdjustment PayrollAdjustment? @relation(fields: [payrollAdjustmentId], references: [id], onDelete: SetNull)
+
+  @@index([actingApproverId])
+  @@index([status])
 }
 
 model Payslip {
@@ -160,6 +255,7 @@ model AttendanceSession {
   isActive       Boolean      @default(true)
   checkInMethod  String       @default("MANUAL")
   checkOutMethod String?
+  isLateCheckIn  Boolean      @default(false)
   lastSeenAt     DateTime     @default(now())
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
@@ -181,6 +277,8 @@ model LocationPing {
   longitude      Float
   accuracy       Float?
   insideGeofence Boolean?
+  geoTag         String?
+  geoAddress     String?
   eventType      String             @default("PING")
   recordedAt     DateTime           @default(now())
 
@@ -239,7 +337,7 @@ model ExitRecord {
 model ClearanceTask {
   id                 String   @id @default(cuid())
   exitRecordId       String
-  department         String // IT | FINANCE | ADMIN | PRO
+  department         String // HOD | IT | FINANCE | ADMIN | TRANSPORTATION | HR | PRO
   status             String   @default("PENDING") // PENDING | COMPLETED
   urgent             Boolean  @default(false)
   remarks            String?
@@ -251,9 +349,34 @@ model ClearanceTask {
 
   exitRecord       ExitRecord @relation(fields: [exitRecordId], references: [id], onDelete: Cascade)
   assignedManager  Employee?  @relation("ClearanceAssignedManager", fields: [assignedManagerId], references: [id])
+  checklistItems   ClearanceChecklistItem[]
 
   @@index([exitRecordId])
   @@index([assignedManagerId])
+}
+
+model ClearanceChecklistItem {
+  id              String   @id @default(cuid())
+  clearanceTaskId String
+  itemKey         String
+  label           String
+  status          String   @default("PENDING") // PENDING | COMPLETED | NOT_APPLICABLE
+  remarks         String?
+  completedById   String?
+  completedAt     DateTime?
+  sortOrder       Int      @default(0)
+  amount          Float?
+  adjustmentType  String?
+  adjustmentCategory String?
+  payrollAdjustmentId String? @unique
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  clearanceTask ClearanceTask @relation(fields: [clearanceTaskId], references: [id], onDelete: Cascade)
+  payrollAdjustment PayrollAdjustment? @relation(fields: [payrollAdjustmentId], references: [id], onDelete: SetNull)
+
+  @@unique([clearanceTaskId, itemKey])
+  @@index([clearanceTaskId])
 }
 
 model PayrollAdjustment {
@@ -272,7 +395,12 @@ model PayrollAdjustment {
   frequency       String? // MONTHLY
   recurrenceEndMonth Int?
   recurrenceEndYear  Int?
-  status          String   @default("DRAFT") // DRAFT | APPROVED | REJECTED | PROCESSED
+  status          String   @default("DRAFT") // DRAFT | PENDING_L2 | APPROVED | REJECTED | PROCESSED
+  requiresDualApproval Boolean @default(false)
+  approver1Id     String?
+  approver1At     DateTime?
+  approver2Id     String?
+  approver2At     DateTime?
   loanId          String?
   installmentNo   Int?
   createdById     String?
@@ -287,6 +415,8 @@ model PayrollAdjustment {
 
   employee Employee           @relation("AdjustmentEmployee", fields: [employeeId], references: [id])
   loan     SalaryAdvanceLoan? @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  clearanceChecklistItem ClearanceChecklistItem?
+  leaveRequest LeaveRequest?
 
   @@index([employeeId, status])
   @@index([effectiveYear, effectiveMonth])
@@ -378,10 +508,21 @@ model Attachment {
   fileName     String
   mimeType     String
   sizeBytes    Int
-  data         String   @db.Text
+  data         String?  @db.Text
+  blobUrl      String?
+  blobPathname String?
   category     String   @default("GENERAL")
+  employeeId   String?
+  employeeName String?
+  employeeCode String?
+  documentType String?
+  contextLabel String?
   uploadedById String?
   createdAt    DateTime @default(now())
+
+  @@index([employeeId])
+  @@index([employeeCode])
+  @@index([category])
 }
 
 model FinalSettlement {
@@ -400,4 +541,29 @@ model FinalSettlement {
   updatedAt       DateTime @updatedAt
 
   exitRecord ExitRecord @relation(fields: [exitRecordId], references: [id], onDelete: Cascade)
+}
+
+model SystemSetting {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       Json
+  category    String
+  label       String
+  description String?
+  updatedAt   DateTime @updatedAt
+}
+
+model RoleDefinition {
+  id                      String   @id @default(cuid())
+  code                    String   @unique
+  label                   String
+  description             String?
+  assignable              Boolean  @default(true)
+  isIndividualContributor Boolean  @default(false)
+  canVoidActingColleague  Boolean  @default(false)
+  allowedViews            Json
+  sortOrder               Int      @default(0)
+  active                  Boolean  @default(true)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
 }

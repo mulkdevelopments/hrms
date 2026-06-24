@@ -1,7 +1,35 @@
-:root {
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap");
+
+:root,
+html[data-theme="dark"] {
+  color-scheme: dark;
   font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  color: #e7f0ff;
-  background: #09162a;
+  color: #fafafa;
+  background: #000000;
+  --bg-gradient-start: #000000;
+  --bg-gradient-end: #0a0a0a;
+  --surface-card: rgba(12, 12, 12, 0.92);
+  --surface-panel: rgba(10, 10, 10, 0.92);
+  --surface-login: rgba(10, 10, 10, 0.96);
+  --border-ui: rgba(255, 255, 255, 0.12);
+  --border-input: rgba(255, 255, 255, 0.14);
+  --text-muted-ui: #a3a3a3;
+  --input-bg-ui: rgba(255, 255, 255, 0.03);
+}
+
+html[data-theme="light"] {
+  color-scheme: light;
+  color: #0f172a;
+  background: #ffffff;
+  --bg-gradient-start: #f8fafc;
+  --bg-gradient-end: #ffffff;
+  --surface-card: #ffffff;
+  --surface-panel: #ffffff;
+  --surface-login: #ffffff;
+  --border-ui: rgba(15, 23, 42, 0.1);
+  --border-input: rgba(15, 23, 42, 0.14);
+  --text-muted-ui: #64748b;
+  --input-bg-ui: #ffffff;
 }
 
 * {
@@ -11,7 +39,8 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background: linear-gradient(180deg, #0a1b35, #08101f);
+  background: linear-gradient(180deg, var(--bg-gradient-start, #000000), var(--bg-gradient-end, #0a0a0a));
+  color: inherit;
 }
 
 a {
@@ -26,15 +55,36 @@ a {
 }
 
 .sidebar {
-  background: #081327;
-  border-right: 1px solid rgba(124, 173, 255, 0.2);
+  background: var(--sidebar-bg, #000000);
+  border-right: 1px solid var(--border-ui);
   padding: 24px 16px;
 }
 
 .logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   font-size: 1.1rem;
   font-weight: 800;
   margin-bottom: 24px;
+}
+
+.logo-image {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+  flex-shrink: 0;
+  display: block;
+}
+
+.logo-title {
+  font-family: "Plus Jakarta Sans", sans-serif;
+  color: #fff;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.045em;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .nav-link {
@@ -42,12 +92,12 @@ a {
   padding: 10px 12px;
   margin-bottom: 8px;
   border-radius: 8px;
-  color: #aac5f4;
+  color: var(--text-muted-ui);
 }
 
 .nav-link.active {
-  color: #ffffff;
-  background: rgba(26, 108, 255, 0.35);
+  color: var(--text, #ffffff);
+  background: var(--highlight-strong, rgba(255, 255, 255, 0.1));
 }
 
 .content {
@@ -68,7 +118,7 @@ a {
 
 .subtitle {
   font-size: 0.8rem;
-  color: #91aad4;
+  color: var(--text-muted-ui);
 }
 
 .section-heading {
@@ -85,12 +135,12 @@ a {
 .stat-card {
   padding: 14px;
   border-radius: 10px;
-  border: 1px solid rgba(124, 173, 255, 0.25);
-  background: rgba(5, 17, 33, 0.7);
+  border: 1px solid var(--border-ui);
+  background: var(--surface-card);
 }
 
 .label {
-  color: #8cb0e6;
+  color: var(--text-muted-ui);
   font-size: 0.8rem;
 }
 
@@ -102,8 +152,8 @@ a {
 
 .panel {
   border-radius: 12px;
-  border: 1px solid rgba(124, 173, 255, 0.25);
-  background: rgba(4, 12, 25, 0.75);
+  border: 1px solid var(--border-ui);
+  background: var(--surface-panel);
   padding: 16px;
   margin-bottom: 16px;
 }
@@ -127,9 +177,9 @@ input,
 select,
 textarea {
   border-radius: 8px;
-  border: 1px solid rgba(124, 173, 255, 0.35);
-  background: rgba(10, 26, 50, 0.7);
-  color: #f2f7ff;
+  border: 1px solid var(--border-input);
+  background: var(--input-bg-ui);
+  color: inherit;
   padding: 9px;
 }
 
@@ -137,14 +187,16 @@ textarea {
   border: none;
   border-radius: 8px;
   padding: 10px 14px;
-  background: linear-gradient(135deg, #2567ff, #08b7d5);
-  color: white;
+  background: var(--primary, #ffffff);
+  color: var(--primary-fg, #0a0a0a);
   font-weight: 700;
   cursor: pointer;
 }
 
 .button-secondary {
-  background: rgba(20, 48, 86, 0.8);
+  background: var(--highlight-strong, rgba(255, 255, 255, 0.08));
+  color: inherit;
+  border: 1px solid var(--border-input);
 }
 
 table {
@@ -154,7 +206,7 @@ table {
 
 th,
 td {
-  border-bottom: 1px solid rgba(124, 173, 255, 0.2);
+  border-bottom: 1px solid var(--border-ui);
   text-align: left;
   padding: 10px;
   font-size: 0.9rem;
@@ -187,9 +239,9 @@ td {
 .login-card {
   width: min(420px, 92vw);
   border-radius: 16px;
-  border: 1px solid rgba(124, 173, 255, 0.3);
-  background: rgba(5, 15, 31, 0.92);
-  box-shadow: 0 18px 40px rgba(1, 7, 18, 0.45);
+  border: 1px solid var(--border-ui);
+  background: var(--surface-login);
+  box-shadow: var(--dropdown-shadow, 0 18px 40px rgba(0, 0, 0, 0.55));
   padding: 24px;
   display: grid;
   gap: 14px;
@@ -202,7 +254,7 @@ td {
 
 .login-card p {
   margin: 0;
-  color: #8cb0e6;
+  color: var(--text-muted-ui);
   font-size: 0.9rem;
 }
 

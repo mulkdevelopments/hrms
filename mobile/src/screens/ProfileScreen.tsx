@@ -1,15 +1,22 @@
 import React from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useAuth } from "../context/AuthContext";
 import { AppHeader } from "../components/AppHeader";
-import { Button, Card, Row, SectionTitle } from "../components/ui";
+import { EmployeeProfileView } from "../components/EmployeeProfileView";
+import { Button } from "../components/ui";
+import { canAccessHrTools } from "../lib/roles";
+import { employeeName } from "../lib/format";
 import { theme } from "../theme";
+import type { RootStackParamList } from "../navigation/types";
 
 export default function ProfileScreen() {
   const { user, signOut } = useAuth();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const emp = user?.employee;
-  const name = `${emp?.firstName ?? ""} ${emp?.lastName ?? ""}`.trim();
+  const name = employeeName(emp?.firstName, emp?.lastName);
   const initials =
     name
       .split(/\s+/)
@@ -32,22 +39,13 @@ export default function ProfileScreen() {
           <Text style={styles.role}>{user?.role}</Text>
         </View>
 
-        <Card>
-          <SectionTitle>Employee Details</SectionTitle>
-          <Row label="Employee ID" value={emp?.employeeCode ?? "—"} />
-          <Row label="Email" value={emp?.loginEmail ?? emp?.email ?? "—"} />
-          <Row label="Phone" value={emp?.phone ?? "—"} />
-          <Row label="Nationality" value={emp?.nationality ?? "—"} />
-          <Row label="Work Mode" value={emp?.workMode ?? "—"} />
-          <Row label="Status" value={emp?.status ?? "—"} />
-        </Card>
+        {emp ? <EmployeeProfileView employee={emp} /> : null}
 
-        <Card>
-          <SectionTitle>Bank & Payroll</SectionTitle>
-          <Row label="Bank Name" value={emp?.bankName ?? "Not set"} />
-          <Row label="IBAN" value={emp?.iban ?? "Not set"} />
-        </Card>
+        {canAccessHrTools(user?.role) ? (
+          <Button title="HR Tools" variant="accent" onPress={() => navigation.navigate("HrTools")} />
+        ) : null}
 
+        <View style={{ height: 10 }} />
         <Button title="Sign Out" variant="danger" onPress={signOut} />
       </ScrollView>
     </SafeAreaView>

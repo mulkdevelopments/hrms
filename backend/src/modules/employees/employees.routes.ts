@@ -4,13 +4,24 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "../../lib/prisma.js";
 import { applyEmploymentStatusToEmployee, getProbationCutoffDate } from "../../lib/employment-status.js";
+import { ensureEmployeeLeaveBalances } from "../../lib/leave-policy.js";
+import { getAssignableRoleCodes } from "../../lib/master-data.js";
 import { createOnboardingProTask } from "../../lib/pro-tasks.js";
+import { extendedEmployeeSchema, extractExtendedEmployeeData } from "../../lib/employee-fields.js";
 import { authMiddleware, requireRoles, type AuthRequest } from "../../middleware/auth.js";
 
 const privilegedRoles = ["SUPER_ADMIN", "HR", "HR_OFFICER"] as const;
-const assignableUserRoles = ["SUPER_ADMIN", "CEO", "HR", "HR_OFFICER", "PRO", "MANAGER", "EMPLOYEE"] as const;
+
+async function assertAssignableRole(role?: string) {
+  if (!role) return;
+  const assignable = await getAssignableRoleCodes();
+  if (!assignable.includes(role)) {
+    throw new Error(`Invalid role "${role}". Choose from: ${assignable.join(", ")}`);
+  }
+}
 
 const createEmployeeSchema = z.object({
+  employeeCode: z.string().min(1).optional(),
   firstName: z.string().min(1),
   lastName: z.string().trim().optional().default(""),
   email: z.string().email(),
@@ -35,10 +46,10 @@ const createEmployeeSchema = z.object({
   housingAllowance: z.number().nonnegative().default(0),
   transportAllowance: z.number().nonnegative().default(0),
   accessEnabled: z.boolean().optional(),
-  userRole: z.enum(assignableUserRoles).optional(),
+  userRole: z.string().optional(),
   loginEmail: z.string().email().optional(),
   loginPassword: z.string().min(1).optional(),
-});
+}).merge(extendedEmployeeSchema);
 
 const updateEmployeeSchema = createEmployeeSchema.partial();
 
@@ -160,7 +171,13 @@ employeesRouter.post("/", requireRoles(...privilegedRoles), async (req, res) => 
     return res.status(400).json({ message: "Office is required for office employees" });
   }
 
-  const employeeCode = await generateEmployeeCode();
+  try {
+    await assertAssignableRole(payload.userRole);
+  } catch (error) {
+    return res.status(400).json({ message: error instanceof Error ? error.message : "Invalid role" });
+  }
+
+  const employeeCode = payload.employeeCode?.trim() || await generateEmployeeCode();
   const employee = await prisma.employee.create({
     data: {
       employeeCode,
@@ -191,6 +208,7 @@ employeesRouter.post("/", requireRoles(...privilegedRoles), async (req, res) => 
       basicSalary: payload.basicSalary,
       housingAllowance: payload.housingAllowance,
       transportAllowance: payload.transportAllowance,
+      ...extractExtendedEmployeeData(payload),
     },
     include: {
       manager: {
@@ -212,6 +230,7 @@ employeesRouter.post("/", requireRoles(...privilegedRoles), async (req, res) => 
   });
 
   await createOnboardingProTask(employee.id);
+  await ensureEmployeeLeaveBalances(employee.id);
 
   return res.status(201).json(applyEmploymentStatusToEmployee(employee));
 });
@@ -235,6 +254,12 @@ employeesRouter.put("/:id", requireRoles(...privilegedRoles), async (req, res) =
   const resolvedOfficeId = payload.officeId ?? existing.officeId;
   if (resolvedWorkMode === "OFFICE" && !resolvedOfficeId) {
     return res.status(400).json({ message: "Office is required for office employees" });
+  }
+
+  try {
+    await assertAssignableRole(payload.userRole);
+  } catch (error) {
+    return res.status(400).json({ message: error instanceof Error ? error.message : "Invalid role" });
   }
 
   const employee = await prisma.employee.update({
@@ -277,6 +302,8 @@ employeesRouter.put("/:id", requireRoles(...privilegedRoles), async (req, res) =
       basicSalary: payload.basicSalary,
       housingAllowance: payload.housingAllowance,
       transportAllowance: payload.transportAllowance,
+      employeeCode: payload.employeeCode?.trim() || undefined,
+      ...extractExtendedEmployeeData(payload),
     },
     include: {
       manager: {

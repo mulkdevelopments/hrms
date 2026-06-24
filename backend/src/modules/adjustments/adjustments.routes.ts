@@ -2,7 +2,7 @@ import { Router } from "express";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../../lib/prisma.js";
-import { env } from "../../config/env.js";
+import { getPayrollDualApprovalThreshold } from "../../lib/master-data.js";
 import { isFinanceDepartmentManager } from "../../lib/department-managers.js";
 import { authMiddleware, requireRoles, type AuthRequest } from "../../middleware/auth.js";
 
@@ -10,7 +10,16 @@ export const adjustmentsRouter = Router();
 adjustmentsRouter.use(authMiddleware);
 
 const HR_ROLES = ["SUPER_ADMIN", "HR", "HR_OFFICER"];
+const EXEC_APPROVAL_ROLES = ["SUPER_ADMIN", "CEO"];
 const CREATOR_ROLES: ("SUPER_ADMIN" | "HR" | "HR_OFFICER" | "MANAGER")[] = ["SUPER_ADMIN", "HR", "HR_OFFICER", "MANAGER"];
+
+const ADJUSTMENT_STATUS = {
+  DRAFT: "DRAFT",
+  PENDING_L2: "PENDING_L2",
+  APPROVED: "APPROVED",
+  REJECTED: "REJECTED",
+  PROCESSED: "PROCESSED",
+} as const;
 
 const CATEGORY_DEFS = [
   { code: "ABSENCE_LATE", label: "Absence / Late", type: "DEDUCTION", glCode: "GL-5001" },
@@ -23,12 +32,17 @@ const CATEGORY_DEFS = [
   { code: "INCENTIVE", label: "Incentive / Commission", type: "ADDITION", glCode: "GL-4002" },
   { code: "ALLOWANCE", label: "Special Allowance", type: "ADDITION", glCode: "GL-4003" },
   { code: "REIMBURSEMENT", label: "Reimbursement", type: "ADDITION", glCode: "GL-4004" },
+  { code: "AIR_TICKET", label: "Air Ticket Allowance", type: "ADDITION", glCode: "GL-4005" },
   { code: "OTHER_ADDITION", label: "Other Addition", type: "ADDITION", glCode: "GL-4099" },
 ];
 const CATEGORY_MAP = new Map(CATEGORY_DEFS.map((c) => [c.code, c]));
 
 function isHr(role?: string) {
   return Boolean(role && HR_ROLES.includes(role));
+}
+
+function isExecApprover(role?: string) {
+  return Boolean(role && EXEC_APPROVAL_ROLES.includes(role));
 }
 
 function monthIndex(year: number, month: number) {
@@ -135,8 +149,9 @@ function formatLoanResponse(loan: {
   };
 }
 
-adjustmentsRouter.get("/categories", (_req, res) => {
-  res.json({ categories: CATEGORY_DEFS, dualApprovalThreshold: env.ADJUSTMENT_DUAL_APPROVAL_THRESHOLD });
+adjustmentsRouter.get("/categories", async (_req, res) => {
+  const dualApprovalThreshold = await getPayrollDualApprovalThreshold();
+  res.json({ categories: CATEGORY_DEFS, dualApprovalThreshold });
 });
 
 function scopeWhere(auth: AuthRequest["auth"]): Prisma.PayrollAdjustmentWhereInput {
@@ -183,6 +198,9 @@ adjustmentsRouter.post("/", requireRoles(...CREATOR_ROLES), async (req: AuthRequ
     return res.status(400).json({ message: "Cannot raise adjustments for an exited employee" });
   }
 
+  const dualThreshold = await getPayrollDualApprovalThreshold();
+  const requiresDualApproval = payload.amount >= dualThreshold;
+
   const created = await prisma.payrollAdjustment.create({
     data: {
       referenceNumber: await generateReference("ADJ"),
@@ -199,34 +217,100 @@ adjustmentsRouter.post("/", requireRoles(...CREATOR_ROLES), async (req: AuthRequ
       frequency: payload.recurring ? "MONTHLY" : null,
       recurrenceEndMonth: payload.recurring ? payload.recurrenceEndMonth : null,
       recurrenceEndYear: payload.recurring ? payload.recurrenceEndYear : null,
-      status: "DRAFT",
+      status: ADJUSTMENT_STATUS.DRAFT,
+      requiresDualApproval,
       createdById: req.auth?.employeeId,
     },
     include: { employee: { select: { id: true, employeeCode: true, firstName: true, lastName: true, department: true } } },
   });
-  return res.status(201).json(created);
+  return res.status(201).json({
+    ...created,
+    dualApprovalRequired: requiresDualApproval,
+    dualApprovalThreshold: dualThreshold,
+  });
 });
 
-adjustmentsRouter.post("/:id/approve", requireRoles("SUPER_ADMIN", "HR", "HR_OFFICER"), async (req: AuthRequest, res) => {
+adjustmentsRouter.post("/:id/approve", requireRoles("SUPER_ADMIN", "HR", "HR_OFFICER", "CEO"), async (req: AuthRequest, res) => {
   const record = await prisma.payrollAdjustment.findUnique({ where: { id: String(req.params.id) } });
   if (!record) return res.status(404).json({ message: "Adjustment not found" });
-  if (record.status !== "DRAFT") {
-    return res.status(400).json({ message: "Only draft adjustments can be approved" });
+
+  const auth = req.auth;
+  const now = new Date();
+  const employeeInclude = { employee: { select: { id: true, employeeCode: true, firstName: true, lastName: true, department: true } } };
+
+  if (record.status === ADJUSTMENT_STATUS.DRAFT) {
+    if (!record.requiresDualApproval) {
+      if (!isHr(auth?.role)) {
+        return res.status(403).json({ message: "Only HR can approve adjustments below the dual-approval threshold" });
+      }
+      const updated = await prisma.payrollAdjustment.update({
+        where: { id: record.id },
+        data: {
+          status: ADJUSTMENT_STATUS.APPROVED,
+          approvedById: auth?.employeeId,
+          approvedAt: now,
+        },
+        include: employeeInclude,
+      });
+      return res.json(updated);
+    }
+
+    if (!isHr(auth?.role)) {
+      return res.status(403).json({ message: "First approval for large adjustments requires HR" });
+    }
+    if (!auth?.employeeId) {
+      return res.status(400).json({ message: "Employee identity required to approve adjustments" });
+    }
+
+    const updated = await prisma.payrollAdjustment.update({
+      where: { id: record.id },
+      data: {
+        status: ADJUSTMENT_STATUS.PENDING_L2,
+        approver1Id: auth.employeeId,
+        approver1At: now,
+      },
+      include: employeeInclude,
+    });
+    return res.json({
+      ...updated,
+      message: "First approval recorded. Awaiting CEO / Super Admin final approval.",
+    });
   }
-  const updated = await prisma.payrollAdjustment.update({
-    where: { id: record.id },
-    data: { status: "APPROVED", approvedById: req.auth?.employeeId, approvedAt: new Date() },
-    include: { employee: { select: { id: true, employeeCode: true, firstName: true, lastName: true, department: true } } },
-  });
-  return res.json(updated);
+
+  if (record.status === ADJUSTMENT_STATUS.PENDING_L2) {
+    if (!isExecApprover(auth?.role)) {
+      return res.status(403).json({ message: "Final approval requires CEO or Super Admin" });
+    }
+    if (!auth?.employeeId) {
+      return res.status(400).json({ message: "Employee identity required to approve adjustments" });
+    }
+    if (record.approver1Id && record.approver1Id === auth.employeeId) {
+      return res.status(403).json({ message: "Final approver must be different from the first approver" });
+    }
+
+    const updated = await prisma.payrollAdjustment.update({
+      where: { id: record.id },
+      data: {
+        status: ADJUSTMENT_STATUS.APPROVED,
+        approver2Id: auth.employeeId,
+        approver2At: now,
+        approvedById: auth.employeeId,
+        approvedAt: now,
+      },
+      include: employeeInclude,
+    });
+    return res.json(updated);
+  }
+
+  return res.status(400).json({ message: "Only draft or pending final approval adjustments can be approved" });
 });
 
 adjustmentsRouter.post("/:id/reject", requireRoles("SUPER_ADMIN", "HR", "HR_OFFICER"), async (req: AuthRequest, res) => {
   const payload = rejectSchema.parse(req.body);
   const record = await prisma.payrollAdjustment.findUnique({ where: { id: String(req.params.id) } });
   if (!record) return res.status(404).json({ message: "Adjustment not found" });
-  if (!["DRAFT", "APPROVED"].includes(record.status)) {
-    return res.status(400).json({ message: "Only draft or approved adjustments can be rejected" });
+  if (!["DRAFT", "PENDING_L2", "APPROVED"].includes(record.status)) {
+    return res.status(400).json({ message: "Only draft, pending final approval, or approved adjustments can be rejected" });
   }
   const updated = await prisma.payrollAdjustment.update({
     where: { id: record.id },
@@ -316,6 +400,9 @@ adjustmentsRouter.post("/loans", async (req: AuthRequest, res) => {
     return res.status(400).json({ message: "Cannot raise a loan/advance for an exited employee" });
   }
 
+  const dualThreshold = await getPayrollDualApprovalThreshold();
+  const requiresDualApproval = payload.totalAmount >= dualThreshold;
+
   const loan = await prisma.salaryAdvanceLoan.create({
     data: {
       employeeId,
@@ -326,13 +413,17 @@ adjustmentsRouter.post("/loans", async (req: AuthRequest, res) => {
       startYear: payload.startYear,
       reason: payload.reason,
       supportingDocUrl: payload.supportingDocUrl,
-      requiresDualApproval: false,
+      requiresDualApproval,
       createdById: req.auth.employeeId,
       status: LOAN_STATUSES.PENDING_FINANCE,
     },
     include: loanInclude(),
   });
-  return res.status(201).json(formatLoanResponse(loan));
+  return res.status(201).json({
+    ...formatLoanResponse(loan),
+    dualApprovalRequired: requiresDualApproval,
+    dualApprovalThreshold: dualThreshold,
+  });
 });
 
 async function generateLoanInstallments(loanId: string) {

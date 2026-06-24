@@ -73,6 +73,15 @@ export default function DashboardScreen() {
           {stat("time-outline", "Leave Used", `${(maturity?.usedDays ?? 0).toFixed(1)}`, theme.colors.amber)}
         </View>
 
+        {status?.lateAttendance?.warningActive ? (
+          <View style={styles.lateBanner}>
+            <Ionicons name="alarm-outline" size={20} color={theme.colors.coral} />
+            <Text style={styles.lateBannerText}>
+              Late check-in warning: {status.lateAttendance.monthlyLateCount} times this month (limit: {status.lateAttendance.threshold}).
+            </Text>
+          </View>
+        ) : null}
+
         <Card>
           <View style={styles.cardHead}>
             <Ionicons name="location-outline" size={18} color={theme.colors.primaryBright} />
@@ -134,6 +143,18 @@ const styles = StyleSheet.create({
   name: { color: theme.colors.white, fontSize: 18, fontWeight: "800" },
   role: { color: theme.colors.textMuted, fontSize: 12, marginTop: 2 },
   statsRow: { flexDirection: "row", gap: 10, marginBottom: 14 },
+  lateBanner: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    backgroundColor: "rgba(244,81,30,0.12)",
+    borderColor: theme.colors.coral,
+    borderWidth: 1,
+    borderRadius: theme.radius.md,
+    padding: 12,
+    marginBottom: 14,
+  },
+  lateBannerText: { flex: 1, color: theme.colors.text, fontSize: 13, lineHeight: 18 },
   statCard: {
     flex: 1,
     backgroundColor: theme.colors.surface,

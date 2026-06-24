@@ -3,33 +3,49 @@
     "name": "HRMS",
     "slug": "hrms-mobile",
     "version": "1.0.0",
+    "icon": "./assets/icon.png",
     "orientation": "portrait",
     "scheme": "hrms",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
+      "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0f172a"
+      "backgroundColor": "#000000"
     },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.opencoders.hrms",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "HRMS uses your location to verify office geofence during attendance check-in/out.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "HRMS uses your location to track attendance while you are checked in."
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "HRMS uses your location to track attendance while you are checked in.",
+        "NSFaceIDUsageDescription": "HRMS uses Face ID to verify your identity before attendance check-in.",
+        "NSCameraUsageDescription": "HRMS uses the camera for face verification during attendance check-in and check-out.",
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        }
       }
     },
     "android": {
       "package": "com.opencoders.hrms",
+      "usesCleartextTraffic": true,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#000000"
+      },
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
         "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION"
+        "android.permission.ACCESS_FINE_LOCATION",
+        "CAMERA",
+        "android.permission.CAMERA"
       ]
     },
     "extra": {
-      "apiBaseUrl": "https://hrms-app-dzsr.onrender.com/api",
+      "apiEnvironment": "local",
+      "localApiHost": "192.168.1.5",
+      "localApiPort": 4000,
       "eas": {
         "projectId": "aa0085a5-5368-4340-87fe-bdbad7fadea8"
       }
@@ -39,6 +55,18 @@
         "expo-location",
         {
           "locationWhenInUsePermission": "HRMS uses your location to verify office geofence during attendance."
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow HRMS to use Face ID for secure attendance check-in."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow HRMS to use the camera for face verification during attendance."
         }
       ],
       "expo-asset",

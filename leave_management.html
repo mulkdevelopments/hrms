@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Leave Management System</title>
+<link rel="icon" type="image/png" href="/brand/favicon.png">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
@@ -50,13 +51,15 @@
     padding: 24px 20px 20px;
     border-bottom: 1px solid var(--border);
     margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
-  .logo-text {
-    font-size: 13px; font-weight: 700;
-    letter-spacing: 2px; text-transform: uppercase;
-    color: var(--accent); font-family: var(--mono);
+  .logo img {
+    max-width: 100%;
+    max-height: 40px;
+    object-fit: contain;
   }
-  .logo-sub { font-size: 11px; color: var(--text3); margin-top: 3px; }
 
   .nav-item {
     display: flex; align-items: center; gap: 10px;
@@ -368,8 +371,7 @@
 <!-- SIDEBAR -->
 <div class="sidebar">
   <div class="logo">
-    <div class="logo-text">LeaveMS</div>
-    <div class="logo-sub">Leave Management System</div>
+    <img src="/brand/logo-light-sm.png" alt="Company logo">
   </div>
   <nav>
     <div class="nav-item active" onclick="showPage('dashboard')">
