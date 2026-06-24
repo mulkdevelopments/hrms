@@ -14,5 +14,10 @@ until npx prisma db push --skip-generate --accept-data-loss; do
   sleep 5
 done
 
+if [ "${RUN_SEED:-}" = "true" ]; then
+  echo "Seeding database..."
+  node --import tsx prisma/seed.ts
+fi
+
 echo "Starting API server..."
 exec node dist/src/index.js
