@@ -6,13 +6,12 @@ databases:
 services:
   - type: web
     name: hrms-api
-    runtime: node
+    runtime: docker
     plan: free
-    region: frankfurt
+    region: oregon
     rootDir: backend
-    buildCommand: npm ci && npm run build && npx prisma migrate deploy
-    startCommand: npm start
-    healthCheckPath: /api/health
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
     autoDeploy: true
     envVars:
       - key: NODE_VERSION
