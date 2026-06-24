@@ -4,7 +4,7 @@ set -e
 echo "Syncing database schema..."
 attempt=1
 max_attempts=15
-until npx prisma db push --skip-generate; do
+until npx prisma db push --skip-generate --accept-data-loss; do
   if [ "$attempt" -ge "$max_attempts" ]; then
     echo "Database schema sync failed after $max_attempts attempts"
     exit 1
