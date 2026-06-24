@@ -48,7 +48,7 @@ Check-in prompts for **fingerprint**, **Face ID**, or your **lock screen passcod
 The API base URL lives in `app.json` under `expo.extra.apiBaseUrl`:
 
 ```json
-"extra": { "apiBaseUrl": "https://hrms-app-dzsr.onrender.com/api" }
+"extra": { "apiBaseUrl": "https://api.mulkinternational.co/api" }
 ```
 
 - For production, point it at your Render backend (default above).

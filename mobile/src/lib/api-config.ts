@@ -3,7 +3,7 @@ import { Platform } from "react-native";
 /** Change to true only for production/EAS builds. */
 export const USE_PRODUCTION_API = false;
 
-const PRODUCTION_API = "https://hrms-app-dzsr.onrender.com/api";
+const PRODUCTION_API = "https://api.mulkinternational.co/api";
 const LOCAL_PORT = 4000;
 
 export function resolveApiBaseUrl(): string {

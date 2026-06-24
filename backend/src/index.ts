@@ -23,9 +23,16 @@ import { errorHandler } from "./middleware/error-handler.js";
 
 const app = express();
 
+const corsOrigins =
+  env.CORS_ORIGIN === "*"
+    ? env.CORS_ORIGIN
+    : env.CORS_ORIGIN.split(",")
+        .map((origin) => origin.trim())
+        .filter(Boolean);
+
 app.use(
   cors({
-    origin: env.CORS_ORIGIN,
+    origin: corsOrigins,
     credentials: true,
   }),
 );

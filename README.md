@@ -81,8 +81,9 @@ See **[DEPLOYMENT.md](./DEPLOYMENT.md)** for step-by-step setup, env vars, and s
 
 Quick links after deploy:
 
-- API health: `https://<render-host>/api/health`
-- Frontend env: `VITE_API_URL=https://<render-host>/api`
+- Frontend: `https://hrms.mulkinternational.co`
+- API health: `https://api.mulkinternational.co/api/health`
+- Frontend env: `VITE_API_URL=https://api.mulkinternational.co/api`
 
 ## Implemented Requirement Mapping
 

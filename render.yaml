@@ -1,13 +1,13 @@
 databases:
   - name: hrms-db
-    plan: free
+    plan: basic_256mb
     region: frankfurt
 
 services:
   - type: web
     name: hrms-api
     runtime: docker
-    plan: free
+    plan: starter
     region: oregon
     rootDir: backend
     dockerfilePath: ./Dockerfile
@@ -23,9 +23,9 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: CORS_ORIGIN
-        sync: false
+        value: https://hrms.mulkinternational.co,https://hrms-mulk.vercel.app
       - key: APP_PUBLIC_URL
-        sync: false
+        value: https://hrms.mulkinternational.co
       - key: BLOB_READ_WRITE_TOKEN
         sync: false
       - key: BLOB_ACCESS

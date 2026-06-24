@@ -2,10 +2,10 @@
 
 Split hosting:
 
-| Component | Platform | URL pattern |
-|-----------|----------|-------------|
-| PostgreSQL + API | [Render](https://render.com) | `https://hrms-api.onrender.com` |
-| Web app | [Vercel](https://vercel.com) | `https://your-project.vercel.app` |
+| Component | Platform | Production URL |
+|-----------|----------|----------------|
+| PostgreSQL + API | [Render](https://render.com) | `https://api.mulkinternational.co` |
+| Web app | [Vercel](https://vercel.com) | `https://hrms.mulkinternational.co` |
 
 Repository: [mulkdevelopments/hrms](https://github.com/mulkdevelopments/hrms)
 
@@ -24,13 +24,13 @@ git push -u origin main
 
 | Variable | Example / notes |
 |----------|-----------------|
-| `CORS_ORIGIN` | Your Vercel URL, e.g. `https://hrms.vercel.app` (or `*` temporarily) |
-| `APP_PUBLIC_URL` | Same Vercel URL (used in emails / links) |
+| `CORS_ORIGIN` | `https://hrms.mulkinternational.co,https://hrms-mulk.vercel.app` (comma-separated if using multiple frontends) |
+| `APP_PUBLIC_URL` | `https://hrms.mulkinternational.co` (used in emails / links) |
 | `BLOB_READ_WRITE_TOKEN` | From Vercel → Storage → Blob → token |
 | `RESEND_API_KEY` | Optional — password reset emails |
 | `RESEND_FROM_EMAIL` | Optional — e.g. `Mulk HRMS <noreply@yourdomain.com>` |
 
-4. Wait for deploy; confirm health: `https://<hrms-api-host>/api/health`
+4. Wait for deploy; confirm health: `https://api.mulkinternational.co/api/health`
 
 ### Seed production data (once)
 
@@ -55,7 +55,7 @@ Default accounts (change passwords after first login):
 
 | Name | Value |
 |------|--------|
-| `VITE_API_URL` | `https://<your-render-api-host>/api` |
+| `VITE_API_URL` | `https://api.mulkinternational.co/api` |
 
 5. Deploy
 
