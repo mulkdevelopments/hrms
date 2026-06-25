@@ -352,18 +352,23 @@ export async function importEmployeesFromWorkbook(
 const LEAVE_TYPE_ALIASES: Record<string, string> = {
   "annual leave": "AL",
   "annual levae": "AL",
+  "anuual leave": "AL",
   "annual leave(medical)": "AL",
   "annual leave (umrah)": "UMRAH",
   "annual leave (medical)": "AL",
   "emergency leave": "EL",
+  "emergency leave(medical)": "EL",
   "emergency  leave(medical)": "EL",
+  "emergancy leave": "EL",
   "sick leave": "SL",
   "sick levae": "SL",
   "maternity leave": "MLF",
   "paternity leave": "PL",
   "others (paternity)": "PL",
   umrah: "UMRAH",
+  "umrah leave": "UMRAH",
   ummrah: "UMRAH",
+  "hajj leave": "UMRAH",
   "other, (easter)": "EL",
   "casual leave": "CL",
   "unpaid leave": "UL",
@@ -453,7 +458,7 @@ export async function importLeaveFromWorkbook(
   const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true });
   const targetSheet = pickLeaveImportSheet(workbook, sheetName);
   const sheet = workbook.Sheets[targetSheet];
-  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "", raw: false });
+  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "", raw: true, dateNF: "yyyy-mm-dd" });
   if (!rows.length) {
     return { created: 0, updated: 0, skipped: 0, errors: [{ row: 0, message: "No rows found" }] };
   }

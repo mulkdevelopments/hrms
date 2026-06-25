@@ -125,6 +125,28 @@ export function parseExcelDate(value: unknown): Date | null {
   }
   const text = String(value).trim();
   if (!text) return null;
+  const dmy = /^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})$/.exec(text);
+  if (dmy) {
+    const first = Number(dmy[1]);
+    const second = Number(dmy[2]);
+    let year = Number(dmy[3]);
+    if (year < 100) year += 2000;
+    let day = first;
+    let month = second;
+    if (first > 12 && second <= 12) {
+      day = first;
+      month = second;
+    } else if (second > 12 && first <= 12) {
+      month = first;
+      day = second;
+    } else if (first <= 12 && second <= 12) {
+      // Ambiguous numeric dates in HR exports are usually DD/MM.
+      day = first;
+      month = second;
+    }
+    const parsedDmy = new Date(Date.UTC(year, month - 1, day));
+    if (!Number.isNaN(parsedDmy.getTime())) return parsedDmy;
+  }
   const asNum = Number(text);
   if (!Number.isNaN(asNum) && asNum > 20000) {
     const base = new Date(Date.UTC(1899, 11, 30));

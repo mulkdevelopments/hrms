@@ -16,6 +16,9 @@
     "prisma:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
     "seed": "npm run prisma:generate && node --env-file=.env --import tsx prisma/seed.ts",
+    "remove-seed-employees": "npm run prisma:generate && node --env-file=.env --import tsx scripts/remove-seed-employees.ts",
+    "import-leave": "npm run prisma:generate && node --env-file=.env --import tsx scripts/import-leave.ts",
+    "import-leave-prod": "npm run prisma:generate && node --import tsx scripts/import-leave.ts scripts/leave-report-may.xlsx",
     "ensure-dept-managers": "npm run prisma:generate && node --env-file=.env --import tsx prisma/ensure-department-managers.ts",
     "migrate-pro-onboarding": "npm run prisma:generate && node --env-file=.env --import tsx prisma/migrate-pro-onboarding.ts"
   },
