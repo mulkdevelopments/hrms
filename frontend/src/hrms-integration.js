@@ -178,8 +178,15 @@ function notify(message) {
 
 function setHeaderLocationLabel(text) {
   const label = document.getElementById("header-location-name");
+  const container = document.getElementById("header-location");
+  const unavailable = text === "Location unavailable";
   if (label) {
-    label.textContent = text;
+    label.textContent = unavailable ? "" : text;
+    label.setAttribute("aria-hidden", unavailable ? "true" : "false");
+  }
+  if (container) {
+    container.classList.toggle("is-icon-only", unavailable);
+    container.title = unavailable ? "Location unavailable" : text;
   }
 }
 
@@ -496,6 +503,26 @@ function populateAssignableRoles() {
   }
 }
 
+function computeAllowedViewsForRole(role, configuredRole, fallbackRoleViews) {
+  const fallbacks = fallbackRoleViews ?? {
+    SUPER_ADMIN: ["dashboard", "employees", "leave", "exits", "clearance", "payadjust", "pro", "documents", "attendance", "calendar", "offices", "masterdata", "profile", "settings"],
+    CEO: ["dashboard", "employees", "leave", "exits", "clearance", "payadjust", "pro", "documents", "attendance", "calendar", "offices", "profile", "settings"],
+    HR: ["dashboard", "employees", "leave", "exits", "clearance", "payadjust", "pro", "documents", "attendance", "calendar", "offices", "masterdata", "profile", "settings"],
+    HR_OFFICER: ["dashboard", "employees", "leave", "exits", "clearance", "payadjust", "pro", "documents", "attendance", "calendar", "offices", "profile", "settings"],
+    PRO: ["dashboard", "employees", "pro", "documents", "profile", "settings"],
+    MANAGER: ["dashboard", "employees", "leave", "exits", "clearance", "pro", "documents", "profile"],
+    EMPLOYEE: individualContributorViews,
+    LABOUR: individualContributorViews,
+    STAFF: individualContributorViews,
+  };
+  const resolvedRole = configuredRole ?? publicMasterConfig?.roles?.find((item) => item.code === role);
+  return new Set(
+    resolvedRole?.allowedViews
+      ?? fallbacks[role]
+      ?? (isIndividualContributor(role) ? individualContributorViews : fallbacks.EMPLOYEE),
+  );
+}
+
 async function applyRoleBasedUi() {
   if (!publicMasterConfig) {
     await loadPublicMasterConfig();
@@ -514,11 +541,7 @@ async function applyRoleBasedUi() {
     STAFF: individualContributorViews,
   };
   const configuredRole = publicMasterConfig?.roles?.find((item) => item.code === role);
-  const allowed = new Set(
-    configuredRole?.allowedViews
-      ?? fallbackRoleViews[role]
-      ?? (isIndividualContributor(role) ? individualContributorViews : fallbackRoleViews.EMPLOYEE),
-  );
+  const allowed = computeAllowedViewsForRole(role, configuredRole, fallbackRoleViews);
   const allViews = publicMasterConfig?.views ?? [
     "dashboard", "employees", "leave", "exits", "clearance", "payadjust", "pro",
     "documents", "attendance", "calendar", "offices", "masterdata", "profile", "settings",
@@ -6744,6 +6767,51 @@ function applyEmployeeDashboardUi() {
   document.getElementById("dash-employee-summary-card")?.style.setProperty("display", isEmployee ? "" : "none");
   document.getElementById("dash-admin-insights-row")?.style.setProperty("display", isEmployee ? "none" : "");
   document.getElementById("dash-overtime-panel")?.style.setProperty("display", isEmployee ? "none" : "");
+
+  const statIcons = document.querySelectorAll("#view-dashboard .dash-stats-grid .stat-icon i");
+  if (statIcons.length >= 4) {
+    if (isEmployee) {
+      statIcons[0].className = "bi bi-person-badge";
+      statIcons[1].className = "bi bi-hourglass-split";
+      statIcons[2].className = "bi bi-wallet2";
+      statIcons[3].className = "bi bi-file-earmark-text";
+    } else {
+      statIcons[0].className = "bi bi-people";
+      statIcons[1].className = "bi bi-calendar-check";
+      statIcons[2].className = "bi bi-cash-stack";
+      statIcons[3].className = "bi bi-hourglass-split";
+    }
+  }
+}
+
+function renderDashboardHero() {
+  const greetingEl = document.getElementById("dash-hero-greeting");
+  const subEl = document.getElementById("dash-hero-subtitle");
+  const dateEl = document.getElementById("dash-hero-date");
+  const roleEl = document.getElementById("dash-hero-role");
+  const employee = me?.employee;
+  const fullName = employee
+    ? `${employee.firstName ?? ""} ${employee.lastName ?? ""}`.trim()
+    : (me?.email ?? "there");
+  const firstName = fullName.split(/\s+/)[0] || fullName;
+  const hour = new Date().getHours();
+  const salutation = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+
+  if (greetingEl) greetingEl.textContent = `${salutation}, ${firstName}`;
+  if (subEl) {
+    subEl.textContent = isEmployeeDashboard()
+      ? `${employee?.designation ?? "Employee"} · ${employee?.department ?? "—"}`
+      : `Organization snapshot · ${employee?.department ?? "All departments"}`;
+  }
+  if (dateEl) {
+    dateEl.textContent = new Date().toLocaleDateString("en-GB", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+  }
+  if (roleEl) roleEl.textContent = formatLabel(me?.role ?? "EMPLOYEE");
 }
 
 function renderEmployeeDashboardSummary() {
@@ -6765,9 +6833,9 @@ function renderEmployeeDashboardSummary() {
     ["Reporting To", managerName],
   ];
   container.innerHTML = items.map(([label, value]) => `
-    <div style="background:var(--highlight);border:1px solid var(--border-bright);border-radius:9px;padding:12px">
-      <div class="text-muted" style="font-size:11px;margin-bottom:4px">${escapeAttr(label)}</div>
-      <div style="font-weight:600">${escapeAttr(value)}</div>
+    <div class="dash-summary-item">
+      <div class="dash-summary-label">${escapeAttr(label)}</div>
+      <div class="dash-summary-value">${escapeAttr(value)}</div>
     </div>
   `).join("");
 }
@@ -6829,6 +6897,8 @@ async function loadDashboard() {
     }
   }
   if (isEmployee) renderEmployeeDashboardSummary();
+  renderDashboardHero();
+  applyEmployeeDashboardUi();
   renderLateAttendanceDashboardBanner();
   renderDashboardInsights();
   renderNotifications();

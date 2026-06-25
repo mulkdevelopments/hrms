@@ -964,14 +964,29 @@ html[data-theme="light"] .theme-logo-light { display: block !important; }
   background: var(--surface-soft);
   max-width: 260px;
 }
+.header-location.is-icon-only {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  justify-content: center;
+  gap: 0;
+  max-width: none;
+}
 .header-location i {
   color: var(--green);
   flex-shrink: 0;
+}
+.header-location.is-icon-only i {
+  color: var(--text-muted);
+  font-size: 15px;
 }
 #header-location-name {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.header-location.is-icon-only #header-location-name {
+  display: none;
 }
 .header-att-actions { display: flex; gap: 6px; align-items: center; }
 .mobile-menu-btn { display: none; }
@@ -1069,7 +1084,7 @@ html[data-theme="light"] .theme-logo-light { display: block !important; }
   background: var(--card);
   border: 1px solid var(--border-bright);
   border-radius: 14px; padding: 20px;
-  cursor: default; transition: border-color .2s, background .2s;
+  cursor: default; transition: border-color .2s, background .2s, transform .2s;
   backdrop-filter: blur(10px);
 }
 .stat-card:hover { border-color: var(--border-bright); background: var(--card-hover); }
@@ -1078,6 +1093,203 @@ html[data-theme="light"] .theme-logo-light { display: block !important; }
 .stat-sub { font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 4px; }
 .trend-up { color: var(--accent); }
 .trend-down { color: var(--coral); }
+
+/* ─── DASHBOARD REDESIGN ─── */
+.dash-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 22px 24px;
+  background: linear-gradient(135deg, var(--hero-gradient), var(--card));
+  border: 1px solid var(--border-bright);
+  overflow: hidden;
+  position: relative;
+}
+.dash-hero::after {
+  content: '';
+  position: absolute;
+  top: -40px;
+  right: -20px;
+  width: 180px;
+  height: 180px;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--accent) 18%, transparent), transparent 70%);
+  pointer-events: none;
+}
+.dash-hero-main { position: relative; z-index: 1; min-width: 0; flex: 1; }
+.dash-hero-eyebrow {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0 0 8px;
+  letter-spacing: 0.2px;
+}
+.dash-hero-title {
+  margin: 0 0 8px;
+  font-family: 'Inter', sans-serif;
+  font-size: clamp(22px, 4vw, 30px);
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+.dash-hero-sub {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+  max-width: 52ch;
+}
+.dash-hero-meta {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.dash-hero-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border-bright);
+  background: var(--highlight-strong);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.dash-stats-grid { margin-bottom: 20px; }
+.dash-stats-grid .stat-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-height: 132px;
+  border-radius: 16px;
+  padding: 16px 16px 14px;
+  position: relative;
+  overflow: hidden;
+}
+.dash-stats-grid .stat-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--dash-stat-accent, var(--accent));
+  opacity: 0.9;
+}
+.dash-stats-grid .stat-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.dash-stats-grid .stat-label { margin-bottom: 0; line-height: 1.35; flex: 1; }
+.dash-stats-grid .stat-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  display: grid;
+  place-items: center;
+  font-size: 16px;
+  background: color-mix(in srgb, var(--dash-stat-accent, var(--accent)) 14%, transparent);
+  color: var(--dash-stat-accent, var(--accent));
+  flex-shrink: 0;
+}
+.dash-stats-grid .stat-value {
+  font-size: clamp(24px, 3.2vw, 32px);
+  margin-bottom: 8px;
+  word-break: break-word;
+}
+.dash-stats-grid .stat-sub { line-height: 1.4; }
+.stat-card-accent { --dash-stat-accent: var(--accent); }
+.stat-card-teal { --dash-stat-accent: var(--teal, #14b8a6); }
+.stat-card-gold { --dash-stat-accent: var(--amber); }
+.stat-card-danger { --dash-stat-accent: var(--coral); }
+
+.dash-section { margin-bottom: 20px; }
+.dash-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.dash-section-head .section-title { margin-bottom: 0; flex: 1; }
+.dash-section-note {
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.dash-workforce-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 16px;
+}
+.dash-workforce-stat {
+  background: var(--highlight);
+  border: 1px solid var(--border-bright);
+  border-radius: 12px;
+  padding: 12px;
+  text-align: center;
+}
+.dash-workforce-stat-value {
+  font-size: 22px;
+  font-weight: 800;
+  font-family: 'Inter', sans-serif;
+  line-height: 1.1;
+  margin-bottom: 4px;
+}
+
+.dash-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+.dash-summary-item {
+  background: var(--highlight);
+  border: 1px solid var(--border-bright);
+  border-radius: 12px;
+  padding: 12px;
+}
+.dash-summary-label {
+  color: var(--text-muted);
+  font-size: 11px;
+  margin-bottom: 4px;
+  letter-spacing: 0.2px;
+}
+.dash-summary-value {
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+#view-dashboard .alert {
+  border-radius: 12px;
+  margin-bottom: 10px;
+}
+#view-dashboard .alert:last-child { margin-bottom: 0; }
+#view-dashboard .timeline { max-height: 360px; overflow: auto; padding-right: 4px; }
+#view-dashboard .payslip-card {
+  border-radius: 12px;
+  border: 1px solid var(--border-bright);
+  background: var(--highlight);
+  padding: 14px;
+}
+.dash-payroll-grid { align-items: stretch; }
+.dash-payroll-grid .payslip-card { height: 100%; }
+#dash-overtime-panel {
+  border-radius: 12px;
+  border: 1px solid var(--border-bright);
+  background: var(--highlight);
+  padding: 14px;
+}
 
 /* ─── SECTION TITLE ─── */
 .section-title {
@@ -2179,11 +2391,8 @@ html[data-theme="light"] .clearance-dept-icon.tone-pro { color: #7e22ce; backgro
     background: var(--header-bg);
   }
   .mobile-menu-btn { display: inline-flex; }
-  .header-title {
-    font-size: 15px;
-    min-width: 0;
-  }
-  .header-title span { display: none; }
+  .header-title { display: none; }
+  .header-actions { margin-left: auto; }
   #main { margin-left: 0; padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
   #mobile-bottom-nav { display: grid; }
   .nav-item.nav-in-bottom-bar { display: none !important; }
@@ -2210,6 +2419,47 @@ html[data-theme="light"] .clearance-dept-icon.tone-pro { color: #7e22ce; backgro
   .toolbar .search-bar input { width: 100%; }
   .grid3 { grid-template-columns: 1fr; }
   .stats-grid { grid-template-columns: 1fr 1fr; }
+  .dash-stats-grid {
+    display: flex;
+    overflow-x: auto;
+    gap: 10px;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 4px;
+    margin-bottom: 14px;
+  }
+  .dash-stats-grid .stat-card {
+    flex: 0 0 min(62vw, 210px);
+    scroll-snap-align: start;
+    min-height: 0;
+    padding: 12px 12px 10px;
+  }
+  .dash-stats-grid .stat-card-top { margin-bottom: 8px; gap: 8px; }
+  .dash-stats-grid .stat-label { font-size: 11px; }
+  .dash-stats-grid .stat-icon {
+    width: 30px;
+    height: 30px;
+    font-size: 14px;
+    border-radius: 9px;
+  }
+  .dash-stats-grid .stat-value {
+    font-size: 22px;
+    margin-bottom: 4px;
+  }
+  .dash-stats-grid .stat-sub {
+    font-size: 10px;
+    line-height: 1.35;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .dash-hero {
+    flex-direction: column;
+    padding: 18px 16px;
+  }
+  .dash-hero-meta { align-items: flex-start; }
+  #view-dashboard .timeline { max-height: none; }
   .grid2 { grid-template-columns: 1fr; }
   .kpi-grid { grid-template-columns: 1fr 1fr; }
   .modal-overlay { padding: 12px; }
@@ -2290,6 +2540,52 @@ html[data-theme="light"] .clearance-dept-icon.tone-pro { color: #7e22ce; backgro
   }
   .stats-grid,
   .kpi-grid { grid-template-columns: 1fr; }
+  .dash-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    overflow: visible;
+    margin-bottom: 12px;
+  }
+  .dash-stats-grid .stat-card {
+    flex: initial;
+    min-height: 0;
+    padding: 10px 10px 9px 11px;
+    border-radius: 12px;
+  }
+  .dash-stats-grid .stat-card-top {
+    margin-bottom: 4px;
+    gap: 6px;
+    align-items: center;
+  }
+  .dash-stats-grid .stat-label {
+    font-size: 10px;
+    line-height: 1.25;
+    letter-spacing: 0;
+  }
+  .dash-stats-grid .stat-icon {
+    width: 26px;
+    height: 26px;
+    font-size: 12px;
+    border-radius: 8px;
+  }
+  .dash-stats-grid .stat-value {
+    font-size: 18px;
+    margin-bottom: 0;
+    line-height: 1.1;
+  }
+  .dash-stats-grid .stat-sub {
+    display: none;
+  }
+  #view-dashboard .dash-hero { margin-bottom: 14px; padding: 14px; }
+  #view-dashboard #dash-employee-summary-card.card { padding: 14px; }
+  #view-dashboard .dash-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  #view-dashboard .dash-summary-item { padding: 10px; border-radius: 10px; }
+  #view-dashboard .dash-summary-value { font-size: 13px; }
+  .dash-workforce-stats { grid-template-columns: 1fr 1fr; }
   .form-grid { grid-template-columns: 1fr; }
   .donut-wrap { flex-direction: column; align-items: flex-start; }
   #toast {
@@ -2385,9 +2681,9 @@ html[data-theme="light"] .clearance-dept-icon.tone-pro { color: #7e22ce; backgro
   </button>
   <div class="header-title" id="header-title">Dashboard <span>/ Overview</span></div>
   <div class="header-actions">
-    <div class="header-location" title="Current location">
+    <div class="header-location is-icon-only" id="header-location" title="Location unavailable">
       <i class="bi bi-geo-alt-fill"></i>
-      <span id="header-location-name">Location unavailable</span>
+      <span id="header-location-name" aria-hidden="true"></span>
     </div>
     <div class="header-att-actions">
       <button id="header-check-in-btn" class="btn btn-primary btn-sm" onclick="window.__attendanceCheckIn()">Check In</button>
@@ -2416,86 +2712,118 @@ html[data-theme="light"] .clearance-dept-icon.tone-pro { color: #7e22ce; backgro
      DASHBOARD
 ════════════════════════════════════════════════════ -->
 <div id="view-dashboard" class="view active">
-  <div class="stats-grid">
-    <div class="stat-card">
-      <div class="stat-label">Total Headcount</div>
-      <div class="stat-value tone-accent">248</div>
-      <div class="stat-sub"><span class="trend-up">↑ 4</span> this month</div>
+  <section class="dash-hero card mb-20">
+    <div class="dash-hero-main">
+      <p class="dash-hero-eyebrow" id="dash-hero-date">Today</p>
+      <h1 class="dash-hero-title" id="dash-hero-greeting">Welcome back</h1>
+      <p class="dash-hero-sub" id="dash-hero-subtitle">Your HR overview</p>
     </div>
-    <div class="stat-card">
-      <div class="stat-label">On Leave Today</div>
-      <div class="stat-value tone-gold">17</div>
-      <div class="stat-sub"><span class="trend-up">6.9%</span> of workforce</div>
+    <div class="dash-hero-meta">
+      <span class="dash-hero-badge" id="dash-hero-role">HRMS</span>
     </div>
-    <div class="stat-card">
-      <div class="stat-label">Monthly Payroll (AED)</div>
-      <div class="stat-value tone-teal">1.24M</div>
-      <div class="stat-sub"><span class="trend-up">↑ 2.1%</span> vs last month</div>
+  </section>
+
+  <div class="stats-grid dash-stats-grid">
+    <div class="stat-card stat-card-accent">
+      <div class="stat-card-top">
+        <div class="stat-label">Total Headcount</div>
+        <span class="stat-icon"><i class="bi bi-people"></i></span>
+      </div>
+      <div class="stat-value tone-accent">—</div>
+      <div class="stat-sub">Loading…</div>
     </div>
-    <div class="stat-card">
-      <div class="stat-label">Attrition Rate (YTD)</div>
-      <div class="stat-value tone-danger">3.2%</div>
-      <div class="stat-sub"><span class="trend-up">↓ 0.5%</span> vs last yr</div>
+    <div class="stat-card stat-card-gold">
+      <div class="stat-card-top">
+        <div class="stat-label">On Leave Today</div>
+        <span class="stat-icon"><i class="bi bi-calendar-check"></i></span>
+      </div>
+      <div class="stat-value tone-gold">—</div>
+      <div class="stat-sub">Loading…</div>
+    </div>
+    <div class="stat-card stat-card-teal">
+      <div class="stat-card-top">
+        <div class="stat-label">Monthly Payroll (AED)</div>
+        <span class="stat-icon"><i class="bi bi-cash-stack"></i></span>
+      </div>
+      <div class="stat-value tone-teal">—</div>
+      <div class="stat-sub">Loading…</div>
+    </div>
+    <div class="stat-card stat-card-danger">
+      <div class="stat-card-top">
+        <div class="stat-label">Pending Approvals</div>
+        <span class="stat-icon"><i class="bi bi-hourglass-split"></i></span>
+      </div>
+      <div class="stat-value tone-danger">—</div>
+      <div class="stat-sub">Loading…</div>
     </div>
   </div>
 
-  <div class="card mb-20" id="dash-late-attendance-card" style="display:none">
+  <div class="card mb-20 dash-section" id="dash-late-attendance-card" style="display:none">
     <div class="alert alert-warn" style="margin:0">
       <span class="alert-icon"><i class="bi bi-alarm"></i></span>
       <div id="dash-late-attendance-text"><b>Late check-in warning</b> You have exceeded the monthly late check-in limit.</div>
     </div>
   </div>
 
-  <div class="card mb-20" id="dash-employee-summary-card" style="display:none">
-    <div class="section-title">My Overview</div>
-    <div id="dash-employee-summary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px"></div>
+  <div class="card mb-20 dash-section" id="dash-employee-summary-card" style="display:none">
+    <div class="dash-section-head">
+      <div class="section-title">My Overview</div>
+    </div>
+    <div id="dash-employee-summary" class="dash-summary-grid"></div>
   </div>
 
-  <div class="grid2 mb-20" id="dash-admin-insights-row">
-    <!-- Headcount by Dept -->
+  <div class="grid2 mb-20 dash-section" id="dash-admin-insights-row">
     <div class="card" id="dash-dept-card">
-      <div class="section-title">Headcount by Department</div>
-      <div id="dash-dept-list" style="display:flex;flex-direction:column;gap:10px;"></div>
+      <div class="dash-section-head">
+        <div class="section-title">Headcount by Department</div>
+      </div>
+      <div id="dash-dept-list" style="display:flex;flex-direction:column;gap:12px;"></div>
     </div>
 
-    <!-- Nationality Mix -->
     <div class="card" id="dash-workforce-card">
-      <div class="section-title">Workforce Composition</div>
+      <div class="dash-section-head">
+        <div class="section-title">Workforce Composition</div>
+      </div>
       <div class="donut-wrap">
         <div class="donut"></div>
         <div id="dash-workforce-legend"></div>
       </div>
-      <div style="margin-top:18px;display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-        <div style="background:var(--highlight);border:1px solid var(--border-bright);border-radius:9px;padding:12px;text-align:center">
-          <div id="dash-active-count" style="font-size:22px;font-weight:800;font-family:'Plus Jakarta Sans',sans-serif" class="tone-accent">0</div>
+      <div class="dash-workforce-stats">
+        <div class="dash-workforce-stat">
+          <div id="dash-active-count" class="dash-workforce-stat-value tone-accent">0</div>
           <div class="text-muted">Active</div>
         </div>
-        <div style="background:rgba(244,81,30,0.08);border:1px solid rgba(244,81,30,0.2);border-radius:9px;padding:12px;text-align:center">
-          <div id="dash-probation-count" style="font-size:22px;font-weight:800;font-family:'Plus Jakarta Sans',sans-serif" class="tone-danger">0</div>
+        <div class="dash-workforce-stat">
+          <div id="dash-probation-count" class="dash-workforce-stat-value tone-danger">0</div>
           <div class="text-muted">Probation</div>
         </div>
       </div>
     </div>
   </div>
 
-  <div class="grid2 mb-20">
-    <!-- Alerts -->
+  <div class="grid2 mb-20 dash-section">
     <div class="card">
-      <div class="section-title">Active Alerts</div>
+      <div class="dash-section-head">
+        <div class="section-title">Active Alerts</div>
+        <span class="dash-section-note">Needs attention</span>
+      </div>
       <div id="dash-alerts"></div>
     </div>
 
-    <!-- Recent Activity -->
     <div class="card">
-      <div class="section-title">Recent Activity</div>
+      <div class="dash-section-head">
+        <div class="section-title">Recent Activity</div>
+        <span class="dash-section-note">Latest updates</span>
+      </div>
       <div class="timeline" id="dash-timeline"></div>
     </div>
   </div>
 
-  <!-- OT & Payroll Stats -->
-  <div class="card" id="dash-payroll-card">
-    <div class="section-title" id="dash-payroll-title">Payroll Overview</div>
-    <div class="grid3">
+  <div class="card dash-section" id="dash-payroll-card">
+    <div class="dash-section-head">
+      <div class="section-title" id="dash-payroll-title">Payroll Overview</div>
+    </div>
+    <div class="grid3 dash-payroll-grid">
       <div class="payslip-card" id="dash-payroll-earnings">
         <div class="payslip-row"><span>Basic Salaries</span><span>AED 0</span></div>
         <div class="payslip-row"><span>Housing Allowance</span><span>AED 0</span></div>
@@ -2513,11 +2841,11 @@ html[data-theme="light"] .clearance-dept-icon.tone-pro { color: #7e22ce; backgro
       <div id="dash-overtime-panel">
         <div class="mb-16">
           <div class="stat-label" id="dash-overtime-label">Overtime Payout (AED)</div>
-          <div id="dash-overtime-amount" style="font-family:'Plus Jakarta Sans',sans-serif;font-size:28px;font-weight:800" class="tone-warning">0</div>
+          <div id="dash-overtime-amount" style="font-family:'Inter', sans-serif;font-size:28px;font-weight:800" class="tone-warning">0</div>
         </div>
         <div class="mb-16">
           <div class="stat-label">Employees with Overtime</div>
-          <div id="dash-overtime-employees" style="font-family:'Plus Jakarta Sans',sans-serif;font-size:28px;font-weight:800" class="tone-accent">0</div>
+          <div id="dash-overtime-employees" style="font-family:'Inter', sans-serif;font-size:28px;font-weight:800" class="tone-accent">0</div>
         </div>
       </div>
     </div>
