@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "npm run prisma:generate && node --watch --env-file=.env --import tsx src/index.ts",
     "build": "npm run prisma:generate && tsc -p tsconfig.json",

@@ -1,3 +1,18 @@
+import util from "node:util";
+
+type LegacyNodeUtil = typeof util & {
+  isNullOrUndefined?: (value: unknown) => value is null | undefined;
+  isArray?: (value: unknown) => value is unknown[];
+};
+
+const legacyUtil = util as LegacyNodeUtil;
+if (!legacyUtil.isNullOrUndefined) {
+  legacyUtil.isNullOrUndefined = (value): value is null | undefined => value === null || value === undefined;
+}
+if (!legacyUtil.isArray) {
+  legacyUtil.isArray = (value): value is unknown[] => Array.isArray(value);
+}
+
 const MODEL_BASE = "https://justadudewhohacks.github.io/face-api.js/models";
 export const FACE_MATCH_THRESHOLD = 0.45;
 const FACE_DETECTION_SCORE_THRESHOLD = 0.4;
