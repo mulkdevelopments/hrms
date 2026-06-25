@@ -9614,7 +9614,6 @@ async function start() {
     startAttendanceTracking();
     loadProfile();
     resetEmployeeModalForm();
-    notify("Live HRMS data connected");
   } catch (error) {
     notify(error.message);
   }
