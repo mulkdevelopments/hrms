@@ -6762,11 +6762,9 @@ function isEmployeeDashboard() {
   return isIndividualContributor(me?.role);
 }
 
-function applyDashboardStatShell() {
+function applyDashboardStatLabels() {
   const isEmployee = isEmployeeDashboard();
-  const statValues = document.querySelectorAll("#view-dashboard .stats-grid .stat-value");
   const statLabels = document.querySelectorAll("#view-dashboard .stats-grid .stat-label");
-  const statSubs = document.querySelectorAll("#view-dashboard .stats-grid .stat-sub");
 
   if (statLabels.length >= 4) {
     if (isEmployee) {
@@ -6782,12 +6780,24 @@ function applyDashboardStatShell() {
       statLabels[3].textContent = "Pending Approvals";
     }
   }
+}
+
+function applyDashboardStatPlaceholders() {
+  const isEmployee = isEmployeeDashboard();
+  const statValues = document.querySelectorAll("#view-dashboard .stats-grid .stat-value");
+  const statSubs = document.querySelectorAll("#view-dashboard .stats-grid .stat-sub");
+
   if (statValues.length >= 4) {
     statValues.forEach((el) => { el.textContent = "—"; });
   }
   if (statSubs.length >= 4) {
     statSubs.forEach((el) => { el.textContent = isEmployee ? "…" : "Loading…"; });
   }
+}
+
+function applyDashboardStatShell() {
+  applyDashboardStatLabels();
+  applyDashboardStatPlaceholders();
 }
 
 function applyEmployeeDashboardUi() {
@@ -6811,7 +6821,7 @@ function applyEmployeeDashboardUi() {
     }
   }
 
-  applyDashboardStatShell();
+  applyDashboardStatLabels();
   if (me) renderDashboardHero();
   document.getElementById("view-dashboard")?.classList.add("dash-role-ready");
 }
@@ -6909,6 +6919,7 @@ async function loadDashboard() {
     } else {
       const headcount = Number(data.headcount ?? 0);
       const onLeave = Number(data.onLeave ?? 0);
+      statSubs[0].textContent = "Organization-wide";
       statSubs[1].textContent = headcount ? `${((onLeave / headcount) * 100).toFixed(1)}% of workforce` : "No leave today";
       statSubs[2].textContent = "Current cycle total";
       statSubs[3].textContent = l1Roles.has(me?.role) ? "Waiting for L1 action" : l2Roles.has(me?.role) ? "Waiting for L2 action" : "Track your leave workflow";
@@ -6916,7 +6927,6 @@ async function loadDashboard() {
   }
   if (isEmployee) renderEmployeeDashboardSummary();
   renderDashboardHero();
-  applyEmployeeDashboardUi();
   renderLateAttendanceDashboardBanner();
   renderDashboardInsights();
   renderNotifications();
