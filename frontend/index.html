@@ -1162,6 +1162,12 @@ html[data-theme="light"] .theme-logo-light { display: block !important; }
 }
 
 .dash-stats-grid { margin-bottom: 20px; }
+#view-dashboard:not(.dash-role-ready) .dash-stats-grid {
+  visibility: hidden;
+}
+#view-dashboard:not(.dash-role-ready) #dash-admin-insights-row {
+  display: none !important;
+}
 .dash-stats-grid .stat-card {
   display: flex;
   flex-direction: column;
@@ -2772,7 +2778,7 @@ html[data-theme="light"] .clearance-dept-icon.tone-pro { color: #7e22ce; backgro
     <div id="dash-employee-summary" class="dash-summary-grid"></div>
   </div>
 
-  <div class="grid2 mb-20 dash-section" id="dash-admin-insights-row">
+  <div class="grid2 mb-20 dash-section" id="dash-admin-insights-row" style="display:none">
     <div class="card" id="dash-dept-card">
       <div class="dash-section-head">
         <div class="section-title">Headcount by Department</div>

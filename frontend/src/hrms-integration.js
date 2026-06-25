@@ -6762,6 +6762,34 @@ function isEmployeeDashboard() {
   return isIndividualContributor(me?.role);
 }
 
+function applyDashboardStatShell() {
+  const isEmployee = isEmployeeDashboard();
+  const statValues = document.querySelectorAll("#view-dashboard .stats-grid .stat-value");
+  const statLabels = document.querySelectorAll("#view-dashboard .stats-grid .stat-label");
+  const statSubs = document.querySelectorAll("#view-dashboard .stats-grid .stat-sub");
+
+  if (statLabels.length >= 4) {
+    if (isEmployee) {
+      statLabels[0].textContent = "Employment Status";
+      statLabels[1].textContent = "Pending Leave Requests";
+      const payCode = formatCurrencyLabel(employeePayCurrency());
+      statLabels[2].textContent = payCode ? `Net Pay (${payCode})` : "Net Pay (This Month)";
+      statLabels[3].textContent = "Documents Expiring";
+    } else {
+      statLabels[0].textContent = "Total Headcount";
+      statLabels[1].textContent = "On Leave Today";
+      statLabels[2].textContent = "Monthly Payroll (AED)";
+      statLabels[3].textContent = "Pending Approvals";
+    }
+  }
+  if (statValues.length >= 4) {
+    statValues.forEach((el) => { el.textContent = "—"; });
+  }
+  if (statSubs.length >= 4) {
+    statSubs.forEach((el) => { el.textContent = isEmployee ? "…" : "Loading…"; });
+  }
+}
+
 function applyEmployeeDashboardUi() {
   const isEmployee = isEmployeeDashboard();
   document.getElementById("dash-employee-summary-card")?.style.setProperty("display", isEmployee ? "" : "none");
@@ -6782,6 +6810,10 @@ function applyEmployeeDashboardUi() {
       statIcons[3].className = "bi bi-hourglass-split";
     }
   }
+
+  applyDashboardStatShell();
+  if (me) renderDashboardHero();
+  document.getElementById("view-dashboard")?.classList.add("dash-role-ready");
 }
 
 function renderDashboardHero() {
@@ -6841,10 +6873,10 @@ function renderEmployeeDashboardSummary() {
 }
 
 async function loadDashboard() {
+  applyDashboardStatShell();
   const data = await api("/dashboard/overview");
   dashboardCache = data ?? null;
   const statValues = document.querySelectorAll("#view-dashboard .stats-grid .stat-value");
-  const statLabels = document.querySelectorAll("#view-dashboard .stats-grid .stat-label");
   const statSubs = document.querySelectorAll("#view-dashboard .stats-grid .stat-sub");
   const isEmployee = isEmployeeDashboard();
   const payrollMonth = data?.payrollCurrentMonth;
@@ -6864,20 +6896,6 @@ async function loadDashboard() {
         ? `${(payroll / 1000000).toFixed(2)}M`
         : Math.round(payroll).toLocaleString("en-US");
       statValues[3].textContent = String(data.pendingLeaveApprovals ?? 0);
-    }
-  }
-  if (statLabels.length >= 4) {
-    if (isEmployee) {
-      statLabels[0].textContent = "Employment Status";
-      statLabels[1].textContent = "Pending Leave Requests";
-      const payCode = formatCurrencyLabel(employeePayCurrency());
-      statLabels[2].textContent = payCode ? `Net Pay (${payCode})` : "Net Pay (This Month)";
-      statLabels[3].textContent = "Documents Expiring";
-    } else {
-      statLabels[0].textContent = "Total Headcount";
-      statLabels[1].textContent = "On Leave Today";
-      statLabels[2].textContent = "Monthly Payroll (AED)";
-      statLabels[3].textContent = "Pending Approvals";
     }
   }
   if (statSubs.length >= 4) {
