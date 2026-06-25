@@ -8291,16 +8291,14 @@ function stopFaceModalStream() {
   }
 }
 
-function averageDescriptor(descriptors) {
-  if (!descriptors.length) return [];
-  const length = descriptors[0].length;
-  const sums = new Array(length).fill(0);
-  descriptors.forEach((descriptor) => {
-    for (let index = 0; index < length; index += 1) {
-      sums[index] += Number(descriptor[index] ?? 0);
-    }
-  });
-  return sums.map((value) => value / descriptors.length);
+function captureVideoFrame(video) {
+  const canvas = document.createElement("canvas");
+  canvas.width = video.videoWidth || 640;
+  canvas.height = video.videoHeight || 480;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Unable to capture face photo");
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/jpeg", 0.92);
 }
 
 function detectPose(detection) {
@@ -8379,18 +8377,20 @@ async function openFaceModal(mode = "verify") {
   return new Promise((resolve, reject) => {
     faceCaptureReject = reject;
     const enrollmentTargets = mode === "enroll" ? ["FRONT", "LEFT", "RIGHT"] : ["FRONT"];
-    const capturedDescriptors = [];
+    const capturedImages = [];
     let currentTargetIdx = 0;
     let stableFrames = 0;
     let detectionBusy = false;
     let isResolved = false;
 
-    const finalize = (descriptor) => {
+    const finalize = (payload, options = {}) => {
       if (isResolved) return;
       isResolved = true;
       faceCaptureReject = null;
-      stopFaceModalStream();
-      resolve(descriptor);
+      if (!options.keepOpen) {
+        stopFaceModalStream();
+      }
+      resolve(payload);
     };
 
     const runDetectionFrame = async () => {
@@ -8409,7 +8409,7 @@ async function openFaceModal(mode = "verify") {
       try {
         syncOverlaySize();
         const detection = await window.faceapi
-          .detectSingleFace(video, new window.faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.25 }))
+          .detectSingleFace(video, new window.faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.4 }))
           .withFaceLandmarks(true)
           .withFaceDescriptor();
 
@@ -8444,7 +8444,7 @@ async function openFaceModal(mode = "verify") {
         }
 
         stableFrames += 1;
-        if (stableFrames < 8) {
+        if (stableFrames < 12) {
           setFaceModalStatus("Scanning", "blue");
           setFaceModalGuide(mode === "enroll"
             ? `Hold ${target}...`
@@ -8453,9 +8453,9 @@ async function openFaceModal(mode = "verify") {
           return;
         }
 
-        const descriptor = Array.from(detection.descriptor);
+        const frameImage = captureVideoFrame(video);
         if (mode === "enroll") {
-          capturedDescriptors.push(descriptor);
+          capturedImages.push(frameImage);
           currentTargetIdx += 1;
           stableFrames = 0;
           updateFaceAngleProgress(enrollmentTargets, currentTargetIdx, true);
@@ -8467,14 +8467,14 @@ async function openFaceModal(mode = "verify") {
           }
           setFaceModalGuide("All angles captured.");
           await new Promise((done) => setTimeout(done, 300));
-          finalize(averageDescriptor(capturedDescriptors));
+          finalize({ images: capturedImages });
           return;
         }
 
-        setFaceModalStatus("Matched", "green");
-        setFaceModalGuide("Face scanned successfully.");
+        setFaceModalStatus("Captured", "green");
+        setFaceModalGuide("Verifying identity…");
         await new Promise((done) => setTimeout(done, 220));
-        finalize(descriptor);
+        finalize({ image: frameImage }, { keepOpen: true });
       } catch (_error) {
         stableFrames = 0;
         setFaceModalStatus("Error", "coral");
@@ -8502,10 +8502,10 @@ window.__closeFaceModal = function closeFaceModal() {
 };
 
 async function enrollFaceFlow() {
-  const descriptor = await openFaceModal("enroll");
-  await api("/attendance/face/enroll", {
+  const capture = await openFaceModal("enroll");
+  await api("/attendance/face/enroll-photo", {
     method: "POST",
-    body: JSON.stringify({ descriptor }),
+    body: JSON.stringify({ images: capture.images }),
   });
   setFaceModalStatus("Enrollment successful", "green");
   await new Promise((resolve) => setTimeout(resolve, 700));
@@ -8515,11 +8515,13 @@ async function enrollFaceFlow() {
 }
 
 async function verifyFaceFlow() {
-  const descriptor = await openFaceModal("verify");
+  const capture = await openFaceModal("verify");
+  setFaceModalStatus("Verifying", "blue");
+  setFaceModalGuide("Checking face against your enrollment…");
   try {
-    const result = await api("/attendance/face/verify", {
+    const result = await api("/attendance/face/verify-photo", {
       method: "POST",
-      body: JSON.stringify({ descriptor }),
+      body: JSON.stringify({ image: capture.image }),
     });
     setFaceModalStatus("Face matched", "green");
     await new Promise((resolve) => setTimeout(resolve, 650));

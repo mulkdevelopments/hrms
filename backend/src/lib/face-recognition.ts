@@ -1,5 +1,6 @@
 const MODEL_BASE = "https://justadudewhohacks.github.io/face-api.js/models";
-export const FACE_MATCH_THRESHOLD = 0.55;
+export const FACE_MATCH_THRESHOLD = 0.45;
+const FACE_DETECTION_SCORE_THRESHOLD = 0.4;
 
 let modelsReady = false;
 let modelsLoading: Promise<void> | null = null;
@@ -61,7 +62,7 @@ export async function descriptorFromImageBase64(base64: string): Promise<number[
   const context = surface.getContext("2d");
   context.drawImage(image, 0, 0, image.width, image.height);
   const detection = await faceapiModule
-    .detectSingleFace(surface as never, new faceapiModule.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.25 }))
+    .detectSingleFace(surface as never, new faceapiModule.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: FACE_DETECTION_SCORE_THRESHOLD }))
     .withFaceLandmarks(true)
     .withFaceDescriptor();
 
