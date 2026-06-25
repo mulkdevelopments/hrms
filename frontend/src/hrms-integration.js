@@ -8,6 +8,10 @@ let offices = [];
 let editingEmployeeId = null;
 let managerSearchTerm = "";
 const elevatedRoles = new Set(["SUPER_ADMIN", "HR", "HR_OFFICER"]);
+
+function canViewLeaveApplyBalance() {
+  return elevatedRoles.has(me?.role);
+}
 let publicMasterConfig = null;
 let masterDataCache = null;
 let pendingMasterDataLoad = false;
@@ -61,13 +65,14 @@ const MOBILE_BOTTOM_PREFERRED = [
 ];
 
 const SIDEBAR_VIEW_ORDER = [
-  "dashboard", "employees", "leave", "exits", "clearance", "payadjust",
+  "dashboard", "employees", "separated", "leave", "exits", "clearance", "payadjust",
   "attendance", "calendar", "documents", "profile", "offices", "pro", "masterdata", "settings",
 ];
 
 const MOBILE_TAB_META = {
   dashboard: { label: "Home", icon: "bi-house-door" },
   employees: { label: "Team", icon: "bi-people" },
+  separated: { label: "Separated", icon: "bi-person-x" },
   leave: { label: "Leave", icon: "bi-calendar2-week" },
   exits: { label: "Exits", icon: "bi-box-arrow-right" },
   clearance: { label: "Clearance", icon: "bi-clipboard-check" },
@@ -82,11 +87,331 @@ const MOBILE_TAB_META = {
   settings: { label: "Settings", icon: "bi-gear" },
 };
 
+const SEPARATED_EMPLOYEE_STATUSES = new Set(["TERMINATED", "RESIGNED"]);
+
 const employeeFilters = {
-  search: "",
-  department: "All Departments",
-  status: "All Status",
+  active: "",
+  separated: "",
 };
+
+const employeeColumnFilters = {
+  active: {},
+  separated: {},
+};
+
+function isSeparatedEmployee(employee) {
+  return SEPARATED_EMPLOYEE_STATUSES.has(employee?.status);
+}
+
+function formatEmployeeJoinDateLabel(value) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleDateString("en-GB", { month: "short", year: "numeric" });
+}
+
+function getEmployeeListView() {
+  return document.getElementById("view-separated")?.classList.contains("active") ? "separated" : "active";
+}
+
+function getEmployeeViewConfig(view = getEmployeeListView()) {
+  if (view === "separated") {
+    return {
+      view: "separated",
+      tableId: "sep-emp-table",
+      mobileId: "sep-emp-mobile-list",
+      chipsId: "sep-emp-filter-chips",
+    };
+  }
+  return {
+    view: "active",
+    tableId: "emp-table",
+    mobileId: "emp-mobile-list",
+    chipsId: "emp-filter-chips",
+  };
+}
+
+function getEmployeeColumnDefs() {
+  return [
+    { key: "name", label: "Employee", filterable: true, value: (employee) => `${employee.firstName ?? ""} ${employee.lastName ?? ""}`.trim() || "—" },
+    { key: "employeeCode", label: "ID", filterable: true, value: (employee) => employee.employeeCode ?? "—" },
+    { key: "department", label: "Department", filterable: true, value: (employee) => employee.department ?? "—" },
+    { key: "designation", label: "Designation", filterable: true, value: (employee) => employee.designation ?? "—" },
+    { key: "employmentType", label: "Type", filterable: true, value: (employee) => employee.employmentType ?? "Full-Time" },
+    { key: "joinDate", label: "Join Date", filterable: true, value: (employee) => formatEmployeeJoinDateLabel(employee.dateOfJoining) },
+    { key: "emiratesId", label: "Emirates ID", filterable: true, value: (employee) => employee.emiratesId ?? "—" },
+    { key: "status", label: "Status", filterable: true, value: (employee) => formatLabel(employee.status ?? "—") },
+    { key: "attendance", label: "Attendance", filterable: true, value: (employee) => (employeePresenceMap.get(employee.id)?.isOnline ? "Checked In" : "Offline") },
+  ];
+}
+
+function getEmployeeBasePool(view) {
+  return allEmployees.filter((employee) => (
+    view === "separated" ? isSeparatedEmployee(employee) : !isSeparatedEmployee(employee)
+  ));
+}
+
+function getEmployeePoolWithFilters(view, exceptColumnKey = null) {
+  const columnDefs = getEmployeeColumnDefs();
+  const filters = employeeColumnFilters[view] ?? {};
+  const normalizedSearch = (employeeFilters[view] ?? "").trim().toLowerCase();
+
+  return getEmployeeBasePool(view).filter((employee) => {
+    if (normalizedSearch) {
+      const searchable = [
+        employee.firstName,
+        employee.lastName,
+        employee.employeeCode,
+        employee.legacyEmpId,
+        employee.department,
+        employee.designation,
+        employee.email,
+        employee.emiratesId,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      const matchesSearch = searchable.includes(normalizedSearch)
+        || employee.employeeCode === normalizedSearch
+        || (employee.legacyEmpId ?? "").toLowerCase() === normalizedSearch;
+      if (!matchesSearch) return false;
+    }
+
+    for (const column of columnDefs) {
+      if (!column.filterable || column.key === exceptColumnKey) continue;
+      const selected = filters[column.key];
+      if (!selected || selected.size === 0) continue;
+      if (!selected.has(column.value(employee))) return false;
+    }
+    return true;
+  });
+}
+
+function isEmployeeColumnFilterActive(view, columnKey) {
+  const selected = employeeColumnFilters[view]?.[columnKey];
+  return Boolean(selected && selected.size > 0);
+}
+
+function renderEmployeeTableHead(view = getEmployeeListView()) {
+  const config = getEmployeeViewConfig(view);
+  const theadRow = document.querySelector(`#${config.tableId} thead tr`);
+  if (!theadRow) return;
+
+  const columns = getEmployeeColumnDefs();
+  theadRow.innerHTML = columns.map((column) => {
+    if (!column.filterable) {
+      return `<th>${escapeAttr(column.label)}</th>`;
+    }
+    const active = isEmployeeColumnFilterActive(view, column.key);
+    return `<th class="col-filter-th"><div class="col-filter-head"><span class="col-filter-label">${escapeAttr(column.label)}</span><button type="button" class="col-filter-trigger${active ? " active" : ""}" aria-label="Filter ${escapeAttr(column.label)}" onclick="event.stopPropagation(); window.__openEmployeeColumnFilter('${view}', '${column.key}', this)"><i class="bi bi-funnel${active ? "-fill" : ""}"></i></button></div></th>`;
+  }).join("") + "<th>Actions</th>";
+}
+
+function renderEmployeeActiveFilters(view = getEmployeeListView()) {
+  const config = getEmployeeViewConfig(view);
+  const chipsEl = document.getElementById(config.chipsId);
+  if (!chipsEl) return;
+
+  const filters = employeeColumnFilters[view] ?? {};
+  const columns = getEmployeeColumnDefs();
+  const chips = columns
+    .filter((column) => isEmployeeColumnFilterActive(view, column.key))
+    .map((column) => {
+      const values = [...(filters[column.key] ?? [])];
+      const preview = values.length <= 2
+        ? values.join(", ")
+        : `${values.slice(0, 2).join(", ")} +${values.length - 2}`;
+      return `<span class="emp-filter-chip"><strong>${escapeAttr(column.label)}</strong> ${escapeAttr(preview)}<button type="button" aria-label="Clear ${escapeAttr(column.label)} filter" onclick="window.__clearEmployeeColumnFilter('${view}', '${column.key}')">&times;</button></span>`;
+    });
+
+  if (!chips.length) {
+    chipsEl.classList.remove("has-filters");
+    chipsEl.innerHTML = "";
+    return;
+  }
+
+  chipsEl.classList.add("has-filters");
+  chipsEl.innerHTML = chips.join("") + `<button type="button" class="emp-filter-clear-all" onclick="window.__clearAllEmployeeColumnFilters('${view}')">Clear all filters</button>`;
+}
+
+window.__clearEmployeeColumnFilter = async function clearEmployeeColumnFilter(view, columnKey) {
+  delete employeeColumnFilters[view][columnKey];
+  await loadEmployees(view);
+};
+
+window.__clearAllEmployeeColumnFilters = async function clearAllEmployeeColumnFilters(view) {
+  employeeColumnFilters[view] = {};
+  await loadEmployees(view);
+};
+
+let employeeColumnFilterIgnoreCloseUntil = 0;
+
+function isEmployeeColumnFilterInteraction(event) {
+  const target = event?.target;
+  if (!target || typeof target.closest !== "function") return false;
+  return Boolean(
+    target.closest("#emp-col-filter-portal")
+    || target.closest(".col-filter-trigger")
+    || target.closest(".col-filter-th"),
+  );
+}
+
+function markEmployeeColumnFilterOpened() {
+  employeeColumnFilterIgnoreCloseUntil = Date.now() + 300;
+}
+
+function getEmployeeColFilterPortal() {
+  let portal = document.getElementById("emp-col-filter-portal");
+  if (!portal) {
+    portal = document.createElement("div");
+    portal.id = "emp-col-filter-portal";
+    portal.className = "emp-col-filter-menu";
+    portal.addEventListener("mousedown", (event) => event.stopPropagation());
+    portal.addEventListener("click", (event) => event.stopPropagation());
+    document.body.appendChild(portal);
+  }
+  return portal;
+}
+
+window.__closeEmployeeColumnFilter = function closeEmployeeColumnFilter() {
+  const portal = document.getElementById("emp-col-filter-portal");
+  if (portal) {
+    portal.classList.remove("open");
+    portal.style.left = "";
+    portal.style.top = "";
+    portal.dataset.view = "";
+    portal.dataset.column = "";
+  }
+};
+
+window.__openEmployeeColumnFilter = function openEmployeeColumnFilter(view, columnKey, triggerEl) {
+  const column = getEmployeeColumnDefs().find((item) => item.key === columnKey);
+  if (!column) return;
+
+  const portal = getEmployeeColFilterPortal();
+  const isSame = portal.classList.contains("open")
+    && portal.dataset.view === view
+    && portal.dataset.column === columnKey;
+  if (isSame) {
+    window.__closeEmployeeColumnFilter();
+    return;
+  }
+
+  const pool = getEmployeePoolWithFilters(view, columnKey);
+  const options = [...new Set(pool.map((employee) => column.value(employee)))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  const current = employeeColumnFilters[view]?.[columnKey];
+  const selected = current && current.size > 0
+    ? new Set(current)
+    : new Set(options);
+
+  portal.dataset.view = view;
+  portal.dataset.column = columnKey;
+  portal.innerHTML = options.length ? `
+    <div class="emp-col-filter-head">
+      ${escapeAttr(column.label)}
+      <span>${options.length} value${options.length === 1 ? "" : "s"}</span>
+    </div>
+    <div class="emp-col-filter-search">
+      <input type="text" placeholder="Search in list…" id="emp-col-filter-search-input" autocomplete="off">
+    </div>
+    <div class="emp-col-filter-actions">
+      <button type="button" id="emp-col-filter-select-all">Select all</button>
+      <button type="button" id="emp-col-filter-clear-all">Clear all</button>
+    </div>
+    <div class="emp-col-filter-list" id="emp-col-filter-list">
+      ${options.map((option, index) => `
+        <label class="emp-col-filter-option">
+          <input type="checkbox" data-option-index="${index}" ${selected.has(option) ? "checked" : ""}>
+          <span>${escapeAttr(option)}</span>
+        </label>
+      `).join("")}
+    </div>
+    <div class="emp-col-filter-foot">
+      <button type="button" class="btn btn-secondary btn-sm" id="emp-col-filter-cancel">Cancel</button>
+      <button type="button" class="btn btn-primary btn-sm" id="emp-col-filter-apply">Apply</button>
+    </div>
+  ` : `
+    <div class="emp-col-filter-head">
+      ${escapeAttr(column.label)}
+      <span>No values available</span>
+    </div>
+    <div class="emp-col-filter-empty">Nothing to filter in this column.</div>
+    <div class="emp-col-filter-foot">
+      <button type="button" class="btn btn-secondary btn-sm" id="emp-col-filter-cancel">Close</button>
+    </div>
+  `;
+
+  const optionValues = options;
+
+  const listEl = portal.querySelector("#emp-col-filter-list");
+  const searchInput = portal.querySelector("#emp-col-filter-search-input");
+  const applyBtn = portal.querySelector("#emp-col-filter-apply");
+  const cancelBtn = portal.querySelector("#emp-col-filter-cancel");
+  const selectAllBtn = portal.querySelector("#emp-col-filter-select-all");
+  const clearAllBtn = portal.querySelector("#emp-col-filter-clear-all");
+
+  searchInput?.addEventListener("input", () => {
+    const term = searchInput.value.trim().toLowerCase();
+    listEl?.querySelectorAll(".emp-col-filter-option").forEach((optionEl) => {
+      const text = optionEl.textContent?.toLowerCase() ?? "";
+      optionEl.style.display = !term || text.includes(term) ? "" : "none";
+    });
+  });
+
+  selectAllBtn?.addEventListener("click", () => {
+    listEl?.querySelectorAll("input[type='checkbox']").forEach((input) => {
+      if (input.closest(".emp-col-filter-option")?.style.display === "none") return;
+      input.checked = true;
+    });
+  });
+
+  clearAllBtn?.addEventListener("click", () => {
+    listEl?.querySelectorAll("input[type='checkbox']").forEach((input) => {
+      if (input.closest(".emp-col-filter-option")?.style.display === "none") return;
+      input.checked = false;
+    });
+  });
+
+  cancelBtn?.addEventListener("click", () => window.__closeEmployeeColumnFilter());
+  applyBtn?.addEventListener("click", async () => {
+    const checked = [...(listEl?.querySelectorAll("input[type='checkbox']:checked") ?? [])]
+      .map((input) => optionValues[Number(input.dataset.optionIndex)])
+      .filter(Boolean);
+    if (!checked.length) {
+      notify("Select at least one value to filter");
+      return;
+    }
+    if (checked.length === options.length) {
+      delete employeeColumnFilters[view][columnKey];
+    } else {
+      employeeColumnFilters[view][columnKey] = new Set(checked);
+    }
+    window.__closeEmployeeColumnFilter();
+    await loadEmployees(view);
+  });
+
+  portal.style.left = "-9999px";
+  portal.style.top = "0";
+  portal.classList.add("open");
+  markEmployeeColumnFilterOpened();
+  requestAnimationFrame(() => {
+    const rect = triggerEl.getBoundingClientRect();
+    const menuWidth = portal.offsetWidth || 300;
+    let left = rect.left;
+    if (left + menuWidth > window.innerWidth - 8) {
+      left = Math.max(8, window.innerWidth - menuWidth - 8);
+    }
+    let top = rect.bottom + 6;
+    const menuHeight = portal.offsetHeight || 320;
+    if (top + menuHeight > window.innerHeight - 8) {
+      top = Math.max(8, rect.top - menuHeight - 6);
+    }
+    portal.style.left = `${left}px`;
+    portal.style.top = `${top}px`;
+    searchInput?.focus({ preventScroll: true });
+  });
+};
+
 let leaveRequestsCache = [];
 let dashboardCache = null;
 let attendanceCache = null;
@@ -505,10 +830,10 @@ function populateAssignableRoles() {
 
 function computeAllowedViewsForRole(role, configuredRole, fallbackRoleViews) {
   const fallbacks = fallbackRoleViews ?? {
-    SUPER_ADMIN: ["dashboard", "employees", "leave", "exits", "clearance", "payadjust", "pro", "documents", "attendance", "calendar", "offices", "masterdata", "profile", "settings"],
-    CEO: ["dashboard", "employees", "leave", "exits", "clearance", "payadjust", "pro", "documents", "attendance", "calendar", "offices", "profile", "settings"],
-    HR: ["dashboard", "employees", "leave", "exits", "clearance", "payadjust", "pro", "documents", "attendance", "calendar", "offices", "masterdata", "profile", "settings"],
-    HR_OFFICER: ["dashboard", "employees", "leave", "exits", "clearance", "payadjust", "pro", "documents", "attendance", "calendar", "offices", "profile", "settings"],
+    SUPER_ADMIN: ["dashboard", "employees", "separated", "leave", "exits", "clearance", "payadjust", "pro", "documents", "attendance", "calendar", "offices", "masterdata", "profile", "settings"],
+    CEO: ["dashboard", "employees", "separated", "leave", "exits", "clearance", "payadjust", "pro", "documents", "attendance", "calendar", "offices", "profile", "settings"],
+    HR: ["dashboard", "employees", "separated", "leave", "exits", "clearance", "payadjust", "pro", "documents", "attendance", "calendar", "offices", "masterdata", "profile", "settings"],
+    HR_OFFICER: ["dashboard", "employees", "separated", "leave", "exits", "clearance", "payadjust", "pro", "documents", "attendance", "calendar", "offices", "profile", "settings"],
     PRO: ["dashboard", "employees", "pro", "documents", "profile", "settings"],
     MANAGER: ["dashboard", "employees", "leave", "exits", "clearance", "pro", "documents", "profile"],
     EMPLOYEE: individualContributorViews,
@@ -530,10 +855,10 @@ async function applyRoleBasedUi() {
   populateAssignableRoles();
   const role = me?.role ?? "EMPLOYEE";
   const fallbackRoleViews = {
-    SUPER_ADMIN: ["dashboard", "employees", "leave", "exits", "clearance", "payadjust", "pro", "documents", "attendance", "calendar", "offices", "masterdata", "profile", "settings"],
-    CEO: ["dashboard", "employees", "leave", "exits", "clearance", "payadjust", "pro", "documents", "attendance", "calendar", "offices", "profile", "settings"],
-    HR: ["dashboard", "employees", "leave", "exits", "clearance", "payadjust", "pro", "documents", "attendance", "calendar", "offices", "masterdata", "profile", "settings"],
-    HR_OFFICER: ["dashboard", "employees", "leave", "exits", "clearance", "payadjust", "pro", "documents", "attendance", "calendar", "offices", "profile", "settings"],
+    SUPER_ADMIN: ["dashboard", "employees", "separated", "leave", "exits", "clearance", "payadjust", "pro", "documents", "attendance", "calendar", "offices", "masterdata", "profile", "settings"],
+    CEO: ["dashboard", "employees", "separated", "leave", "exits", "clearance", "payadjust", "pro", "documents", "attendance", "calendar", "offices", "profile", "settings"],
+    HR: ["dashboard", "employees", "separated", "leave", "exits", "clearance", "payadjust", "pro", "documents", "attendance", "calendar", "offices", "masterdata", "profile", "settings"],
+    HR_OFFICER: ["dashboard", "employees", "separated", "leave", "exits", "clearance", "payadjust", "pro", "documents", "attendance", "calendar", "offices", "profile", "settings"],
     PRO: ["dashboard", "employees", "pro", "documents", "profile", "settings"],
     MANAGER: ["dashboard", "employees", "leave", "exits", "clearance", "pro", "documents", "profile"],
     EMPLOYEE: individualContributorViews,
@@ -543,7 +868,7 @@ async function applyRoleBasedUi() {
   const configuredRole = publicMasterConfig?.roles?.find((item) => item.code === role);
   const allowed = computeAllowedViewsForRole(role, configuredRole, fallbackRoleViews);
   const allViews = publicMasterConfig?.views ?? [
-    "dashboard", "employees", "leave", "exits", "clearance", "payadjust", "pro",
+    "dashboard", "employees", "separated", "leave", "exits", "clearance", "payadjust", "pro",
     "documents", "attendance", "calendar", "offices", "masterdata", "profile", "settings",
   ];
   allViews.forEach((view) => setViewVisibility(view, allowed.has(view)));
@@ -559,7 +884,7 @@ async function applyRoleBasedUi() {
 
   const pendingApprovalsTab = document.querySelector("button[onclick*=\"leave-pending\"]");
   if (pendingApprovalsTab) {
-    pendingApprovalsTab.style.display = isIndividualContributor(role) ? "none" : "";
+    pendingApprovalsTab.style.display = isIndividualContributor(role) && !isTeamLeaveManager(role, me?.employee) ? "none" : "";
   }
   const leaveBalanceTabBtn = document.getElementById("leave-balance-tab-btn");
   if (leaveBalanceTabBtn) {
@@ -592,6 +917,7 @@ async function applyRoleBasedUi() {
   }
   applyDocumentsPageRoleUi();
   applyEmployeeDashboardUi();
+  syncLeaveApplyBalanceVisibility();
 
   mobileNavAllowedViews = allowed;
   syncMobileBottomTabs(allowed);
@@ -1042,6 +1368,109 @@ function setSelectByText(select, value) {
   }
 }
 
+const DEFAULT_LINE_MANAGER_SETTINGS = {
+  enableDesignationForDropdown: true,
+  enableDesignationForLeaveAccess: true,
+  allowDirectReportsForLeaveAccess: true,
+  excludeDriverDesignation: true,
+  eligibleRoles: ["MANAGER", "CEO"],
+  designationKeywords: [
+    "manager", "director", "chairman", "president", "ceo", "chief executive",
+    "managing director", "general manager", "regional manager", "group ceo",
+    "executive manager", "head of", "hod", "h.o.d",
+  ],
+  exclusionKeywords: [
+    "driver", "operator", "helper", "labour", "labor", "cutter", "fabricator",
+    "mason", "carpenter", "cashier", "foreman",
+  ],
+  exceptionPhrases: [
+    "assistant manager", "deputy manager", "general manager", "regional manager",
+    "group manager", "senior manager", "executive manager", "project manager",
+    "sales manager", "operations manager", "commercial manager", "construction manager",
+    "logistics manager", "maintenance manager", "production manager", "it manager",
+    "hr manager", "mep manager", "managing director", "assistant director", "deputy director",
+  ],
+  leadershipOverrideKeywords: [
+    "chairman", "director", "ceo", "president", "managing director", "general manager", "regional manager",
+  ],
+};
+
+function lineManagerMasterSettings() {
+  return publicMasterConfig?.lineManager ?? DEFAULT_LINE_MANAGER_SETTINGS;
+}
+
+function escapeLineManagerRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function designationHasPhrase(text, phrase) {
+  const normalized = phrase.trim();
+  if (!normalized) return false;
+  return new RegExp(`\\b${escapeLineManagerRegex(normalized)}\\b`, "i").test(text);
+}
+
+function designationHasAnyPhrase(text, phrases = []) {
+  return phrases.some((phrase) => designationHasPhrase(text, phrase));
+}
+
+function isLineManagerDesignation(designation = "", options = {}) {
+  const settings = lineManagerMasterSettings();
+  const forLeaveAccess = options.forLeaveAccess === true;
+  const enabled = forLeaveAccess ? settings.enableDesignationForLeaveAccess : settings.enableDesignationForDropdown;
+  if (!enabled) return false;
+
+  const value = designation.trim();
+  if (!value) return false;
+  if (settings.excludeDriverDesignation && designationHasPhrase(value, "driver")) return false;
+  if (!designationHasAnyPhrase(value, settings.designationKeywords)) return false;
+  if (
+    designationHasAnyPhrase(value, settings.exclusionKeywords)
+    && !designationHasAnyPhrase(value, settings.exceptionPhrases)
+    && !designationHasAnyPhrase(value, settings.leadershipOverrideKeywords)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function isEligibleLineManagerRole(role = "") {
+  const eligibleRoles = new Set(
+    (lineManagerMasterSettings().eligibleRoles ?? []).map((item) => String(item).trim().toUpperCase()),
+  );
+  return eligibleRoles.has(String(role).trim().toUpperCase());
+}
+
+function isEligibleLineManager(employee, currentEmployeeId = "") {
+  if (!employee || employee.id === currentEmployeeId) return false;
+  if (isSeparatedEmployee(employee)) return false;
+  if (isEligibleLineManagerRole(employee.role)) return true;
+  return isLineManagerDesignation(employee.designation ?? "", { forLeaveAccess: false });
+}
+
+function isTeamLeaveManager(role = me?.role, employee = me?.employee) {
+  if (elevatedRoles.has(role ?? "")) return false;
+  if (isEligibleLineManagerRole(role)) return true;
+  if (!employee) return false;
+  if (isLineManagerDesignation(employee.designation ?? "", { forLeaveAccess: true })) return true;
+  const settings = lineManagerMasterSettings();
+  const myId = employee.id ?? "";
+  if (settings.allowDirectReportsForLeaveAccess && myId && allEmployees.some((item) => item.managerId === myId)) {
+    return true;
+  }
+  return false;
+}
+
+function masterListToText(values = []) {
+  return Array.isArray(values) ? values.join(", ") : "";
+}
+
+function masterTextToList(value = "") {
+  return String(value)
+    .split(/[\n,]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 function populateManagerOptions(selectedManagerId = "", currentEmployeeId = "") {
   const managerHiddenInput = document.getElementById("emp-line-manager");
   const managerTrigger = document.getElementById("emp-line-manager-trigger");
@@ -1052,8 +1481,7 @@ function populateManagerOptions(selectedManagerId = "", currentEmployeeId = "") 
   const byDepartment = new Map();
   let selectedLabel = "Select line manager";
   allEmployees
-    .filter((employee) => employee.role === "MANAGER")
-    .filter((employee) => employee.id !== currentEmployeeId)
+    .filter((employee) => isEligibleLineManager(employee, currentEmployeeId))
     .filter((employee) => {
       if (!normalizedSearch) return true;
       const text = `${employee.firstName} ${employee.lastName} ${employee.employeeCode}`.toLowerCase();
@@ -1069,9 +1497,28 @@ function populateManagerOptions(selectedManagerId = "", currentEmployeeId = "") 
   managerOptions.innerHTML = "";
   managerHiddenInput.value = selectedManagerId || "";
 
+  if (selectedManagerId) {
+    const selected = allEmployees.find((employee) => employee.id === selectedManagerId);
+    if (selected) {
+      const separatedNote = isSeparatedEmployee(selected) ? " — separated" : "";
+      const designation = selected.designation?.trim();
+      const baseLabel = designation
+        ? `${selected.firstName} ${selected.lastName} — ${designation} (${selected.employeeCode})`
+        : `${selected.firstName} ${selected.lastName} (${selected.employeeCode})`;
+      selectedLabel = `${baseLabel}${separatedNote}`;
+      if (isSeparatedEmployee(selected)) {
+        managerHiddenInput.value = "";
+      }
+    }
+  }
+
   if (!byDepartment.size) {
-    managerOptions.innerHTML = `<div class="manager-empty">No manager found</div>`;
-    managerTrigger.textContent = selectedManagerId ? "Selected manager unavailable" : "Select line manager";
+    managerOptions.innerHTML = `<div class="manager-empty">No active manager found</div>`;
+    if (!selectedManagerId || !managerHiddenInput.value) {
+      managerTrigger.textContent = "Select line manager";
+    } else {
+      managerTrigger.textContent = selectedLabel;
+    }
     return;
   }
 
@@ -1086,7 +1533,10 @@ function populateManagerOptions(selectedManagerId = "", currentEmployeeId = "") 
       byDepartment.get(department)
         .sort((a, b) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`))
         .forEach((employee) => {
-          const label = `${employee.firstName} ${employee.lastName} (${employee.employeeCode})`;
+          const designation = employee.designation?.trim();
+          const label = designation
+            ? `${employee.firstName} ${employee.lastName} — ${designation} (${employee.employeeCode})`
+            : `${employee.firstName} ${employee.lastName} (${employee.employeeCode})`;
           if (employee.id === selectedManagerId) selectedLabel = label;
 
           const option = document.createElement("button");
@@ -1363,19 +1813,22 @@ function buildEmployeeMobileCard(employee, canManageEmployees) {
   `;
 }
 
-function renderEmployeesTable() {
-  const tableBody = document.querySelector("#emp-table tbody");
-  const mobileList = document.getElementById("emp-mobile-list");
+function renderEmployeesTable(view = getEmployeeListView()) {
+  const config = getEmployeeViewConfig(view);
+  const tableBody = document.querySelector(`#${config.tableId} tbody`);
+  const mobileList = document.getElementById(config.mobileId);
   if (!tableBody) return;
+
+  const rows = getEmployeePoolWithFilters(view);
   const canManageEmployees = elevatedRoles.has(me?.role);
 
-  if (!employees.length) {
+  if (!rows.length) {
     tableBody.innerHTML = `<tr><td colspan="10" class="text-muted">No employees match your filters.</td></tr>`;
     if (mobileList) mobileList.innerHTML = `<div class="mobile-empty">No employees match your filters.</div>`;
     return;
   }
 
-  tableBody.innerHTML = employees
+  tableBody.innerHTML = rows
     .map((employee) => {
       const name = `${employee.firstName ?? ""} ${employee.lastName ?? ""}`.trim();
       const initials = employeeInitials(employee);
@@ -1399,7 +1852,7 @@ function renderEmployeesTable() {
           <td>${escapeAttr(employee.department ?? "—")}</td>
           <td>${escapeAttr(employee.designation ?? "—")}</td>
           <td><span class="badge badge-blue">${escapeAttr(employee.employmentType ?? "Full-Time")}</span></td>
-          <td>${employee.dateOfJoining ? new Date(employee.dateOfJoining).toLocaleDateString("en-GB", { month: "short", year: "numeric" }) : "—"}</td>
+          <td>${formatEmployeeJoinDateLabel(employee.dateOfJoining)}</td>
           <td>${escapeAttr(employee.emiratesId ?? "—")}</td>
           <td><span class="badge ${statusBadge(employee.status)}">${escapeAttr(formatLabel(employee.status))}</span></td>
           <td>${attendanceBadge}</td>
@@ -1419,7 +1872,7 @@ function renderEmployeesTable() {
     .join("");
 
   if (mobileList) {
-    mobileList.innerHTML = employees.map((employee) => buildEmployeeMobileCard(employee, canManageEmployees)).join("");
+    mobileList.innerHTML = rows.map((employee) => buildEmployeeMobileCard(employee, canManageEmployees)).join("");
   }
 }
 
@@ -1781,14 +2234,50 @@ function wireLeaveImport() {
   }
 }
 
-function wireEmployeeFilters() {
-  const toolbar = document.querySelector("#view-employees .toolbar");
-  if (!toolbar) return;
+function exportEmployeesCsv(view, filenamePrefix) {
+  const rows = getEmployeePoolWithFilters(view).map((employee) => ({
+    employeeCode: employee.employeeCode,
+    firstName: employee.firstName,
+    lastName: employee.lastName,
+    email: employee.email,
+    department: employee.department,
+    designation: employee.designation,
+    employmentType: employee.employmentType ?? "",
+    status: employee.status,
+    emiratesId: employee.emiratesId ?? "",
+    dateOfJoining: employee.dateOfJoining ?? "",
+  }));
 
-  const searchInput = toolbar.querySelector(".search-bar input");
-  const departmentSelect = document.getElementById("emp-filter-department");
-  const statusSelect = document.getElementById("emp-filter-status");
+  if (!rows.length) {
+    notify("No employee rows to export");
+    return;
+  }
+
+  const columns = Object.keys(rows[0]);
+  const csv = [
+    columns.join(","),
+    ...rows.map((row) => columns.map((key) => {
+      const value = String(row[key] ?? "");
+      const escaped = value.replaceAll("\"", "\"\"");
+      return `"${escaped}"`;
+    }).join(",")),
+  ].join("\\n");
+
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${filenamePrefix}-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
+  notify("Employee export downloaded");
+}
+
+function wireEmployeeFilters() {
+  const activeSearchInput = document.getElementById("emp-search-input");
+  const separatedSearchInput = document.getElementById("sep-emp-search-input");
   const exportButton = document.getElementById("emp-export-btn");
+  const separatedExportButton = document.getElementById("sep-emp-export-btn");
   const importButton = document.getElementById("emp-import-btn");
   const importFile = document.getElementById("emp-import-file");
 
@@ -1821,66 +2310,26 @@ function wireEmployeeFilters() {
     importButton.style.display = "none";
   }
 
-  if (searchInput) {
-    searchInput.addEventListener("input", async (event) => {
-      employeeFilters.search = event.target.value.trim();
-      await loadEmployees();
+  if (activeSearchInput) {
+    activeSearchInput.addEventListener("input", async (event) => {
+      employeeFilters.active = event.target.value.trim();
+      await loadEmployees("active");
     });
   }
 
-  if (departmentSelect) {
-    departmentSelect.onchange = async (event) => {
-      employeeFilters.department = event.target.value;
-      await loadEmployees();
-      notify("Department filter applied");
-    };
-  }
-
-  if (statusSelect) {
-    statusSelect.onchange = async (event) => {
-      employeeFilters.status = event.target.value;
-      await loadEmployees();
-      notify("Status filter applied");
-    };
+  if (separatedSearchInput) {
+    separatedSearchInput.addEventListener("input", async (event) => {
+      employeeFilters.separated = event.target.value.trim();
+      await loadEmployees("separated");
+    });
   }
 
   if (exportButton) {
-    exportButton.onclick = () => {
-      const rows = employees.map((employee) => ({
-        employeeCode: employee.employeeCode,
-        firstName: employee.firstName,
-        lastName: employee.lastName,
-        email: employee.email,
-        department: employee.department,
-        designation: employee.designation,
-        employmentType: employee.employmentType ?? "",
-        status: employee.status,
-      }));
+    exportButton.onclick = () => exportEmployeesCsv("active", "employees-export");
+  }
 
-      if (!rows.length) {
-        notify("No employee rows to export");
-        return;
-      }
-
-      const columns = Object.keys(rows[0]);
-      const csv = [
-        columns.join(","),
-        ...rows.map((row) => columns.map((key) => {
-          const value = String(row[key] ?? "");
-          const escaped = value.replaceAll("\"", "\"\"");
-          return `"${escaped}"`;
-        }).join(",")),
-      ].join("\\n");
-
-      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `employees-export-${new Date().toISOString().slice(0, 10)}.csv`;
-      link.click();
-      URL.revokeObjectURL(url);
-      notify("Employee export downloaded");
-    };
+  if (separatedExportButton) {
+    separatedExportButton.onclick = () => exportEmployeesCsv("separated", "separated-employees-export");
   }
 }
 
@@ -1891,60 +2340,16 @@ async function loadEmployeesPresence() {
   );
 }
 
-function populateEmployeeFilterOptions() {
-  const departmentSelect = document.getElementById("emp-filter-department");
-  if (!departmentSelect) return;
-
-  const departments = new Set();
-  allEmployees.forEach((employee) => {
-    if (employee.department?.trim()) departments.add(employee.department.trim());
-  });
-
-  const currentDepartment = employeeFilters.department;
-  departmentSelect.innerHTML = `<option>All Departments</option>${[...departments].sort((a, b) => a.localeCompare(b))
-    .map((department) => `<option>${escapeAttr(department)}</option>`)
-    .join("")}`;
-  departmentSelect.value = [...departmentSelect.options].some((option) => option.value === currentDepartment)
-    ? currentDepartment
-    : "All Departments";
-  employeeFilters.department = departmentSelect.value;
-}
-
-async function loadEmployees() {
-  const normalizedStatus = employeeFilters.status === "All Status"
-    ? ""
-    : employeeFilters.status.toUpperCase().replace(/\s+/g, "_");
-  const normalizedSearch = employeeFilters.search.toLowerCase();
-
-  employees = allEmployees.filter((employee) => {
-    const matchesDepartment = employeeFilters.department === "All Departments"
-      || employee.department === employeeFilters.department;
-    const matchesStatus = !normalizedStatus || employee.status === normalizedStatus;
-
-    const searchable = [
-      employee.firstName,
-      employee.lastName,
-      employee.employeeCode,
-      employee.legacyEmpId,
-      employee.department,
-      employee.designation,
-      employee.email,
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase();
-
-    const matchesSearch = !normalizedSearch
-      || searchable.includes(normalizedSearch)
-      || employee.employeeCode === normalizedSearch
-      || (employee.legacyEmpId ?? "").toLowerCase() === normalizedSearch;
-    return matchesDepartment && matchesStatus && matchesSearch;
-  });
+async function loadEmployees(view = getEmployeeListView()) {
+  employees = getEmployeePoolWithFilters(view);
 
   await loadEmployeesPresence().catch(() => {
     employeePresenceMap = new Map();
   });
-  renderEmployeesTable();
+
+  renderEmployeeTableHead(view);
+  renderEmployeeActiveFilters(view);
+  renderEmployeesTable(view);
 }
 
 async function refreshEmployees() {
@@ -1952,8 +2357,8 @@ async function refreshEmployees() {
   if (Array.isArray(latest)) {
     allEmployees = latest;
   }
-  populateEmployeeFilterOptions();
-  await loadEmployees();
+  await loadEmployees("active");
+  await loadEmployees("separated");
   populateEmployeeSelectors();
   renderDashboardInsights();
   if (isEmployeeDashboard()) renderEmployeeDashboardSummary();
@@ -2637,9 +3042,15 @@ window.__deleteEmployee = function deleteEmployee(employeeId, name) {
 };
 
 window.filterTable = function filterTableLive(input, tableId) {
-  if (tableId !== "emp-table") return;
-  employeeFilters.search = input.value.trim();
-  loadEmployees();
+  if (tableId === "emp-table") {
+    employeeFilters.active = input.value.trim();
+    loadEmployees("active");
+    return;
+  }
+  if (tableId === "sep-emp-table") {
+    employeeFilters.separated = input.value.trim();
+    loadEmployees("separated");
+  }
 };
 
 function formatLeaveStatus(status) {
@@ -2724,7 +3135,7 @@ function renderLeavePending(requests) {
     || pending.some((request) => canViewAirTicketForEmployee(request.employeeId));
   if (headerCells.length >= 9) {
     if (headerCells[6]) headerCells[6].style.display = showAirTicketColumn ? "" : "none";
-    if (me?.role === "MANAGER") {
+    if (isTeamLeaveManager()) {
       headerCells[7].textContent = "L1 / Acting";
       headerCells[8].textContent = "L2";
     } else if (l2Roles.has(me?.role)) {
@@ -2907,7 +3318,7 @@ function renderMyLeaveHistory(requests) {
 }
 
 function canPickLeaveHistoryEmployee() {
-  return elevatedRoles.has(me?.role) || me?.role === "MANAGER";
+  return elevatedRoles.has(me?.role) || isTeamLeaveManager();
 }
 
 function leaveHistoryEmployeeOptions() {
@@ -2916,6 +3327,11 @@ function leaveHistoryEmployeeOptions() {
   if (me?.role === "MANAGER" && me?.employee?.department) {
     return allEmployees.filter(
       (employee) => employee.department === me.employee.department || employee.id === loggedInEmployeeId,
+    );
+  }
+  if (isTeamLeaveManager()) {
+    return allEmployees.filter(
+      (employee) => employee.managerId === loggedInEmployeeId || employee.id === loggedInEmployeeId,
     );
   }
   return allEmployees.filter((employee) => employee.id === loggedInEmployeeId);
@@ -2939,7 +3355,7 @@ function setLeaveHistoryRange(from, to) {
 }
 
 function canExportLeaveReport() {
-  return elevatedRoles.has(me?.role) || me?.role === "MANAGER";
+  return elevatedRoles.has(me?.role) || isTeamLeaveManager();
 }
 
 function populateLeaveHistoryDepartmentSelect() {
@@ -3288,7 +3704,7 @@ async function loadLeaveRequests() {
   leaveRequestsCache = Array.isArray(requests) ? requests : [];
   const myEmployeeId = me?.employee?.id;
   const isAdminPower = l2Roles.has(me?.role);
-  const isManager = me?.role === "MANAGER";
+  const isManager = isTeamLeaveManager();
   if (myEmployeeId) {
     leaveRequestsCache.forEach((request) => {
       const previous = leaveStatusSnapshot.get(request.id);
@@ -3377,7 +3793,7 @@ async function loadLeaveRequests() {
   if (pendingTab) {
     pendingTab.textContent = `Pending Approvals (${pendingCount})`;
     const hasActingDuties = requests.some((item) => item.canAcceptActing || item.canApproveL1);
-    pendingTab.style.display = isIndividualContributor(me?.role) && !hasActingDuties ? "none" : "";
+    pendingTab.style.display = isIndividualContributor(me?.role) && !hasActingDuties && !isTeamLeaveManager() ? "none" : "";
   }
   renderDashboardInsights();
   renderNotifications();
@@ -3441,6 +3857,17 @@ function findAnnualLeaveEntitlement(entitlements) {
   return (entitlements?.entitlements ?? []).find((item) => item.code === "AL") ?? null;
 }
 
+function syncLeaveApplyBalanceVisibility() {
+  const show = canViewLeaveApplyBalance();
+  const maturityBox = document.getElementById("leave-maturity-box");
+  const annualWrap = document.getElementById("leave-annual-balance-wrap");
+  if (maturityBox) maturityBox.style.display = show ? "" : "none";
+  if (!show && annualWrap) {
+    annualWrap.style.display = "none";
+    setAnnualLeaveBalanceExpanded(false);
+  }
+}
+
 function setAnnualLeaveBalanceExpanded(expanded) {
   const toggle = document.getElementById("leave-annual-balance-toggle");
   const panel = document.getElementById("leave-annual-balance-panel");
@@ -3452,14 +3879,19 @@ function setAnnualLeaveBalanceExpanded(expanded) {
 
 function renderAnnualLeaveBalance(entitlementsState) {
   const wrap = document.getElementById("leave-annual-balance-wrap");
+  if (!wrap) return;
+  if (!canViewLeaveApplyBalance()) {
+    wrap.style.display = "none";
+    setAnnualLeaveBalanceExpanded(false);
+    return;
+  }
+
   const earnedEl = document.getElementById("leave-al-earned");
   const usedEl = document.getElementById("leave-al-used");
   const pendingEl = document.getElementById("leave-al-pending");
   const availableEl = document.getElementById("leave-al-available");
   const noteEl = document.getElementById("leave-annual-balance-note");
   const annual = findAnnualLeaveEntitlement(entitlementsState);
-
-  if (!wrap) return;
 
   if (!annual) {
     wrap.style.display = "none";
@@ -3550,8 +3982,10 @@ function wireLeaveApplyForm() {
 
   const selects = section.querySelectorAll(".form-group select");
   const dateInputs = section.querySelectorAll("input[type='date']");
+  const fileInput = section.querySelector("input[type='file']");
   const reason = section.querySelector("textarea");
   const submitBtn = document.getElementById("leave-submit-btn") || section.querySelector(".btn.btn-primary");
+  const clearBtn = document.getElementById("leave-clear-btn");
   const earnedChip = document.getElementById("leave-earned-chip");
   const usedChip = document.getElementById("leave-used-chip");
   const availableChip = document.getElementById("leave-available-chip");
@@ -3583,7 +4017,14 @@ function wireLeaveApplyForm() {
   };
 
   const renderMaturityInfo = () => {
+    syncLeaveApplyBalanceVisibility();
     const requestedDays = getRequestedLeaveDays(dateInputs[0]?.value, dateInputs[1]?.value);
+    if (!canViewLeaveApplyBalance()) {
+      isOverBalance = false;
+      syncSubmitState();
+      return;
+    }
+
     const selectedLeaveType = leaveTypes.find((item) => item.id === selects[1]?.value);
     const entitlement = selectedLeaveType
       ? findLeaveEntitlement(entitlementsState, selectedLeaveType.id)
@@ -3693,6 +4134,29 @@ function wireLeaveApplyForm() {
     }
     renderAnnualLeaveBalance(entitlementsState);
     renderMaturityInfo();
+  };
+
+  const clearLeaveApplyForm = async () => {
+    if (selects[1]) selects[1].value = "";
+    if (reason) reason.value = "";
+    dateInputs.forEach((input) => { input.value = ""; });
+    if (fileInput) fileInput.value = "";
+    const actingSelect = document.getElementById("leave-acting-manager-select");
+    if (actingSelect) actingSelect.value = "";
+    if (!elevatedRoles.has(me?.role) && me?.employee?.id) {
+      if (selects[0]) selects[0].value = me.employee.id;
+    } else if (selects[0]) {
+      selects[0].value = "";
+    }
+    syncDateBounds();
+    entitlementsState = null;
+    if (airTicketPreviewEl) {
+      airTicketPreviewEl.textContent = "";
+      airTicketPreviewEl.style.color = "";
+    }
+    await refreshActingManagerOptions(selects[0]?.value || "");
+    await refreshMaturityInfo();
+    notify("Form cleared");
   };
 
   submitBtn.onclick = async () => {
@@ -3839,7 +4303,11 @@ function wireLeaveApplyForm() {
     renderMaturityInfo();
     refreshAirTicketPreview().catch(() => null);
   });
+  if (clearBtn) {
+    clearBtn.onclick = () => clearLeaveApplyForm().catch((error) => notify(error.message));
+  }
   syncDateBounds();
+  syncLeaveApplyBalanceVisibility();
   refreshActingManagerOptions(selects[0]?.value || "").catch(() => null);
   refreshMaturityInfo().catch(() => null);
   window.__refreshLeaveApplyBalance = () => refreshMaturityInfo().catch(() => null);
@@ -6823,6 +7291,7 @@ function applyEmployeeDashboardUi() {
 
   applyDashboardStatLabels();
   if (me) renderDashboardHero();
+  document.getElementById("view-dashboard")?.classList.toggle("dash-employee", isEmployee);
   document.getElementById("view-dashboard")?.classList.add("dash-role-ready");
 }
 
@@ -6853,7 +7322,11 @@ function renderDashboardHero() {
       year: "numeric",
     });
   }
-  if (roleEl) roleEl.textContent = formatLabel(me?.role ?? "EMPLOYEE");
+  if (roleEl) {
+    roleEl.textContent = isEmployeeDashboard()
+      ? formatLabel(employee?.status ?? "ACTIVE")
+      : formatLabel(me?.role ?? "EMPLOYEE");
+  }
 }
 
 function renderEmployeeDashboardSummary() {
@@ -6868,9 +7341,7 @@ function renderEmployeeDashboardSummary() {
     : "—";
   const items = [
     ["Employee ID", employee.employeeCode ?? "—"],
-    ["Department", employee.department ?? "—"],
-    ["Designation", employee.designation ?? "—"],
-    ["Status", formatLabel(employee.status ?? "ACTIVE")],
+    ["Work Mode", formatLabel(employee.workMode ?? "OFFICE")],
     ["Joined", employee.dateOfJoining ? fmtDate(employee.dateOfJoining) : "—"],
     ["Reporting To", managerName],
   ];
@@ -6910,7 +7381,6 @@ async function loadDashboard() {
   }
   if (statSubs.length >= 4) {
     if (isEmployee) {
-      statSubs[0].textContent = me?.employee?.department ?? "Your department";
       statSubs[1].textContent = Number(data.pendingLeaveApprovals ?? 0) ? "Awaiting manager/HR action" : "No open requests";
       statSubs[2].textContent = payrollMonth?.month && payrollMonth?.year
         ? new Date(payrollMonth.year, payrollMonth.month - 1, 1).toLocaleDateString("en-GB", { month: "long", year: "numeric" })
@@ -6945,21 +7415,6 @@ function renderLateAttendanceDashboardBanner() {
   text.innerHTML = `<b>Late check-in warning</b> You have checked in late ${late.monthlyLateCount} time(s) this month (allowed: ${late.threshold}). A warning email has been sent — please arrive on time.`;
 }
 
-function formatDashboardDate(value) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Recent";
-  return date.toLocaleString("en-GB", {
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function dashboardRequestDate(request) {
-  return request.createdAt || request.updatedAt || request.submittedAt || request.startDate;
-}
-
 function formatPayrollMoney(value, currency, withSign = false) {
   const rounded = Math.round(Number(value ?? 0));
   const abs = Math.abs(rounded).toLocaleString("en-US");
@@ -6980,7 +7435,6 @@ function formatAed(value, withSign = false) {
 function renderDashboardInsights() {
   const deptList = document.getElementById("dash-dept-list");
   const alertsList = document.getElementById("dash-alerts");
-  const timeline = document.getElementById("dash-timeline");
   const workforceLegend = document.getElementById("dash-workforce-legend");
   const activeCountEl = document.getElementById("dash-active-count");
   const probationCountEl = document.getElementById("dash-probation-count");
@@ -6990,7 +7444,7 @@ function renderDashboardInsights() {
   const wpsBadge = document.getElementById("dash-wps-badge");
   const overtimeAmountEl = document.getElementById("dash-overtime-amount");
   const overtimeEmployeesEl = document.getElementById("dash-overtime-employees");
-  if (!deptList || !alertsList || !timeline) return;
+  if (!deptList || !alertsList) return;
 
   const departmentRows = Array.isArray(dashboardCache?.employeesByDept) ? dashboardCache.employeesByDept : [];
   if (!departmentRows.length) {
@@ -7188,67 +7642,6 @@ function renderDashboardInsights() {
       <div><b>${escapeAttr(alert.title)}</b> ${escapeAttr(alert.desc)}</div>
     </div>
   `).join("");
-
-  const timelineRows = [];
-  if (elevatedRoles.has(me?.role) || me?.role === "MANAGER") {
-    const recentJoiners = [...allEmployees]
-      .filter((employee) => employee.dateOfJoining)
-      .sort((a, b) => new Date(b.dateOfJoining).getTime() - new Date(a.dateOfJoining).getTime())
-      .slice(0, 2);
-    recentJoiners.forEach((employee) => {
-      timelineRows.push({
-        tone: "green",
-        date: new Date(employee.dateOfJoining),
-        text: `New joiner <b>${escapeAttr(`${employee.firstName ?? ""} ${employee.lastName ?? ""}`.trim() || "Employee")}</b> added to ${escapeAttr(employee.department ?? "Unassigned")}.`,
-      });
-    });
-  }
-
-  const leaveTimelineSource = isEmployeeDashboard() && myEmployeeId
-    ? leaveRequestsCache.filter((request) => request.employeeId === myEmployeeId)
-    : leaveRequestsCache;
-
-  [...leaveTimelineSource]
-    .sort((a, b) => new Date(dashboardRequestDate(b)).getTime() - new Date(dashboardRequestDate(a)).getTime())
-    .slice(0, 5)
-    .forEach((request) => {
-      const employeeName = `${request.employee?.firstName ?? ""} ${request.employee?.lastName ?? ""}`.trim() || "Employee";
-      const leaveType = request.leaveType?.name ?? "Leave";
-      const statusText = formatLeaveStatus(request.status);
-      const statusTone = request.status === "APPROVED" ? "green" : request.status === "REJECTED" ? "amber" : "";
-      const timelineText = isEmployeeDashboard()
-        ? `Your <b>${escapeAttr(leaveType)}</b> request was marked as ${escapeAttr(statusText)}.`
-        : `<b>${escapeAttr(employeeName)}</b> ${escapeAttr(leaveType)} request marked as ${escapeAttr(statusText)}.`;
-      timelineRows.push({
-        tone: statusTone,
-        date: new Date(dashboardRequestDate(request)),
-        text: timelineText,
-      });
-    });
-
-  if (dashboardCache?.monthlyPayroll && elevatedRoles.has(me?.role)) {
-    timelineRows.push({
-      tone: "",
-      date: new Date(),
-      text: `Monthly payroll snapshot updated — AED <b>${Math.round(Number(dashboardCache.monthlyPayroll ?? 0)).toLocaleString("en-US")}</b>.`,
-    });
-  }
-
-  timeline.innerHTML = timelineRows
-    .sort((a, b) => b.date.getTime() - a.date.getTime())
-    .slice(0, 6)
-    .map((item) => `
-      <div class="tl-item">
-        <div class="tl-dot ${item.tone}"></div>
-        <div class="tl-date">${escapeAttr(formatDashboardDate(item.date))}</div>
-        <div class="tl-text">${item.text}</div>
-      </div>
-    `)
-    .join("");
-
-  if (!timeline.innerHTML) {
-    timeline.innerHTML = `<div class="text-muted">No recent activity yet.</div>`;
-  }
 }
 
 async function loadOffices() {
@@ -9141,6 +9534,19 @@ function formatProfileDate(value) {
   return date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }
 
+function setProfilePhoneEditMode(editing) {
+  const view = document.getElementById("profile-phone-view");
+  const editor = document.getElementById("profile-phone-edit");
+  const input = document.getElementById("profile-phone-input");
+  if (view) view.hidden = editing;
+  if (editor) editor.hidden = !editing;
+  if (editing && input) {
+    input.value = me?.employee?.phone ?? "";
+    input.focus();
+    input.select();
+  }
+}
+
 function loadProfile() {
   if (!me?.employee) return;
   const employee = me.employee;
@@ -9153,7 +9559,6 @@ function loadProfile() {
     "profile-designation": employee.designation ?? "—",
     "profile-work-email": employee.email ?? "—",
     "profile-login-email": employee.loginEmail ?? employee.email ?? "—",
-    "profile-phone": employee.phone ?? "—",
     "profile-joining": formatProfileDate(employee.dateOfJoining),
     "profile-status": formatLabel(employee.status ?? "ACTIVE"),
     "profile-nationality": employee.nationality ?? "—",
@@ -9172,11 +9577,48 @@ function loadProfile() {
     const el = document.getElementById(id);
     if (el) el.textContent = value;
   });
+  const phoneDisplay = document.getElementById("profile-phone-display");
+  if (phoneDisplay) phoneDisplay.textContent = employee.phone?.trim() ? employee.phone : "—";
+  setProfilePhoneEditMode(false);
   const avatar = document.getElementById("profile-avatar");
   if (avatar) {
     avatar.textContent = `${employee.firstName?.[0] ?? ""}${employee.lastName?.[0] ?? ""}`.toUpperCase() || "--";
   }
 }
+
+window.__editProfilePhone = function editProfilePhone() {
+  if (!me?.employee?.id) {
+    notify("Employee profile not linked to this account.");
+    return;
+  }
+  setProfilePhoneEditMode(true);
+};
+
+window.__cancelProfilePhone = function cancelProfilePhone() {
+  setProfilePhoneEditMode(false);
+};
+
+window.__saveProfilePhone = async function saveProfilePhone() {
+  if (!me?.employee?.id) {
+    notify("Employee profile not linked to this account.");
+    return;
+  }
+  try {
+    const phone = document.getElementById("profile-phone-input")?.value?.trim() ?? "";
+    const updated = await api("/ess/me", {
+      method: "PATCH",
+      body: JSON.stringify({ phone }),
+    });
+    me.employee = { ...me.employee, phone: updated.phone ?? null };
+    const cached = allEmployees.find((item) => item.id === me.employee.id);
+    if (cached) cached.phone = updated.phone ?? null;
+    setProfilePhoneEditMode(false);
+    loadProfile();
+    notify("Mobile number updated.");
+  } catch (error) {
+    notify(error.message);
+  }
+};
 
 window.addEventListener("resize", () => {
   refreshMobileSidebarNav();
@@ -9195,6 +9637,10 @@ window.addEventListener("resize", () => {
 });
 
 document.addEventListener("click", (event) => {
+  if (Date.now() < employeeColumnFilterIgnoreCloseUntil) return;
+  if (isEmployeeColumnFilterInteraction(event)) return;
+  window.__closeEmployeeColumnFilter?.();
+
   if (event.target?.closest(".emp-action-menu-wrap")) return;
   const portalClick = event.target?.closest("#emp-action-portal");
   if (portalClick) {
@@ -9206,14 +9652,21 @@ document.addEventListener("click", (event) => {
   window.__closeEmployeeActionsMenu?.();
 });
 
-window.addEventListener("scroll", () => window.__closeEmployeeActionsMenu?.(), true);
-window.addEventListener("resize", () => window.__closeEmployeeActionsMenu?.());
+window.addEventListener("scroll", (event) => {
+  if (isEmployeeColumnFilterInteraction(event)) return;
+  window.__closeEmployeeColumnFilter?.();
+  window.__closeEmployeeActionsMenu?.();
+}, true);
+window.addEventListener("resize", () => {
+  window.__closeEmployeeActionsMenu?.();
+});
 
 window.__approveLeave = approveLeaveRequest;
 
 const MASTER_VIEW_LABELS = {
   dashboard: "Dashboard",
   employees: "Employees",
+  separated: "Separated",
   leave: "Leave",
   exits: "Exits",
   clearance: "Clearance",
@@ -9250,7 +9703,7 @@ function setMasterDataTableMessage(message) {
 
 function renderMasterDataForms() {
   if (!masterDataCache) return;
-  const { attendance, leave, leaveTypes, roles, settings, airTicket } = masterDataCache;
+  const { attendance, leave, leaveTypes, roles, settings, airTicket, lineManager } = masterDataCache;
   if (!attendance || !leave) {
     setMasterDataTableMessage("Master data response was incomplete.");
     return;
@@ -9279,6 +9732,26 @@ function renderMasterDataForms() {
     ? settings.find((item) => item.key === "payroll.dualApprovalThreshold")
     : null;
   if (dualThreshold) dualThreshold.value = Number(thresholdSetting?.value ?? 5000);
+
+  const lmDropdown = document.getElementById("md-lm-dropdown");
+  const lmLeaveAccess = document.getElementById("md-lm-leave-access");
+  const lmDirectReports = document.getElementById("md-lm-direct-reports");
+  const lmExcludeDriver = document.getElementById("md-lm-exclude-driver");
+  const lmEligibleRoles = document.getElementById("md-lm-eligible-roles");
+  const lmDesignationKeywords = document.getElementById("md-lm-designation-keywords");
+  const lmExclusionKeywords = document.getElementById("md-lm-exclusion-keywords");
+  const lmExceptionPhrases = document.getElementById("md-lm-exception-phrases");
+  const lmLeadershipKeywords = document.getElementById("md-lm-leadership-keywords");
+  const resolvedLineManager = lineManager ?? DEFAULT_LINE_MANAGER_SETTINGS;
+  if (lmDropdown) lmDropdown.value = resolvedLineManager.enableDesignationForDropdown ? "true" : "false";
+  if (lmLeaveAccess) lmLeaveAccess.value = resolvedLineManager.enableDesignationForLeaveAccess ? "true" : "false";
+  if (lmDirectReports) lmDirectReports.value = resolvedLineManager.allowDirectReportsForLeaveAccess ? "true" : "false";
+  if (lmExcludeDriver) lmExcludeDriver.value = resolvedLineManager.excludeDriverDesignation ? "true" : "false";
+  if (lmEligibleRoles) lmEligibleRoles.value = masterListToText(resolvedLineManager.eligibleRoles);
+  if (lmDesignationKeywords) lmDesignationKeywords.value = masterListToText(resolvedLineManager.designationKeywords);
+  if (lmExclusionKeywords) lmExclusionKeywords.value = masterListToText(resolvedLineManager.exclusionKeywords);
+  if (lmExceptionPhrases) lmExceptionPhrases.value = masterListToText(resolvedLineManager.exceptionPhrases);
+  if (lmLeadershipKeywords) lmLeadershipKeywords.value = masterListToText(resolvedLineManager.leadershipOverrideKeywords);
 
   const airEnabled = document.getElementById("md-air-enabled");
   const airMinDays = document.getElementById("md-air-min-days");
@@ -9355,8 +9828,17 @@ async function loadMasterData() {
 }
 
 window.__loadViewData = function loadViewData(view) {
+  if (view === "profile" && token && me?.employee) {
+    loadProfile();
+  }
   if (view === "attendance" && token && me) {
     loadLateJoiners().catch((error) => notify(error.message));
+  }
+  if (view === "employees" && token && me) {
+    loadEmployees("active").catch((error) => notify(error.message));
+  }
+  if (view === "separated" && token && me) {
+    loadEmployees("separated").catch((error) => notify(error.message));
   }
   if (view !== "masterdata") return;
   if (!token || !me) {
@@ -9598,6 +10080,52 @@ window.__saveMasterPayroll = async function saveMasterPayroll() {
     });
     await loadMasterData();
     notify("Payroll settings saved.");
+  } catch (error) {
+    notify(error.message);
+  }
+};
+
+function collectMasterLineManagerPayload() {
+  return {
+    enableDesignationForDropdown: document.getElementById("md-lm-dropdown")?.value === "true",
+    enableDesignationForLeaveAccess: document.getElementById("md-lm-leave-access")?.value === "true",
+    allowDirectReportsForLeaveAccess: document.getElementById("md-lm-direct-reports")?.value === "true",
+    excludeDriverDesignation: document.getElementById("md-lm-exclude-driver")?.value === "true",
+    eligibleRoles: masterTextToList(document.getElementById("md-lm-eligible-roles")?.value).map((role) => role.toUpperCase()),
+    designationKeywords: masterTextToList(document.getElementById("md-lm-designation-keywords")?.value),
+    exclusionKeywords: masterTextToList(document.getElementById("md-lm-exclusion-keywords")?.value),
+    exceptionPhrases: masterTextToList(document.getElementById("md-lm-exception-phrases")?.value),
+    leadershipOverrideKeywords: masterTextToList(document.getElementById("md-lm-leadership-keywords")?.value),
+  };
+}
+
+window.__saveMasterLineManager = async function saveMasterLineManager() {
+  try {
+    const payload = collectMasterLineManagerPayload();
+    if (!payload.eligibleRoles.length || !payload.designationKeywords.length) {
+      notify("Eligible roles and designation keywords are required.");
+      return;
+    }
+    await api("/master/line-manager", {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+    await loadPublicMasterConfig();
+    await applyRoleBasedUi();
+    await loadMasterData();
+    notify("Line manager settings saved.");
+  } catch (error) {
+    notify(error.message);
+  }
+};
+
+window.__resetMasterLineManager = async function resetMasterLineManager() {
+  try {
+    await api("/master/line-manager/reset-defaults", { method: "POST" });
+    await loadPublicMasterConfig();
+    await applyRoleBasedUi();
+    await loadMasterData();
+    notify("Line manager settings restored to defaults.");
   } catch (error) {
     notify(error.message);
   }

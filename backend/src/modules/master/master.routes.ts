@@ -4,7 +4,9 @@ import { prisma } from "../../lib/prisma.js";
 import { LeaveBalanceMode, LeavePayRate } from "../../lib/leave-policy.js";
 import {
   ALL_VIEWS,
+  DEFAULT_LINE_MANAGER_SETTINGS,
   getMasterDataBundle,
+  getLineManagerSettings,
   invalidateMasterDataCache,
   parseTimeToMinutes,
   seedMasterData,
@@ -73,22 +75,37 @@ const roleSchema = z.object({
 
 const roleUpdateSchema = roleSchema.partial().omit({ code: true });
 
+const lineManagerSchema = z.object({
+  enableDesignationForDropdown: z.boolean(),
+  enableDesignationForLeaveAccess: z.boolean(),
+  allowDirectReportsForLeaveAccess: z.boolean(),
+  excludeDriverDesignation: z.boolean(),
+  eligibleRoles: z.array(z.string().min(1)).min(1),
+  designationKeywords: z.array(z.string().min(1)).min(1),
+  exclusionKeywords: z.array(z.string()),
+  exceptionPhrases: z.array(z.string()),
+  leadershipOverrideKeywords: z.array(z.string()),
+});
+
 masterRouter.get("/", requireRoles(...MASTER_ROLES), async (_req, res) => {
   const data = await getMasterDataBundle();
   return res.json(data);
 });
 
 masterRouter.get("/public-config", async (_req, res) => {
-  const roles = await prisma.roleDefinition.findMany({
-    where: { active: true },
-    orderBy: [{ sortOrder: "asc" }, { label: "asc" }],
-    select: {
-      code: true,
-      label: true,
-      assignable: true,
-      allowedViews: true,
-    },
-  });
+  const [roles, lineManager] = await Promise.all([
+    prisma.roleDefinition.findMany({
+      where: { active: true },
+      orderBy: [{ sortOrder: "asc" }, { label: "asc" }],
+      select: {
+        code: true,
+        label: true,
+        assignable: true,
+        allowedViews: true,
+      },
+    }),
+    getLineManagerSettings(),
+  ]);
   return res.json({
     roles: roles.map((role) => ({
       code: role.code,
@@ -97,6 +114,7 @@ masterRouter.get("/public-config", async (_req, res) => {
       allowedViews: role.allowedViews,
     })),
     views: ALL_VIEWS,
+    lineManager,
   });
 });
 
@@ -152,6 +170,19 @@ masterRouter.patch("/payroll", requireRoles(...MASTER_ROLES), async (req, res) =
   const payload = z.object({ dualApprovalThreshold: z.number().positive() }).parse(req.body);
   await updateSystemSetting("payroll.dualApprovalThreshold", payload.dualApprovalThreshold);
   return res.json({ message: "Payroll settings updated.", dualApprovalThreshold: payload.dualApprovalThreshold });
+});
+
+masterRouter.patch("/line-manager", requireRoles(...MASTER_ROLES), async (req, res) => {
+  const payload = lineManagerSchema.parse(req.body);
+  await updateSystemSetting("leave.lineManager", payload);
+  const data = await getMasterDataBundle();
+  return res.json({ message: "Line manager settings updated.", lineManager: data.lineManager });
+});
+
+masterRouter.post("/line-manager/reset-defaults", requireRoles(...MASTER_ROLES), async (_req, res) => {
+  await updateSystemSetting("leave.lineManager", DEFAULT_LINE_MANAGER_SETTINGS);
+  const data = await getMasterDataBundle();
+  return res.json({ message: "Line manager settings restored to defaults.", lineManager: data.lineManager });
 });
 
 masterRouter.post("/leave-types", requireRoles(...MASTER_ROLES), async (req, res) => {

@@ -23,6 +23,7 @@ import {
   evaluateAirTicketEligibility,
 } from "../../lib/leave-air-ticket.js";
 import { ACTING_VOID_VALUE, canVoidActingColleague } from "../../lib/roles.js";
+import { isTeamLeaveManagerEmployee, allowsDirectReportsLeaveAccess } from "../../lib/line-manager-eligibility.js";
 import { authMiddleware, requireRoles, type AuthRequest } from "../../middleware/auth.js";
 
 const leaveTypeSchema = z.object({
@@ -121,6 +122,26 @@ function isDeptManager(role?: string) {
   return role === "MANAGER";
 }
 
+async function hasActiveDirectReports(managerId: string) {
+  const count = await prisma.employee.count({
+    where: {
+      managerId,
+      status: { in: ["ACTIVE", "PROBATION", "ON_LEAVE"] },
+    },
+  });
+  return count > 0;
+}
+
+async function canAccessTeamLeave(viewer: {
+  role?: string | null;
+  designation?: string | null;
+  status?: string | null;
+}, employeeId: string) {
+  if (isTeamLeaveManagerEmployee(viewer)) return true;
+  if (!allowsDirectReportsLeaveAccess()) return false;
+  return hasActiveDirectReports(employeeId);
+}
+
 function canViewAirTicketDetails(auth: AuthRequest["auth"], requestEmployeeId: string) {
   if (!auth) return false;
   if (isHrOrAdmin(auth.role)) return true;
@@ -138,21 +159,28 @@ async function resolveLeaveActorEmployee(req: AuthRequest, employeeId: string) {
   if (!auth?.employeeId) return { error: "Employee identity missing for this account", status: 400 as const };
   if (isHrOrAdmin(auth.role)) return { employeeId };
   if (auth.employeeId === employeeId) return { employeeId };
+
+  const target = await prisma.employee.findUnique({
+    where: { id: employeeId },
+    select: { department: true, managerId: true },
+  });
+  if (!target) {
+    return { error: "Employee not found", status: 404 as const };
+  }
+  if (target.managerId === auth.employeeId) {
+    return { employeeId };
+  }
+
   if (isDeptManager(auth.role)) {
-    const [manager, target] = await Promise.all([
-      prisma.employee.findUnique({
-        where: { id: auth.employeeId },
-        select: { department: true },
-      }),
-      prisma.employee.findUnique({
-        where: { id: employeeId },
-        select: { department: true },
-      }),
-    ]);
-    if (manager?.department && target?.department && manager.department === target.department) {
+    const manager = await prisma.employee.findUnique({
+      where: { id: auth.employeeId },
+      select: { department: true },
+    });
+    if (manager?.department && target.department && manager.department === target.department) {
       return { employeeId };
     }
   }
+
   return { error: "You do not have access to this employee leave data", status: 403 as const };
 }
 
@@ -337,17 +365,25 @@ leaveRouter.get("/requests", async (req: AuthRequest, res) => {
     if (!auth?.employeeId) {
       return res.status(400).json({ message: "Employee identity missing for this account" });
     }
+
+    const viewer = await prisma.employee.findUnique({
+      where: { id: auth.employeeId },
+      select: { role: true, designation: true, status: true, department: true },
+    });
+    if (!viewer) {
+      return res.status(404).json({ message: "Employee profile not found" });
+    }
+
     if (isDeptManager(auth.role)) {
-      const managerEmployee = await prisma.employee.findUnique({
-        where: { id: auth.employeeId },
-        select: { department: true },
-      });
-      if (!managerEmployee) {
-        return res.status(404).json({ message: "Manager employee profile not found" });
-      }
       where.OR = [
-        { employee: { department: managerEmployee.department } },
+        { employee: { department: viewer.department } },
         { actingApproverId: auth.employeeId },
+      ];
+    } else if (await canAccessTeamLeave(viewer, auth.employeeId)) {
+      where.OR = [
+        { employee: { managerId: auth.employeeId } },
+        { actingApproverId: auth.employeeId },
+        { employeeId: auth.employeeId },
       ];
     } else {
       const onLeaveManagerIds = await findManagersOnLeaveWithActingApprover(auth.employeeId);

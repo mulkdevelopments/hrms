@@ -8,6 +8,7 @@ import { ensureEmployeeLeaveBalances } from "../../lib/leave-policy.js";
 import { getAssignableRoleCodes } from "../../lib/master-data.js";
 import { createOnboardingProTask } from "../../lib/pro-tasks.js";
 import { extendedEmployeeSchema, extractExtendedEmployeeData } from "../../lib/employee-fields.js";
+import { isEligibleLineManagerEmployee } from "../../lib/line-manager-eligibility.js";
 import { authMiddleware, requireRoles, type AuthRequest } from "../../middleware/auth.js";
 
 const privilegedRoles = ["SUPER_ADMIN", "HR", "HR_OFFICER"] as const;
@@ -17,6 +18,20 @@ async function assertAssignableRole(role?: string) {
   const assignable = await getAssignableRoleCodes();
   if (!assignable.includes(role)) {
     throw new Error(`Invalid role "${role}". Choose from: ${assignable.join(", ")}`);
+  }
+}
+
+async function assertValidLineManager(managerId?: string) {
+  if (!managerId) return;
+  const manager = await prisma.employee.findUnique({
+    where: { id: managerId },
+    select: { id: true, status: true, role: true, designation: true },
+  });
+  if (!manager) {
+    throw new Error("Line manager not found");
+  }
+  if (!isEligibleLineManagerEmployee(manager)) {
+    throw new Error("Selected employee is not eligible as a line manager");
   }
 }
 
@@ -173,6 +188,7 @@ employeesRouter.post("/", requireRoles(...privilegedRoles), async (req, res) => 
 
   try {
     await assertAssignableRole(payload.userRole);
+    await assertValidLineManager(payload.managerId);
   } catch (error) {
     return res.status(400).json({ message: error instanceof Error ? error.message : "Invalid role" });
   }
@@ -258,6 +274,7 @@ employeesRouter.put("/:id", requireRoles(...privilegedRoles), async (req, res) =
 
   try {
     await assertAssignableRole(payload.userRole);
+    await assertValidLineManager(payload.managerId);
   } catch (error) {
     return res.status(400).json({ message: error instanceof Error ? error.message : "Invalid role" });
   }

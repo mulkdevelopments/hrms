@@ -1162,6 +1162,12 @@ html[data-theme="light"] .theme-logo-light { display: block !important; }
 }
 
 .dash-stats-grid { margin-bottom: 20px; }
+#view-dashboard.dash-employee .dash-stats-grid .stat-card:first-child {
+  display: none;
+}
+#view-dashboard.dash-employee .dash-stats-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
 #view-dashboard:not(.dash-role-ready) .dash-stats-grid {
   visibility: hidden;
 }
@@ -1411,6 +1417,53 @@ html[data-theme="light"] .theme-logo-light { display: block !important; }
   font-weight: 600;
   text-align: right;
 }
+#view-profile .profile-item-phone {
+  flex-wrap: wrap;
+}
+#view-profile .profile-phone-view {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+#view-profile .profile-edit-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid var(--border-bright);
+  background: var(--highlight);
+  color: var(--text-muted);
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color .2s, border-color .2s, background .2s;
+}
+#view-profile .profile-edit-btn:hover {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border-bright));
+  background: var(--highlight-strong);
+}
+#view-profile .profile-phone-editor {
+  width: 100%;
+  margin-top: 8px;
+}
+#view-profile .profile-edit-field {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  align-items: center;
+}
+#view-profile .profile-phone-input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-bright);
+  background: var(--card);
+  color: var(--text);
+  font-size: 13px;
+}
 #view-profile .profile-status-pill {
   border: 1px solid var(--status-success-border);
   background: var(--status-success-bg);
@@ -1436,6 +1489,230 @@ tbody tr {
 tbody tr:hover { background: var(--highlight); }
 tbody td { padding: 12px 14px; color: var(--text); }
 tbody tr:last-child { border-bottom: none; }
+
+/* ─── EXCEL-LIKE COLUMN FILTERS ─── */
+.col-filter-th {
+  white-space: nowrap;
+  vertical-align: middle;
+  min-width: 88px;
+}
+.col-filter-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+}
+.col-filter-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .8px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  line-height: 1.2;
+}
+.col-filter-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color .15s, background .15s, border-color .15s;
+}
+.col-filter-trigger:hover {
+  color: var(--accent);
+  background: var(--highlight);
+  border-color: var(--border-bright);
+}
+.col-filter-trigger.active {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.col-filter-trigger i { font-size: 11px; line-height: 1; }
+.emp-filter-chips {
+  display: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border-bright);
+  background: var(--panel-muted-bg);
+}
+.emp-filter-chips.has-filters { display: flex; }
+.emp-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-bright);
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.3;
+}
+.emp-filter-chip strong {
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  font-size: 10px;
+}
+.emp-filter-chip button {
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  font-size: 14px;
+}
+.emp-filter-chip button:hover { color: var(--accent); }
+.emp-filter-clear-all {
+  margin-left: auto;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 0;
+}
+.emp-col-filter-menu {
+  position: fixed;
+  z-index: 1200;
+  width: 300px;
+  max-height: min(440px, calc(100vh - 24px));
+  background: var(--surface-raised);
+  border: 1px solid var(--border-bright);
+  border-radius: 12px;
+  box-shadow: var(--dropdown-shadow);
+  display: none;
+  flex-direction: column;
+  overflow: hidden;
+  color: var(--text);
+  font-family: 'Inter', sans-serif;
+}
+.emp-col-filter-menu.open { display: flex; }
+.emp-col-filter-head {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-bright);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  flex-shrink: 0;
+}
+.emp-col-filter-head span {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.emp-col-filter-search {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-bright);
+  flex-shrink: 0;
+}
+.emp-col-filter-menu input[type="text"] {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-bright);
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+}
+.emp-col-filter-menu input[type="text"]:focus {
+  border-color: var(--focus);
+  background: var(--input-bg-focus);
+  outline: none;
+}
+.emp-col-filter-actions {
+  display: flex;
+  gap: 14px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border-bright);
+  flex-shrink: 0;
+}
+.emp-col-filter-actions button {
+  border: none;
+  background: none;
+  color: var(--blue-bright);
+  cursor: pointer;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+}
+.emp-col-filter-actions button:hover { color: var(--text); }
+.emp-col-filter-list {
+  overflow-y: auto;
+  flex: 1 1 auto;
+  min-height: 72px;
+  max-height: 260px;
+  padding: 6px 0;
+}
+.emp-col-filter-option {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  padding: 8px 14px;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--text);
+  cursor: pointer;
+  line-height: 1.4;
+}
+.emp-col-filter-option:hover { background: var(--highlight); }
+.emp-col-filter-menu input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  max-width: 16px;
+  padding: 0;
+  margin: 2px 0 0;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+.emp-col-filter-option span {
+  min-width: 0;
+  word-break: break-word;
+  color: var(--text);
+}
+.emp-col-filter-empty {
+  padding: 20px 14px;
+  font-size: 13px;
+  color: var(--text-muted);
+  text-align: center;
+}
+.emp-col-filter-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--border-bright);
+  background: var(--surface-raised);
+  flex-shrink: 0;
+}
+.emp-col-filter-foot .btn {
+  min-width: 72px;
+  justify-content: center;
+}
 
 /* ─── MOBILE CARD LISTS (replace wide tables on small screens) ─── */
 .mobile-card-view { display: none; }
@@ -2487,6 +2764,8 @@ html[data-theme="light"] .clearance-dept-icon.tone-pro { color: #7e22ce; backgro
   #view-profile .profile-hero-body { grid-template-columns: 1fr; justify-items: start; }
   #view-profile .profile-hero-meta { justify-items: start; }
   #view-profile .profile-grid { grid-template-columns: 1fr; }
+  #view-profile .profile-edit-field { flex-direction: column; align-items: stretch; }
+  #view-profile .profile-edit-field .btn { width: 100%; }
   .desktop-table-view { display: none !important; }
   .mobile-card-view { display: grid; gap: 10px; }
   .card { overflow: visible; height: auto !important; }
@@ -2583,6 +2862,9 @@ html[data-theme="light"] .clearance-dept-icon.tone-pro { color: #7e22ce; backgro
   .dash-stats-grid .stat-sub {
     display: none;
   }
+  #view-dashboard.dash-employee .dash-stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
   #view-dashboard .dash-hero { margin-bottom: 14px; padding: 14px; }
   #view-dashboard #dash-employee-summary-card.card { padding: 14px; }
   #view-dashboard .dash-summary-grid {
@@ -2623,6 +2905,9 @@ html[data-theme="light"] .clearance-dept-icon.tone-pro { color: #7e22ce; backgro
       <div class="nav-label">Core Modules</div>
       <div class="nav-item" onclick="navigate('employees', this)">
         <i class="bi bi-people nav-icon"></i> Employees
+      </div>
+      <div class="nav-item" onclick="navigate('separated', this)">
+        <i class="bi bi-person-x nav-icon"></i> Separated
       </div>
       <div class="nav-item" onclick="navigate('leave', this)">
         <i class="bi bi-calendar2-week nav-icon"></i> Leave Management
@@ -2685,7 +2970,7 @@ html[data-theme="light"] .clearance-dept-icon.tone-pro { color: #7e22ce; backgro
   <button class="icon-btn mobile-menu-btn" type="button" aria-label="More menu" onclick="toggleSidebar()">
     <i class="bi bi-grid"></i>
   </button>
-  <div class="header-title" id="header-title">Dashboard <span>/ Overview</span></div>
+  <div class="header-title" id="header-title">Dashboard</div>
   <div class="header-actions">
     <div class="header-location is-icon-only" id="header-location" title="Location unavailable">
       <i class="bi bi-geo-alt-fill"></i>
@@ -2807,22 +3092,12 @@ html[data-theme="light"] .clearance-dept-icon.tone-pro { color: #7e22ce; backgro
     </div>
   </div>
 
-  <div class="grid2 mb-20 dash-section">
-    <div class="card">
-      <div class="dash-section-head">
-        <div class="section-title">Active Alerts</div>
-        <span class="dash-section-note">Needs attention</span>
-      </div>
-      <div id="dash-alerts"></div>
+  <div class="card mb-20 dash-section">
+    <div class="dash-section-head">
+      <div class="section-title">Active Alerts</div>
+      <span class="dash-section-note">Needs attention</span>
     </div>
-
-    <div class="card">
-      <div class="dash-section-head">
-        <div class="section-title">Recent Activity</div>
-        <span class="dash-section-note">Latest updates</span>
-      </div>
-      <div class="timeline" id="dash-timeline"></div>
-    </div>
+    <div id="dash-alerts"></div>
   </div>
 
   <div class="card dash-section" id="dash-payroll-card">
@@ -2864,19 +3139,8 @@ html[data-theme="light"] .clearance-dept-icon.tone-pro { color: #7e22ce; backgro
 <div id="view-employees" class="view">
   <div class="toolbar">
     <div class="search-bar" style="flex:1;max-width:320px">
-      <input type="text" placeholder="Search employees…" oninput="filterTable(this,'emp-table')">
+      <input type="text" id="emp-search-input" placeholder="Search employees…">
     </div>
-    <select id="emp-filter-department" style="width:160px">
-      <option>All Departments</option>
-    </select>
-    <select id="emp-filter-status" style="width:140px">
-      <option>All Status</option>
-      <option>Active</option>
-      <option>Probation</option>
-      <option>On Leave</option>
-      <option>Resigned</option>
-      <option>Terminated</option>
-    </select>
     <button class="btn btn-primary" id="emp-add-btn" onclick="openModal('emp-modal')">＋ Add Employee</button>
     <input type="file" id="emp-import-file" accept=".xlsx,.xls" hidden>
     <button type="button" class="btn btn-secondary" id="emp-import-btn">⬆ Import Excel</button>
@@ -2884,17 +3148,37 @@ html[data-theme="light"] .clearance-dept-icon.tone-pro { color: #7e22ce; backgro
   </div>
 
   <div class="card">
+    <div class="emp-filter-chips" id="emp-filter-chips" aria-live="polite"></div>
     <div class="desktop-table-view table-wrap">
       <table id="emp-table">
-        <thead><tr>
-          <th>Employee</th><th>ID</th><th>Department</th>
-          <th>Designation</th><th>Type</th><th>Join Date</th>
-          <th>Emirates ID</th><th>Status</th><th>Attendance</th><th>Actions</th>
-        </tr></thead>
+        <thead><tr></tr></thead>
         <tbody></tbody>
       </table>
     </div>
     <div class="mobile-card-view" id="emp-mobile-list" aria-label="Employee list"></div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════
+     SEPARATED EMPLOYEES
+════════════════════════════════════════════════════ -->
+<div id="view-separated" class="view">
+  <div class="toolbar">
+    <div class="search-bar" style="flex:1;max-width:320px">
+      <input type="text" id="sep-emp-search-input" placeholder="Search separated employees…">
+    </div>
+    <button id="sep-emp-export-btn" class="btn btn-secondary">⬇ Export</button>
+  </div>
+
+  <div class="card">
+    <div class="emp-filter-chips" id="sep-emp-filter-chips" aria-live="polite"></div>
+    <div class="desktop-table-view table-wrap">
+      <table id="sep-emp-table">
+        <thead><tr></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="mobile-card-view" id="sep-emp-mobile-list" aria-label="Separated employee list"></div>
   </div>
 </div>
 
@@ -3070,7 +3354,7 @@ html[data-theme="light"] .clearance-dept-icon.tone-pro { color: #7e22ce; backgro
       </div>
       <div class="flex gap-8 mt-16">
         <button id="leave-submit-btn" class="btn btn-primary" type="button">Submit Request</button>
-        <button class="btn btn-secondary" type="button" onclick="showToast('Cleared')">Clear</button>
+        <button id="leave-clear-btn" class="btn btn-secondary" type="button">Clear</button>
       </div>
     </div>
   </div>
@@ -3642,6 +3926,7 @@ html[data-theme="light"] .clearance-dept-icon.tone-pro { color: #7e22ce; backgro
     <button class="tab-btn" onclick="switchTab(this,'md-leave-policy')">Leave Policy</button>
     <button class="tab-btn" onclick="switchTab(this,'md-air-ticket')">Air Ticket</button>
     <button class="tab-btn" onclick="switchTab(this,'md-leave-types')">Leave Types</button>
+    <button class="tab-btn" onclick="switchTab(this,'md-line-manager')">Line Managers</button>
     <button class="tab-btn" onclick="switchTab(this,'md-roles')">Roles</button>
     <button class="tab-btn" onclick="switchTab(this,'md-payroll')">Payroll</button>
   </div>
@@ -3713,6 +3998,28 @@ html[data-theme="light"] .clearance-dept-icon.tone-pro { color: #7e22ce; backgro
           <thead><tr><th>Name</th><th>Code</th><th>Days/Year</th><th>Balance Mode</th><th>Pay Rate</th><th>Attachment</th><th>Status</th><th>Actions</th></tr></thead>
           <tbody id="md-leave-types-body"><tr><td colspan="8" class="text-muted">Loading…</td></tr></tbody>
         </table>
+      </div>
+    </div>
+  </div>
+
+  <div id="md-line-manager" class="tab-pane">
+    <div class="card" style="max-width:920px">
+      <div class="section-title">Line Manager Rules</div>
+      <p class="text-muted" style="margin-bottom:14px;font-size:13px">Control who appears in the line manager dropdown and who can see or approve direct reports' leave requests on login. Keywords are matched as whole words/phrases in employee designations.</p>
+      <div class="form-grid">
+        <div class="form-group"><label>Use designations in line manager dropdown</label><select id="md-lm-dropdown"><option value="true">Yes</option><option value="false">No</option></select></div>
+        <div class="form-group"><label>Designation-based team leave access</label><select id="md-lm-leave-access"><option value="true">Yes</option><option value="false">No</option></select></div>
+        <div class="form-group"><label>Direct reports grant leave access</label><select id="md-lm-direct-reports"><option value="true">Yes</option><option value="false">No</option></select></div>
+        <div class="form-group"><label>Exclude driver designations</label><select id="md-lm-exclude-driver"><option value="true">Yes</option><option value="false">No</option></select></div>
+        <div class="form-group full"><label>Eligible roles (always treated as line managers)</label><input id="md-lm-eligible-roles" type="text" placeholder="MANAGER, CEO"></div>
+        <div class="form-group full"><label>Designation keywords</label><textarea id="md-lm-designation-keywords" rows="3" placeholder="manager, director, chairman, ceo"></textarea></div>
+        <div class="form-group full"><label>Exclusion keywords</label><textarea id="md-lm-exclusion-keywords" rows="3" placeholder="driver, operator, foreman"></textarea></div>
+        <div class="form-group full"><label>Exception phrases (still eligible despite exclusions)</label><textarea id="md-lm-exception-phrases" rows="3" placeholder="assistant manager, project manager"></textarea></div>
+        <div class="form-group full"><label>Leadership override keywords</label><textarea id="md-lm-leadership-keywords" rows="2" placeholder="chairman, director, ceo"></textarea></div>
+      </div>
+      <div class="flex gap-8 mt-16" style="margin-top:12px;flex-wrap:wrap">
+        <button class="btn btn-primary btn-sm" onclick="window.__saveMasterLineManager()">Save Line Manager Settings</button>
+        <button class="btn btn-secondary btn-sm" onclick="window.__resetMasterLineManager()">Restore Defaults</button>
       </div>
     </div>
   </div>
@@ -3977,7 +4284,22 @@ html[data-theme="light"] .clearance-dept-icon.tone-pro { color: #7e22ce; backgro
       <div class="profile-list">
         <div class="profile-item"><span class="profile-key">Work Email</span><span class="profile-value" id="profile-work-email">-</span></div>
         <div class="profile-item"><span class="profile-key">Login Email</span><span class="profile-value" id="profile-login-email">-</span></div>
-        <div class="profile-item"><span class="profile-key">Mobile</span><span class="profile-value" id="profile-phone">-</span></div>
+        <div class="profile-item profile-item-phone" id="profile-phone-row">
+          <span class="profile-key">Mobile</span>
+          <div class="profile-phone-view" id="profile-phone-view">
+            <span class="profile-value" id="profile-phone-display">—</span>
+            <button type="button" class="profile-edit-btn" onclick="window.__editProfilePhone()" aria-label="Edit mobile number" title="Edit mobile number">
+              <i class="bi bi-pencil"></i>
+            </button>
+          </div>
+          <div class="profile-phone-editor" id="profile-phone-edit" hidden>
+            <div class="profile-edit-field">
+              <input type="tel" id="profile-phone-input" class="profile-phone-input" placeholder="+971 50 XXX XXXX" autocomplete="tel">
+              <button type="button" class="btn btn-primary btn-sm" onclick="window.__saveProfilePhone()">Save</button>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="window.__cancelProfilePhone()">Cancel</button>
+            </div>
+          </div>
+        </div>
         <div class="profile-item"><span class="profile-key">Date of Joining</span><span class="profile-value" id="profile-joining">-</span></div>
       </div>
     </div>
@@ -4374,19 +4696,20 @@ function navigate(view, el) {
   document.getElementById('view-' + view).classList.add('active');
   if (el) el.classList.add('active');
   const titles = {
-    dashboard: 'Dashboard <span>/ Overview</span>',
-    employees: 'Employees <span>/ Master Records</span>',
-    leave: 'Leave Management <span>/ Module 02</span>',
-    exits: 'Resignation &amp; Exit <span>/ Employee Offboarding</span>',
-    payadjust: 'Pay Adjustments <span>/ Deductions &amp; Additions</span>',
-    attendance: 'Attendance & Tracking <span>/ Live Workforce Map</span>',
-    calendar: 'Calendar <span>/ Attendance & Route Map</span>',
-    offices: 'Office Master <span>/ Geofence Setup</span>',
-    masterdata: 'Master Data <span>/ System Configuration</span>',
-    pro: 'PRO &amp; Visas <span>/ Document &amp; Immigration</span>',
-    documents: 'Documents <span>/ Employee Files</span>',
-    profile: 'My Profile <span>/ Employee Information</span>',
-    settings: 'System Settings <span>/ Administration</span>',
+    dashboard: 'Dashboard',
+    employees: 'Employees',
+    separated: 'Separated',
+    leave: 'Leave Management',
+    exits: 'Resignation &amp; Exit',
+    payadjust: 'Pay Adjustments',
+    attendance: 'Attendance & Tracking',
+    calendar: 'Calendar',
+    offices: 'Office Master',
+    masterdata: 'Master Data',
+    pro: 'PRO &amp; Visas',
+    documents: 'Documents',
+    profile: 'My Profile',
+    settings: 'System Settings',
   };
   document.getElementById('header-title').innerHTML = titles[view] || view;
   localStorage.setItem(HRMS_ACTIVE_VIEW_KEY, view);

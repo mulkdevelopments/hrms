@@ -8,6 +8,7 @@ import {
   getLateAttendanceSummary,
 } from "../../lib/late-attendance.js";
 import { isIndividualContributor } from "../../lib/roles.js";
+import { isTeamLeaveManagerEmployee, allowsDirectReportsLeaveAccess } from "../../lib/line-manager-eligibility.js";
 import { authMiddleware, type AuthRequest } from "../../middleware/auth.js";
 
 const EmployeeStatus = {
@@ -50,6 +51,17 @@ dashboardRouter.get("/overview", async (req: AuthRequest, res) => {
     nationality: { not: null },
   };
   let departmentFilter: string | undefined;
+  let isTeamLineManagerScope = false;
+
+  async function hasActiveDirectReports(managerId: string) {
+    const count = await prisma.employee.count({
+      where: {
+        managerId,
+        status: { in: ["ACTIVE", "PROBATION", "ON_LEAVE"] },
+      },
+    });
+    return count > 0;
+  }
   const now = new Date();
   const currentMonth = now.getMonth() + 1;
   const currentYear = now.getFullYear();
@@ -81,9 +93,30 @@ dashboardRouter.get("/overview", async (req: AuthRequest, res) => {
     nationalityWhere.department = managerEmployee.department;
     currentPayrollWhere.employee = { department: managerEmployee.department };
     overtimePayslipWhere.employee = { department: managerEmployee.department };
+  } else if (auth?.employeeId) {
+    const viewer = await prisma.employee.findUnique({
+      where: { id: auth.employeeId },
+      select: { role: true, designation: true, status: true },
+    });
+    if (viewer && (isTeamLeaveManagerEmployee(viewer) || (allowsDirectReportsLeaveAccess() && await hasActiveDirectReports(auth.employeeId)))) {
+      isTeamLineManagerScope = true;
+      const teamEmployeeFilter = { managerId: auth.employeeId };
+      employeeWhere.managerId = auth.employeeId;
+      onLeaveWhere.managerId = auth.employeeId;
+      activeWhere.managerId = auth.employeeId;
+      probationWhere.managerId = auth.employeeId;
+      pendingWhere.OR = [
+        { employee: { managerId: auth.employeeId } },
+        { actingApproverId: auth.employeeId },
+      ];
+      payslipWhere.employee = teamEmployeeFilter;
+      nationalityWhere.managerId = auth.employeeId;
+      currentPayrollWhere.employee = teamEmployeeFilter;
+      overtimePayslipWhere.employee = teamEmployeeFilter;
+    }
   }
 
-  if (isIndividualContributor(auth?.role) && auth?.employeeId) {
+  if (isIndividualContributor(auth?.role) && auth?.employeeId && !isTeamLineManagerScope) {
     employeeWhere.id = auth.employeeId;
     onLeaveWhere.id = auth.employeeId;
     activeWhere.id = auth.employeeId;
@@ -95,7 +128,7 @@ dashboardRouter.get("/overview", async (req: AuthRequest, res) => {
     overtimePayslipWhere.employeeId = auth.employeeId;
   }
 
-  const isEmployeeScope = isIndividualContributor(auth?.role) && auth?.employeeId;
+  const isEmployeeScope = isIndividualContributor(auth?.role) && auth?.employeeId && !isTeamLineManagerScope;
 
   const [headcount, onLeave, activeCount, probationCount, pendingLeaveApprovals, employeesByDept, payroll, payrollCurrent, overtimeEmployees, nationalityMix, lateJoinersToday, employeesOverLateThreshold, lateAttendance] = await Promise.all([
     prisma.employee.count({ where: employeeWhere }),

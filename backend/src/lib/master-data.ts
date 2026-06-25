@@ -1,6 +1,12 @@
 import { prisma } from "./prisma.js";
 import { syncDefaultLeaveTypes } from "./leave-policy.js";
 import { DEFAULT_AIR_TICKET_SETTINGS, type AirTicketSettings } from "./leave-air-ticket.js";
+import {
+  DEFAULT_LINE_MANAGER_SETTINGS,
+  parseLineManagerSettings,
+  refreshLineManagerSettingsCache,
+  type LineManagerSettings,
+} from "./line-manager-eligibility.js";
 import { refreshRoleRuntimeCache } from "./roles.js";
 
 export type AttendancePolicy = {
@@ -49,7 +55,7 @@ const DEFAULT_LEAVE_POLICY: LeavePolicySettings = {
 };
 
 const ALL_VIEWS = [
-  "dashboard", "employees", "leave", "exits", "clearance", "payadjust",
+  "dashboard", "employees", "separated", "leave", "exits", "clearance", "payadjust",
   "pro", "documents", "attendance", "calendar", "offices", "profile", "settings", "masterdata",
 ];
 
@@ -82,11 +88,13 @@ const SETTING_SEEDS = [
   { key: "leave.maturityMaxCap", category: "leave", label: "Annual leave max accrual cap", description: "Maximum matured annual leave balance", value: 60 },
   { key: "payroll.dualApprovalThreshold", category: "payroll", label: "Dual approval threshold (AED)", description: "Pay adjustments at or above this amount need HR approval plus CEO/Super Admin final approval", value: 5000 },
   { key: "leave.airTicket", category: "leave", label: "Air ticket allowance", description: "Eligibility rules and nationality-based fare table for annual leave", value: DEFAULT_AIR_TICKET_SETTINGS },
+  { key: "leave.lineManager", category: "leave", label: "Line manager rules", description: "Designation keywords, eligible roles, and team leave access for line managers", value: DEFAULT_LINE_MANAGER_SETTINGS },
 ] as const;
 
 let cache: {
   attendance: AttendancePolicy;
   leave: LeavePolicySettings;
+  lineManager: LineManagerSettings;
   roles: RoleDefinitionDto[];
   loadedAt: number;
 } | null = null;
@@ -134,6 +142,40 @@ async function readSetting(key: string, fallback: unknown) {
   const row = await prisma.systemSetting.findUnique({ where: { key } });
   if (!row) return fallback;
   return row.value as unknown;
+}
+
+async function migrateSeparatedViewForHrRoles() {
+  const migrated = await readSetting("roles.separatedViewMigrated.v1", false);
+  if (migrated) return;
+
+  const roles = await prisma.roleDefinition.findMany();
+  for (const role of roles) {
+    if (!HR_ADMIN_ROLE_CODES.has(role.code)) continue;
+    const views = Array.isArray(role.allowedViews) ? [...(role.allowedViews as string[])] : [];
+    if (views.includes("separated")) continue;
+    const employeesIndex = views.indexOf("employees");
+    if (employeesIndex >= 0) {
+      views.splice(employeesIndex + 1, 0, "separated");
+    } else {
+      views.unshift("separated");
+    }
+    await prisma.roleDefinition.update({
+      where: { id: role.id },
+      data: { allowedViews: views },
+    });
+  }
+
+  await prisma.systemSetting.upsert({
+    where: { key: "roles.separatedViewMigrated.v1" },
+    create: {
+      key: "roles.separatedViewMigrated.v1",
+      category: "roles",
+      label: "Separated view migrated",
+      description: "One-time migration adding separated view to HR admin roles",
+      value: true,
+    },
+    update: { value: true },
+  });
 }
 
 async function migrateRestrictedViewsForNonHrRoles() {
@@ -207,6 +249,7 @@ export async function seedMasterData(options?: { resetLeaveTypes?: boolean }) {
   }
 
   await syncDefaultLeaveTypes(Boolean(options?.resetLeaveTypes));
+  await migrateSeparatedViewForHrRoles();
   await migrateRestrictedViewsForNonHrRoles();
   invalidateMasterDataCache();
 }
@@ -240,6 +283,7 @@ async function loadMasterDataCache() {
     where: { active: true },
     orderBy: [{ sortOrder: "asc" }, { label: "asc" }],
   });
+  const lineManager = parseLineManagerSettings(await readSetting("leave.lineManager", DEFAULT_LINE_MANAGER_SETTINGS));
 
   cache = {
     attendance: buildAttendancePolicy({
@@ -253,6 +297,7 @@ async function loadMasterDataCache() {
       maturityMaxCap: maxCap,
       maturityDailyRate: annualDays / 365,
     },
+    lineManager,
     roles: roles.map((role) => ({
       id: role.id,
       code: role.code,
@@ -269,6 +314,7 @@ async function loadMasterDataCache() {
   };
 
   refreshRoleRuntimeCache(cache.roles);
+  refreshLineManagerSettingsCache(cache.lineManager);
   return cache;
 }
 
@@ -280,6 +326,11 @@ export async function getAttendancePolicy() {
 export async function getLeavePolicySettings() {
   const data = await loadMasterDataCache();
   return data.leave;
+}
+
+export async function getLineManagerSettings() {
+  const data = await loadMasterDataCache();
+  return data.lineManager;
 }
 
 export async function getRoleDefinitions(includeInactive = false) {
@@ -339,16 +390,17 @@ export async function updateSystemSetting(key: string, value: unknown) {
 }
 
 export async function getMasterDataBundle() {
-  const [attendance, leave, roles, leaveTypes, settings, airTicket] = await Promise.all([
+  const [attendance, leave, lineManager, roles, leaveTypes, settings, airTicket] = await Promise.all([
     getAttendancePolicy(),
     getLeavePolicySettings(),
+    getLineManagerSettings(),
     getRoleDefinitions(true),
     prisma.leaveType.findMany({ orderBy: { name: "asc" } }),
     prisma.systemSetting.findMany({ orderBy: [{ category: "asc" }, { key: "asc" }] }),
     getAirTicketSettings(),
   ]);
 
-  return { attendance, leave, roles, leaveTypes, settings, airTicket };
+  return { attendance, leave, lineManager, roles, leaveTypes, settings, airTicket };
 }
 
 export async function getPayrollDualApprovalThreshold() {
@@ -382,4 +434,5 @@ export async function getAirTicketSettings() {
   return parseAirTicketSettings(value);
 }
 
-export { ALL_VIEWS, SETTING_SEEDS };
+export { ALL_VIEWS, SETTING_SEEDS, DEFAULT_LINE_MANAGER_SETTINGS };
+export type { LineManagerSettings };

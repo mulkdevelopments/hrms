@@ -1,9 +1,14 @@
 import { Router } from "express";
+import { z } from "zod";
 import { prisma } from "../../lib/prisma.js";
 import { authMiddleware, type AuthRequest } from "../../middleware/auth.js";
 
 export const essRouter = Router();
 essRouter.use(authMiddleware);
+
+const updateMyProfileSchema = z.object({
+  phone: z.string().trim().max(30),
+});
 
 essRouter.get("/me", async (req: AuthRequest, res) => {
   if (!req.auth?.employeeId) {
@@ -12,6 +17,21 @@ essRouter.get("/me", async (req: AuthRequest, res) => {
 
   const profile = await prisma.employee.findUnique({
     where: { id: req.auth.employeeId },
+    include: { manager: { select: { firstName: true, lastName: true, employeeCode: true } } },
+  });
+
+  return res.json(profile);
+});
+
+essRouter.patch("/me", async (req: AuthRequest, res) => {
+  if (!req.auth?.employeeId) {
+    return res.status(404).json({ message: "Employee profile not linked" });
+  }
+
+  const payload = updateMyProfileSchema.parse(req.body);
+  const profile = await prisma.employee.update({
+    where: { id: req.auth.employeeId },
+    data: { phone: payload.phone || null },
     include: { manager: { select: { firstName: true, lastName: true, employeeCode: true } } },
   });
 

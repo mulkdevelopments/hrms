@@ -1,4 +1,5 @@
 import { prisma } from "./prisma.js";
+import { pickEligibleLineManager } from "./line-manager-eligibility.js";
 
 const LeaveStatus = {
   PENDING_L1: "PENDING_L1",
@@ -66,9 +67,8 @@ export async function resolveLeaveL1Approver(
   date = new Date(),
 ) {
   if (!employee.managerId) {
-    const fallback = await prisma.employee.findFirst({
+    const candidates = await prisma.employee.findMany({
       where: {
-        role: "MANAGER",
         department: employee.department,
         id: { not: employee.id },
         accessEnabled: true,
@@ -77,6 +77,7 @@ export async function resolveLeaveL1Approver(
       select: managerSelect,
       orderBy: { firstName: "asc" },
     });
+    const fallback = pickEligibleLineManager(candidates);
     return {
       approverId: fallback?.id ?? null,
       lineManager: null,
@@ -116,9 +117,8 @@ export async function resolveLeaveL1Approver(
     };
   }
 
-  const actingManager = await prisma.employee.findFirst({
+  const actingCandidates = await prisma.employee.findMany({
     where: {
-      role: "MANAGER",
       department: employee.department,
       id: { notIn: [employee.id, lineManager.id] },
       accessEnabled: true,
@@ -127,6 +127,7 @@ export async function resolveLeaveL1Approver(
     select: managerSelect,
     orderBy: { firstName: "asc" },
   });
+  const actingManager = pickEligibleLineManager(actingCandidates);
 
   return {
     approverId: actingManager?.id ?? lineManager.id,
