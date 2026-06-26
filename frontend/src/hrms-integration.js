@@ -414,6 +414,8 @@ window.__openEmployeeColumnFilter = function openEmployeeColumnFilter(view, colu
 
 let leaveRequestsCache = [];
 let dashboardCache = null;
+let dashDeptExpanded = false;
+const DASH_DEPT_TOP_COUNT = 10;
 let attendanceCache = null;
 let attendanceTrackingTimer = null;
 let attendanceMap = null;
@@ -7432,8 +7434,52 @@ function formatAed(value, withSign = false) {
   return formatPayrollMoney(value, "AED", withSign);
 }
 
+function summarizeDepartmentHeadcount(rows, expanded = false) {
+  if (!rows.length) {
+    return { displayRows: [], totalDepartments: 0, hasMore: false };
+  }
+  if (expanded || rows.length <= DASH_DEPT_TOP_COUNT) {
+    return { displayRows: rows, totalDepartments: rows.length, hasMore: rows.length > DASH_DEPT_TOP_COUNT };
+  }
+  const top = rows.slice(0, DASH_DEPT_TOP_COUNT);
+  const rest = rows.slice(DASH_DEPT_TOP_COUNT);
+  return {
+    displayRows: [
+      ...top,
+      {
+        department: `Other (${rest.length} departments)`,
+        count: rest.reduce((sum, row) => sum + Number(row.count ?? 0), 0),
+        muted: true,
+      },
+    ],
+    totalDepartments: rows.length,
+    hasMore: true,
+  };
+}
+
+function renderDepartmentHeadcountRows(rows) {
+  const barClasses = ["progress-blue", "progress-accent", "progress-amber", "progress-coral"];
+  const maxCount = Math.max(...rows.map((item) => Number(item.count ?? 0)), 1);
+  return rows.map((row, index) => {
+    const count = Number(row.count ?? 0);
+    const width = Math.max(8, Math.round((count / maxCount) * 100));
+    const mutedClass = row.muted ? " is-muted" : "";
+    return `
+      <div class="dash-dept-row${mutedClass}">
+        <div class="flex-between mb-16" style="margin-bottom:5px;font-size:13px">
+          <span title="${escapeAttr(row.department ?? "Unassigned")}">${escapeAttr(row.department ?? "Unassigned")}</span>
+          <span class="fw-700">${count}</span>
+        </div>
+        <div class="progress"><div class="progress-bar ${barClasses[index % barClasses.length]}" style="width:${width}%"></div></div>
+      </div>
+    `;
+  }).join("");
+}
+
 function renderDashboardInsights() {
   const deptList = document.getElementById("dash-dept-list");
+  const deptFoot = document.getElementById("dash-dept-foot");
+  const deptNote = document.getElementById("dash-dept-note");
   const alertsList = document.getElementById("dash-alerts");
   const workforceLegend = document.getElementById("dash-workforce-legend");
   const activeCountEl = document.getElementById("dash-active-count");
@@ -7447,23 +7493,39 @@ function renderDashboardInsights() {
   if (!deptList || !alertsList) return;
 
   const departmentRows = Array.isArray(dashboardCache?.employeesByDept) ? dashboardCache.employeesByDept : [];
+  const { displayRows, totalDepartments, hasMore } = summarizeDepartmentHeadcount(departmentRows, dashDeptExpanded);
   if (!departmentRows.length) {
     deptList.innerHTML = `<div class="text-muted">No department data available yet.</div>`;
+    deptList.classList.remove("is-expanded");
+    if (deptFoot) {
+      deptFoot.hidden = true;
+      deptFoot.innerHTML = "";
+    }
+    if (deptNote) deptNote.textContent = "";
   } else {
-    const barClasses = ["progress-blue", "progress-accent", "progress-amber", "progress-coral"];
-    const maxCount = Math.max(...departmentRows.map((item) => Number(item.count ?? 0)), 1);
-    deptList.innerHTML = departmentRows.map((row, index) => {
-      const count = Number(row.count ?? 0);
-      const width = Math.max(8, Math.round((count / maxCount) * 100));
-      return `
-        <div>
-          <div class="flex-between mb-16" style="margin-bottom:5px;font-size:13px">
-            <span>${escapeAttr(row.department ?? "Unassigned")}</span><span class="fw-700">${count}</span>
-          </div>
-          <div class="progress"><div class="progress-bar ${barClasses[index % barClasses.length]}" style="width:${width}%"></div></div>
-        </div>
-      `;
-    }).join("");
+    deptList.innerHTML = renderDepartmentHeadcountRows(displayRows);
+    deptList.classList.toggle("is-expanded", dashDeptExpanded && hasMore);
+    if (deptNote) {
+      deptNote.textContent = hasMore && !dashDeptExpanded
+        ? `Top ${DASH_DEPT_TOP_COUNT} of ${totalDepartments}`
+        : `${totalDepartments} departments`;
+    }
+    if (deptFoot) {
+      if (hasMore) {
+        deptFoot.hidden = false;
+        deptFoot.innerHTML = `
+          <span>${dashDeptExpanded ? `All ${totalDepartments} departments` : `+${totalDepartments - DASH_DEPT_TOP_COUNT} more departments grouped in Other`}</span>
+          <button type="button" class="dash-dept-toggle" id="dash-dept-toggle">${dashDeptExpanded ? `Show top ${DASH_DEPT_TOP_COUNT}` : "View all"}</button>
+        `;
+        document.getElementById("dash-dept-toggle")?.addEventListener("click", () => {
+          dashDeptExpanded = !dashDeptExpanded;
+          renderDashboardInsights();
+        });
+      } else {
+        deptFoot.hidden = true;
+        deptFoot.innerHTML = "";
+      }
+    }
   }
 
   const pendingApprovals = Number(dashboardCache?.pendingLeaveApprovals ?? 0);
