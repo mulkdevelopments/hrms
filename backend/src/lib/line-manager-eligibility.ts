@@ -156,6 +156,12 @@ export function isEligibleLineManagerEmployee(employee?: {
   return isLineManagerDesignation(employee.designation, { forLeaveAccess: false });
 }
 
+const ORG_WIDE_ACCESS_ROLES = new Set(["SUPER_ADMIN", "HR", "HR_OFFICER", "CEO"]);
+
+export function hasOrgWideAccessRole(role?: string | null) {
+  return ORG_WIDE_ACCESS_ROLES.has(String(role ?? "").trim().toUpperCase());
+}
+
 export function isTeamLeaveManagerEmployee(employee?: {
   status?: string | null;
   role?: string | null;

@@ -8,7 +8,7 @@ import {
   getLateAttendanceSummary,
 } from "../../lib/late-attendance.js";
 import { isIndividualContributor } from "../../lib/roles.js";
-import { isTeamLeaveManagerEmployee, allowsDirectReportsLeaveAccess } from "../../lib/line-manager-eligibility.js";
+import { isTeamLeaveManagerEmployee, allowsDirectReportsLeaveAccess, hasOrgWideAccessRole } from "../../lib/line-manager-eligibility.js";
 import { authMiddleware, type AuthRequest } from "../../middleware/auth.js";
 
 const EmployeeStatus = {
@@ -93,7 +93,7 @@ dashboardRouter.get("/overview", async (req: AuthRequest, res) => {
     nationalityWhere.department = managerEmployee.department;
     currentPayrollWhere.employee = { department: managerEmployee.department };
     overtimePayslipWhere.employee = { department: managerEmployee.department };
-  } else if (auth?.employeeId) {
+  } else if (auth?.employeeId && !hasOrgWideAccessRole(auth.role)) {
     const viewer = await prisma.employee.findUnique({
       where: { id: auth.employeeId },
       select: { role: true, designation: true, status: true },
