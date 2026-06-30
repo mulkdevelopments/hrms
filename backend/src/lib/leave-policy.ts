@@ -150,11 +150,12 @@ export function computeMaturedLeaveDays(
   const join = startOfDay(dateOfJoining);
   const today = startOfDay(asOf);
   if (join > today) {
-    return { daysWorked: 0, maturedDays: 0 };
+    return { daysWorked: 0, maturedDays: 0, uncappedMaturedDays: 0 };
   }
   const daysWorked = Math.floor((today.getTime() - join.getTime()) / dayMs) + 1;
-  const maturedDays = Math.min(cap, Math.floor(daysWorked * daily));
-  return { daysWorked, maturedDays };
+  const uncappedMaturedDays = Math.floor(daysWorked * daily);
+  const maturedDays = Math.min(cap, uncappedMaturedDays);
+  return { daysWorked, maturedDays, uncappedMaturedDays };
 }
 
 export async function computeMaturedLeaveDaysAsync(dateOfJoining: Date, asOf = new Date()) {
@@ -275,7 +276,7 @@ export async function getLeaveTypeEntitlement(
   if (leaveType.balanceMode === LeaveBalanceMode.MATURITY) {
     const { getLeavePolicySettings } = await import("./master-data.js");
     const policySettings = await getLeavePolicySettings();
-    const { daysWorked, maturedDays } = computeMaturedLeaveDays(dateOfJoining, new Date(), policySettings);
+    const { daysWorked, maturedDays, uncappedMaturedDays } = computeMaturedLeaveDays(dateOfJoining, new Date(), policySettings);
     const usedDays = await sumLeaveDays(
       employeeId,
       leaveType.id,
@@ -302,6 +303,7 @@ export async function getLeaveTypeEntitlement(
       availableDays,
       daysWorked,
       maturedDays,
+      uncappedMaturedDays,
       dailyRate: policySettings.maturityDailyRate,
       yearlyCap: policySettings.maturityMaxCap,
     };

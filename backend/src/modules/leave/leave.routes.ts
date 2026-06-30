@@ -639,6 +639,7 @@ leaveRouter.get("/maturity/:employeeId", async (req: AuthRequest, res) => {
     asOf: now.toISOString(),
     daysWorked: entitlement.daysWorked ?? 0,
     maturedDays: entitlement.entitledDays ?? 0,
+    uncappedMaturedDays: entitlement.uncappedMaturedDays ?? entitlement.entitledDays ?? 0,
     usedDays: entitlement.usedDays,
     availableDays: entitlement.availableDays ?? 0,
     dailyRate: policySettings.maturityDailyRate,

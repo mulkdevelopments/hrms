@@ -3859,6 +3859,18 @@ function findAnnualLeaveEntitlement(entitlements) {
   return (entitlements?.entitlements ?? []).find((item) => item.code === "AL") ?? null;
 }
 
+function formatMaturityAdminBalance(item) {
+  const capped = Number(item?.entitledDays ?? item?.maturedDays ?? 0);
+  const uncapped = Number(item?.uncappedMaturedDays ?? capped);
+  return {
+    capped,
+    uncapped,
+    cappedLabel: capped.toFixed(2),
+    uncappedLabel: uncapped.toFixed(2),
+    atCap: uncapped > capped,
+  };
+}
+
 function syncLeaveApplyBalanceVisibility() {
   const show = canViewLeaveApplyBalance();
   const maturityBox = document.getElementById("leave-maturity-box");
@@ -3889,6 +3901,7 @@ function renderAnnualLeaveBalance(entitlementsState) {
   }
 
   const earnedEl = document.getElementById("leave-al-earned");
+  const uncappedEl = document.getElementById("leave-al-uncapped");
   const usedEl = document.getElementById("leave-al-used");
   const pendingEl = document.getElementById("leave-al-pending");
   const availableEl = document.getElementById("leave-al-available");
@@ -3904,18 +3917,23 @@ function renderAnnualLeaveBalance(entitlementsState) {
   wrap.style.display = "";
   setAnnualLeaveBalanceExpanded(false);
 
-  const earned = Number(annual.entitledDays ?? 0);
+  const maturity = formatMaturityAdminBalance(annual);
   const used = Number(annual.usedDays ?? 0);
   const pending = Number(annual.pendingDays ?? 0);
   const available = Number(annual.availableDays ?? 0);
   const worked = Number(annual.daysWorked ?? 0);
+  const cap = Number(annual.yearlyCap ?? 60);
 
-  if (earnedEl) earnedEl.textContent = earned.toFixed(2);
+  if (uncappedEl) uncappedEl.textContent = maturity.uncappedLabel;
+  if (earnedEl) earnedEl.textContent = maturity.cappedLabel;
   if (usedEl) usedEl.textContent = used.toFixed(2);
   if (pendingEl) pendingEl.textContent = pending.toFixed(2);
   if (availableEl) availableEl.textContent = available.toFixed(2);
   if (noteEl) {
-    noteEl.textContent = `Annual leave accrues daily from your join date (${worked} day${worked === 1 ? "" : "s"} of service). Balance as on ${new Date(entitlementsState?.asOf ?? Date.now()).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}.`;
+    const capNote = maturity.atCap
+      ? ` Actual accrual (${maturity.uncappedLabel} days) exceeds the ${cap}-day cap.`
+      : "";
+    noteEl.textContent = `Annual leave accrues daily from join date (${worked} day${worked === 1 ? "" : "s"} of service). Capped balance is what can be booked.${capNote} As on ${new Date(entitlementsState?.asOf ?? Date.now()).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}.`;
   }
 }
 
@@ -4372,7 +4390,7 @@ function renderLeaveBalanceTypes(entitlements) {
   if (!tbody) return;
 
   if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="6" class="text-muted">No leave entitlements found.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" class="text-muted">No leave entitlements found.</td></tr>`;
     if (mobileList) mobileList.innerHTML = `<div class="mobile-empty">No leave entitlements found.</div>`;
     return;
   }
@@ -4380,11 +4398,15 @@ function renderLeaveBalanceTypes(entitlements) {
   const rendered = rows.map((item) => {
     const payLabel = item.payRate === "HALF" ? "Half pay" : item.payRate === "NONE" ? "No pay" : "Full pay";
     const payBadge = item.payRate === "NONE" ? "badge-coral" : item.payRate === "HALF" ? "badge-amber" : "badge-green";
+    const maturity = item.balanceMode === "MATURITY" ? formatMaturityAdminBalance(item) : null;
     const entitledLabel = item.balanceMode === "NONE"
       ? "Unlimited"
       : item.balanceMode === "MATURITY"
-        ? Number(item.entitledDays ?? 0).toFixed(2)
+        ? maturity.cappedLabel
         : String(item.entitledDays ?? 0);
+    const actualAccruedLabel = item.balanceMode === "MATURITY"
+      ? maturity.uncappedLabel
+      : "—";
     const availableLabel = item.balanceMode === "NONE"
       ? "Unlimited"
       : Number(item.availableDays ?? 0).toFixed(2);
@@ -4395,6 +4417,7 @@ function renderLeaveBalanceTypes(entitlements) {
       <tr>
         <td>${escapeAttr(item.name)}</td>
         <td>${escapeAttr(entitledLabel)}</td>
+        <td>${escapeAttr(actualAccruedLabel)}</td>
         <td>${used}</td>
         <td>${pending}</td>
         <td>${escapeAttr(availableLabel)}</td>
@@ -4410,7 +4433,8 @@ function renderLeaveBalanceTypes(entitlements) {
           </div>
         </div>
         <div class="record-card-grid">
-          <div class="record-card-field"><span class="record-card-label">Entitlement</span><span class="record-card-value">${escapeAttr(entitledLabel)}</span></div>
+          <div class="record-card-field"><span class="record-card-label">Capped</span><span class="record-card-value">${escapeAttr(entitledLabel)}</span></div>
+          <div class="record-card-field"><span class="record-card-label">Full Accrued</span><span class="record-card-value">${escapeAttr(actualAccruedLabel)}</span></div>
           <div class="record-card-field"><span class="record-card-label">Used</span><span class="record-card-value">${used}</span></div>
           <div class="record-card-field"><span class="record-card-label">Pending</span><span class="record-card-value">${pending}</span></div>
           <div class="record-card-field"><span class="record-card-label">Available</span><span class="record-card-value">${escapeAttr(availableLabel)}</span></div>
@@ -4444,15 +4468,17 @@ window.__selectLeaveBalanceEmployee = async function selectLeaveBalanceEmployee(
   try {
     const data = await api(`/leave/entitlements/${employeeId}`);
     const annual = (data.entitlements ?? []).find((item) => item.code === "AL") ?? data.entitlements?.[0];
-    const earned = Number(annual?.entitledDays ?? 0);
+    const maturity = formatMaturityAdminBalance(annual);
     const used = Number(annual?.usedDays ?? 0);
     const available = Number(annual?.availableDays ?? 0);
     const worked = Number(annual?.daysWorked ?? 0);
+    const cap = Number(annual?.yearlyCap ?? 60);
 
     const avatar = document.getElementById("leave-balance-avatar");
     const nameEl = document.getElementById("leave-balance-name");
     const metaEl = document.getElementById("leave-balance-meta");
     const workedEl = document.getElementById("leave-balance-worked");
+    const uncappedEl = document.getElementById("leave-balance-uncapped");
     const earnedEl = document.getElementById("leave-balance-earned");
     const usedEl = document.getElementById("leave-balance-used");
     const availableEl = document.getElementById("leave-balance-available");
@@ -4464,11 +4490,15 @@ window.__selectLeaveBalanceEmployee = async function selectLeaveBalanceEmployee(
     if (nameEl) nameEl.textContent = name;
     if (metaEl) metaEl.textContent = `${employee.employeeCode ?? "—"} • ${employee.department ?? ""} • ${employee.designation ?? ""}`;
     if (workedEl) workedEl.textContent = String(worked);
-    if (earnedEl) earnedEl.textContent = earned.toFixed(2);
+    if (uncappedEl) uncappedEl.textContent = maturity.uncappedLabel;
+    if (earnedEl) earnedEl.textContent = maturity.cappedLabel;
     if (usedEl) usedEl.textContent = used.toFixed(2);
     if (availableEl) availableEl.textContent = available.toFixed(2);
     if (noteEl) {
-      noteEl.textContent = `Annual leave accrues daily (30 days/year, max 60). Other leave types reset each calendar year. As on ${new Date(data.asOf ?? Date.now()).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}.`;
+      const capNote = maturity.atCap
+        ? ` Actual accrual (${maturity.uncappedLabel} days) is above the ${cap}-day cap.`
+        : "";
+      noteEl.textContent = `Annual leave accrues daily (30 days/year, max ${cap} bookable).${capNote} Other leave types reset each calendar year. As on ${new Date(data.asOf ?? Date.now()).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}.`;
     }
     renderLeaveBalanceTypes(data.entitlements ?? []);
 

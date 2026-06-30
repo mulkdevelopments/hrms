@@ -1080,6 +1080,38 @@ html[data-theme="light"] .theme-logo-light { display: block !important; }
 
 /* ─── STATS GRID ─── */
 .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+.stats-grid.leave-balance-stats {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.stats-grid.leave-balance-stats .stat-card {
+  padding: 12px 10px;
+  min-width: 0;
+  border-radius: 12px;
+}
+.stats-grid.leave-balance-stats .stat-label {
+  font-size: 10px;
+  line-height: 1.35;
+  margin-bottom: 6px;
+  letter-spacing: 0.02em;
+}
+.stats-grid.leave-balance-stats .stat-value {
+  font-size: 22px;
+  margin-bottom: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#leave-balance .table-wrap table th {
+  font-size: 11px;
+  white-space: nowrap;
+  padding: 10px 8px;
+}
+#leave-balance .table-wrap table td {
+  padding: 10px 8px;
+  font-size: 13px;
+}
 .stat-card {
   background: var(--card);
   border: 1px solid var(--border-bright);
@@ -2334,7 +2366,7 @@ html[data-theme="light"] .clearance-dept-icon.tone-pro { color: #7e22ce; backgro
 }
 .leave-al-mini-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 8px;
 }
 .leave-al-mini-item {
@@ -2354,6 +2386,9 @@ html[data-theme="light"] .clearance-dept-icon.tone-pro { color: #7e22ce; backgro
   font-weight: 700;
   margin-top: 2px;
   line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 #leave-annual-balance-toggle {
   width: 100%;
@@ -2738,6 +2773,11 @@ html[data-theme="light"] .clearance-dept-icon.tone-pro { color: #7e22ce; backgro
   .toolbar .search-bar input { width: 100%; }
   .grid3 { grid-template-columns: 1fr; }
   .stats-grid { grid-template-columns: 1fr 1fr; }
+  .stats-grid.leave-balance-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .stats-grid.leave-balance-stats .stat-value { font-size: 20px; }
   .dash-stats-grid {
     display: flex;
     overflow-x: auto;
@@ -3382,10 +3422,11 @@ html[data-theme="light"] .clearance-dept-icon.tone-pro { color: #7e22ce; backgro
         </button>
         <div id="leave-annual-balance-panel" class="leave-annual-balance-panel" hidden>
           <div class="leave-al-mini-grid">
-            <div class="leave-al-mini-item"><div class="leave-al-mini-label">Entitled</div><div class="leave-al-mini-value tone-teal" id="leave-al-earned">—</div></div>
+            <div class="leave-al-mini-item"><div class="leave-al-mini-label">Full Accrued</div><div class="leave-al-mini-value" id="leave-al-uncapped">—</div></div>
+            <div class="leave-al-mini-item"><div class="leave-al-mini-label">Capped</div><div class="leave-al-mini-value tone-teal" id="leave-al-earned">—</div></div>
+            <div class="leave-al-mini-item"><div class="leave-al-mini-label">Available</div><div class="leave-al-mini-value tone-accent" id="leave-al-available">—</div></div>
             <div class="leave-al-mini-item"><div class="leave-al-mini-label">Used</div><div class="leave-al-mini-value tone-danger" id="leave-al-used">—</div></div>
             <div class="leave-al-mini-item"><div class="leave-al-mini-label">Pending</div><div class="leave-al-mini-value tone-gold" id="leave-al-pending">—</div></div>
-            <div class="leave-al-mini-item"><div class="leave-al-mini-label">Available</div><div class="leave-al-mini-value tone-accent" id="leave-al-available">—</div></div>
           </div>
           <div id="leave-annual-balance-note" class="text-muted" style="font-size:11px;margin-top:8px;line-height:1.45"></div>
         </div>
@@ -3413,19 +3454,20 @@ html[data-theme="light"] .clearance-dept-icon.tone-pro { color: #7e22ce; backgro
             <div class="text-muted" id="leave-balance-meta">—</div>
           </div>
         </div>
-        <div class="stats-grid">
+        <div class="stats-grid leave-balance-stats">
           <div class="stat-card"><div class="stat-label">Days Worked</div><div class="stat-value tone-accent" id="leave-balance-worked">0</div></div>
-          <div class="stat-card"><div class="stat-label">Annual Entitled</div><div class="stat-value tone-teal" id="leave-balance-earned">0</div></div>
+          <div class="stat-card"><div class="stat-label">Full Accrued</div><div class="stat-value" id="leave-balance-uncapped">0</div></div>
+          <div class="stat-card"><div class="stat-label">Capped Entitled</div><div class="stat-value tone-teal" id="leave-balance-earned">0</div></div>
           <div class="stat-card"><div class="stat-label">Annual Used</div><div class="stat-value tone-danger" id="leave-balance-used">0</div></div>
-          <div class="stat-card"><div class="stat-label">Annual Available</div><div class="stat-value tone-gold" id="leave-balance-available">0</div></div>
+          <div class="stat-card"><div class="stat-label">Available</div><div class="stat-value tone-gold" id="leave-balance-available">0</div></div>
         </div>
         <div class="desktop-table-view table-wrap" style="margin-top:14px">
           <table>
             <thead>
-              <tr><th>Leave Type</th><th>Entitlement</th><th>Used</th><th>Pending</th><th>Available</th><th>Pay</th></tr>
+              <tr><th>Leave Type</th><th>Capped</th><th>Full Accrued</th><th>Used</th><th>Pending</th><th>Available</th><th>Pay</th></tr>
             </thead>
             <tbody id="leave-balance-types-body">
-              <tr><td colspan="6" class="text-muted">No leave entitlements loaded.</td></tr>
+              <tr><td colspan="7" class="text-muted">No leave entitlements loaded.</td></tr>
             </tbody>
           </table>
         </div>
